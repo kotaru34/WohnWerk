@@ -1,0 +1,27 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="WOHNWERK_",
+        extra="ignore",
+    )
+
+    env: str = "development"
+    host: str = "0.0.0.0"
+    port: int = 8000
+    database_url: str = "postgresql+psycopg://wohnwerk:wohnwerk@localhost:5432/wohnwerk"
+
+    country_code: str = "AT"
+
+    ai_enabled: bool = False
+    ai_base_url: str = "http://ai-vm:8001"
+    ai_timeout_seconds: int = 120
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
