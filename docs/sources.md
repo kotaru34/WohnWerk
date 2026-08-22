@@ -53,7 +53,7 @@ Evaluate additional Austrian/regional portals and direct brokerage sites after t
 
 ## Job sources
 
-### P0 — AMS `alle jobs`
+### P0 research candidate — AMS `alle jobs`
 
 URL: https://www.ams.at/arbeitsuchende/arbeitslos-was-tun/jobsuche-online-und-mobil
 
@@ -67,11 +67,13 @@ AMS describes `alle jobs` as a search engine covering free positions throughout 
 - federal/state public administration vacancies;
 - selected German Bundesagentur für Arbeit listings.
 
-That aggregation makes AMS an unusually high-value first job source.
+That aggregation makes AMS an unusually high-value discovery source.
 
 Important distinction: the documented AMS HR-API found during research is an employer/recruiting-software interface for **submitting** vacancies to AMS, not a general public search API for downloading all vacancies. Do not mistake it for the acquisition interface we need.
 
-Adapter path: investigate the current `alle jobs` search application and identify the safest structured/public interface available to normal search users.
+The official `alle jobs` help/disclaimer also contains purpose-related restrictions on use of the job-search data. Before implementing automated ingestion or persistent local copies from this source, review those current terms against WohnWerk's direct job-search use case. Until that review is complete, treat AMS as a **research/discovery candidate**, not as an automatically approved scraper target.
+
+Adapter path: investigate the current `alle jobs` search application, source terms, and the safest normal-user interface. If automated persistence is not appropriate, retain AMS as a manual/external discovery link rather than forcing an ingestion adapter.
 
 ### P0 — karriere.at
 
