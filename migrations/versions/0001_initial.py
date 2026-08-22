@@ -7,9 +7,9 @@ Create Date: 2026-08-22
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 from geoalchemy2 import Geography
-import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0001_initial"
