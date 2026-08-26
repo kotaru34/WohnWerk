@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from app.sources.property.immmo_v3 import _page_target, parse_immmo_search_page
 
 
@@ -39,8 +37,8 @@ def test_parser_accepts_external_anchor_wrapping_whole_card() -> None:
     wrapped = next(item for item in page.items if item.url.endswith("/wrapped-object"))
     assert wrapped.postal_code == "3100"
     assert wrapped.city == "St. Pölten"
-    assert wrapped.living_area_m2 == Decimal(145)
-    assert wrapped.price_eur == Decimal(449000)
+    assert wrapped.living_area_m2 == 145
+    assert wrapped.price_eur == 449000
 
 
 def test_full_target_comes_from_reported_count_not_visible_pagination_window() -> None:
