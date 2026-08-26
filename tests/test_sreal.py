@@ -7,13 +7,14 @@ FIXTURE = """
 <a href="/de/immobilie/2838-2215/landhaus-in-idyllischer-lage">
   Landhaus in idyllischer Lage Nähe Spittal/Drau
   <span>9814 Mühldorf</span>
-  <span>300 m² Wohnfläche</span>
+  <span>300 m<sup>2</sup> Wohnfläche</span>
   <span>398.000 € Kaufpreis</span>
+  <span>Merken</span>
 </a>
 <a href="/de/immobilie/960-12345/ehemaliges-pfarrhaus">
   360° Ehemaliges Pfarrhaus mit großem Gartengrundstück
   <span>3932 Kirchberg am Walde</span>
-  <span>3.020 m² Grundfläche</span>
+  <span>3.020 m <sup>2</sup> Grundfläche</span>
   <span>135.000 € Kaufpreis</span>
 </a>
 <a href="/de/immobilie/960-77777/charmantes-landhaus">
@@ -46,6 +47,7 @@ def test_sreal_search_parser_extracts_house_cards() -> None:
     assert first.living_area_m2 == Decimal(300)
     assert first.plot_area_m2 is None
     assert first.price_eur == Decimal(398000)
+    assert first.raw_payload["identity_stable"] is True
 
     second = next(item for item in page.items if item.source_listing_id == "960-12345")
     assert second.postal_code == "3932"
