@@ -27,11 +27,15 @@ WRAPPED_CARD_FIXTURE = """
 """
 
 
-def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
-    page = parse_immmo_search_page(
+def _parse_fixture():
+    return parse_immmo_search_page(
         WRAPPED_CARD_FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
     )
+
+
+def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
+    page = _parse_fixture()
 
     assert page.reported_count == 4396
     assert page.cards_seen == 3
@@ -52,11 +56,16 @@ def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
     assert synthetic.raw_payload["original_url_missing"] is True
 
 
+def test_linkless_card_identity_is_stable_across_scans() -> None:
+    first = next(item for item in _parse_fixture().items if item.postal_code == "7000")
+    second = next(item for item in _parse_fixture().items if item.postal_code == "7000")
+
+    assert first.source_listing_id == second.source_listing_id
+    assert first.url == second.url
+
+
 def test_full_target_comes_from_reported_count_not_visible_pagination_window() -> None:
-    page = parse_immmo_search_page(
-        WRAPPED_CARD_FIXTURE,
-        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
-    )
+    page = _parse_fixture()
 
     assert page.pagination_max_page == 10
     assert page.reported_count == 4396
