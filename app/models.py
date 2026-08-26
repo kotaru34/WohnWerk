@@ -71,6 +71,9 @@ class PostalCode(Base):
         Geography(geometry_type="POINT", srid=4326, spatial_index=True)
     )
     source: Mapped[str | None] = mapped_column(String(120))
+    location_source: Mapped[str | None] = mapped_column(String(120))
+    location_method: Mapped[str | None] = mapped_column(String(40))
+    location_sample_count: Mapped[int | None] = mapped_column(Integer)
 
 
 class Property(Base):
