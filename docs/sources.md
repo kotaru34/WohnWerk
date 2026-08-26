@@ -1,6 +1,6 @@
 # Austrian Source Candidates
 
-Research snapshot: 2026-08-22
+Research snapshot: 2026-08-26
 
 This document is a source-planning inventory, not a statement that automated extraction is permitted from every listed site. Before implementing each adapter, review the current public interface, available feeds/APIs, site terms, request characteristics, and the least intrusive acquisition path.
 
@@ -15,11 +15,11 @@ Why it matters:
 - extremely large Austrian inventory;
 - nationwide location filters;
 - purchase-price and area filters;
-- rich property-type taxonomy including Einfamilienhaus, Bauernhaus, Bungalow, Doppelhaushälfte, Landhaus, Mehrfamilienhaus, Reihenhaus, Villa and others.
+- rich property-type taxonomy.
 
-Current observed scale during research: more than 110,000 total real-estate advertisements on the platform.
+Important acquisition constraint: willhaben's current terms prohibit copying by robot/crawler or other automated mechanisms without prior permission. Do not implement a general-purpose crawler against the listing database.
 
-Adapter path: **TBD after source-specific investigation**. Prefer a structured/public request path if one is available and suitable; otherwise evaluate ordinary browser-driven navigation with conservative pacing.
+Useful permitted-user workflow: willhaben provides saved-search agents with e-mail and app notifications for matching new listings. WohnWerk can ingest user-received alert data as a separate source channel, retaining the original listing link.
 
 ### P0 — ImmoScout24 Austria
 
@@ -31,9 +31,9 @@ Why it matters:
 - dedicated house-purchase search;
 - useful structured fields such as price, living area, location and many property attributes.
 
-Current observed scale during research: roughly 12,800 houses for sale nationwide on the dedicated house search.
+Important acquisition constraint: the current consumer terms explicitly prohibit automated queries by scripts, bots, crawlers, search software, data mining or data extraction unless permitted in writing.
 
-Adapter path: **TBD after source-specific investigation**.
+Useful permitted-user workflow: ImmoScout24 provides saved-search agents that e-mail new matching listings. Treat these alerts as an acquisition channel instead of crawling the search database.
 
 ### P1 — immowelt.at
 
@@ -43,17 +43,17 @@ Why it matters:
 
 - Austrian property search by location or postal code;
 - house/apartment purchase inventory;
-- saved-search/email-alert functionality may provide an additional low-frequency discovery mechanism.
+- saved-search functionality with configurable e-mail notification intervals.
 
-Adapter path: **TBD after source-specific investigation**.
+Adapter path: review current terms before any automated page acquisition. E-mail search alerts are a useful low-impact source regardless of whether a crawler is later appropriate.
 
 ### Later property candidates
 
-Evaluate additional Austrian/regional portals and direct brokerage sites after the first three adapters establish the common normalization contract. Regional sources can be valuable because nationwide portals do not necessarily contain every listing.
+Evaluate additional Austrian/regional portals, cooperative/open feeds, and direct brokerage sites after the first ingestion path establishes the common normalization contract. Prefer sources where automation is expressly available or at least not contractually prohibited. Regional sources can be valuable because nationwide portals do not necessarily contain every listing.
 
 ## Job sources
 
-### P0 research candidate — AMS `alle jobs`
+### P0 — AMS `alle jobs`
 
 URL: https://www.ams.at/arbeitsuchende/arbeitslos-was-tun/jobsuche-online-und-mobil
 
@@ -67,13 +67,11 @@ AMS describes `alle jobs` as a search engine covering free positions throughout 
 - federal/state public administration vacancies;
 - selected German Bundesagentur für Arbeit listings.
 
-That aggregation makes AMS an unusually high-value discovery source.
+That aggregation makes AMS an unusually high-value job discovery source.
 
-Important distinction: the documented AMS HR-API found during research is an employer/recruiting-software interface for **submitting** vacancies to AMS, not a general public search API for downloading all vacancies. Do not mistake it for the acquisition interface we need.
+Important distinction: the documented AMS HR-API is an employer/recruiting-software interface for submitting vacancies to AMS, not a general public search API for downloading all vacancies. Do not mistake it for the acquisition interface we need.
 
-The official `alle jobs` help/disclaimer also contains purpose-related restrictions on use of the job-search data. Before implementing automated ingestion or persistent local copies from this source, review those current terms against WohnWerk's direct job-search use case. Until that review is complete, treat AMS as a **research/discovery candidate**, not as an automatically approved scraper target.
-
-Adapter path: investigate the current `alle jobs` search application, source terms, and the safest normal-user interface. If automated persistence is not appropriate, retain AMS as a manual/external discovery link rather than forcing an ingestion adapter.
+Adapter path: investigate the current `alle jobs` search application and usage conditions before implementing local persistence.
 
 ### P0 — karriere.at
 
@@ -84,11 +82,9 @@ Why it matters:
 - strong Austrian focus;
 - many engineering/technical vacancies;
 - useful location and compensation information;
-- broad search terms such as Maschinenbau / Maschinenbauingenieur already surface many adjacent roles, which is useful for our non-exact matching model.
+- broad search terms such as Maschinenbau / Maschinenbauingenieur surface many adjacent roles, which is useful for our non-exact matching model.
 
-Current research pages returned more than 1,000 results for several mechanical-engineering-related searches.
-
-Adapter path: **TBD after source-specific investigation**.
+Adapter path: source-specific investigation required before implementation.
 
 ### P1 — StepStone Austria
 
@@ -100,7 +96,7 @@ Evaluate as an additional nationwide professional-job source after the first job
 
 URL: https://www.willhaben.at/jobs/
 
-Potentially useful because WohnWerk may already maintain a willhaben browser/source integration for property data, while job data still remains a separate adapter and normalization path.
+Potentially useful as a user-notification source, but its general automated-acquisition restriction applies here too.
 
 ### P1/P2 — other job sources
 
@@ -118,8 +114,8 @@ Austrian private-sector job advertisements are generally required to state the a
 
 Primary references used during design:
 
-- Austrian government equal-treatment guidance: https://www.oesterreich.gv.at/en/themen/gesetze_und_recht/frauenfoerderung-und-gleichbehandlung/gleichbehandlung/1/2/Seite.1860220
-- Arbeiterkammer guidance: https://www.arbeiterkammer.at/beratung/arbeitundrecht/Gleichbehandlung/Gleichbehandlungsgesetz.html
+- Austrian government equal-treatment guidance
+- Arbeiterkammer equal-treatment guidance
 
 This makes advertised compensation unusually useful for automated job comparison, but the amount may be only a collective-agreement minimum rather than the likely final salary.
 
@@ -127,15 +123,13 @@ This makes advertised compensation unusually useful for automated job comparison
 
 Do not automatically multiply every monthly salary advertisement by 14.
 
-Holiday and Christmas special payments are common in Austria and are often governed by collective agreements, but Arbeiterkammer explicitly notes that there is no universal statutory entitlement in ordinary private employment when neither the applicable collective agreement nor the individual contract provides them.
-
-Reference: https://www.arbeiterkammer.at/beratung/arbeitundrecht/arbeitsvertraege/Weihnachts-Urlaubsgeld.html
+Holiday and Christmas special payments are common in Austria and are often governed by collective agreements, but there is no universal statutory entitlement in ordinary private employment when neither the applicable collective agreement nor the individual contract provides them.
 
 The parser should preserve the raw compensation text and only derive an annual figure when the payment basis is sufficiently clear.
 
 ## Postal-code reference data
 
-### P0 — Austrian Open Data PLZ dataset
+### P0 — RTR Austrian postal codes
 
 Dataset: https://www.data.gv.at/datasets/f76ed887-00d6-450f-a158-9f8b1cbbeebf
 
@@ -143,9 +137,27 @@ Publisher: RTR-GmbH
 
 License: CC BY 4.0
 
-The dataset contains Austrian postal codes (including valid/historical entries) and their associated postal-code names. The data.gv.at record was updated in 2025.
+Use RTR as the canonical PLZ/name seed. `scripts/import_postal_codes.py` imports current addressable Austrian postal codes and deliberately preserves later geographic enrichment.
 
-Use this as the canonical PLZ/name seed. A separate enrichment/import step will provide approximate centroid coordinates suitable for PostGIS distance matching.
+### P0 — BEV Adressregister Stichtagsdaten
+
+Dataset: `Adresse Relationale Tabellen - Stichtagsdaten`
+
+Publisher: Bundesamt für Eich- und Vermessungswesen (BEV)
+
+License: CC BY 4.0
+
+The free nationwide snapshot contains `ADRESSE.csv` with PLZ and one-metre geocoded address coordinates. The documented coordinate fields are `RW`, `HW`, and `EPSG`; supported Austrian Gauss-Krüger CRS values are EPSG:31254, 31255 and 31256.
+
+WohnWerk does not need to retain millions of street addresses. `scripts/import_postal_centroids.py` streams `ADRESSE.csv`, aggregates addresses by PLZ and source CRS, transforms only the aggregate means to WGS84, and updates the existing RTR rows with an approximate address-weighted postal-code location. This keeps the database small while preserving enough geographic accuracy for 25/50/100/custom-km matching.
+
+The resulting location is explicitly metadata-tagged as:
+
+```text
+location_source = BEV Adressregister Stichtagsdaten
+location_method = address_mean
+location_sample_count = number of geocoded address rows used
+```
 
 ## Source adapter rules
 
@@ -166,11 +178,13 @@ General acquisition preference order:
 ```text
 official/public API or feed
         ↓
-structured normal-user endpoint
+provider-supported saved search / e-mail notification
         ↓
-static HTML parsing
+structured normal-user endpoint where permitted
         ↓
-Playwright/browser automation
+static HTML parsing where permitted
+        ↓
+browser automation where permitted
 ```
 
 The source layer should behave conservatively: small concurrency, incremental discovery, backoff on errors/rate limits, and no repeated full-history requests when a newest-first incremental strategy can stop at already-known source IDs.
