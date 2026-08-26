@@ -12,6 +12,7 @@ import httpx
 
 from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceShardSpec
 from app.sources.property.immmo import _clean_text, _decimal
+from app.sources.property.sreal_detail import enrich_sreal_property, parse_sreal_detail_page
 
 BASE_URL = "https://www.sreal.at"
 SEARCH_URL = f"{BASE_URL}/de/haeuser-kauf/angebot/10"
@@ -228,12 +229,14 @@ class SRealPropertySource(PropertySource):
         incremental_pages: int = 1,
         hard_max_pages: int = 100,
         timeout_seconds: float = 30.0,
+        enrich_details: bool = False,
     ) -> None:
         self.name = "sreal.at"
         self.request_delay_seconds = max(0.0, request_delay_seconds)
         self.incremental_pages = max(1, incremental_pages)
         self.hard_max_pages = max(5, hard_max_pages)
         self.timeout_seconds = timeout_seconds
+        self.enrich_details = enrich_details
 
     def default_shards(self) -> list[SourceShardSpec]:
         return [
@@ -272,6 +275,35 @@ class SRealPropertySource(PropertySource):
     def _page_url(base_url: str, page: int) -> str:
         return f"{base_url}?p={page}"
 
+    async def _enrich_page_items(
+        self,
+        client: httpx.AsyncClient,
+        items: list[RawProperty],
+    ) -> tuple[list[RawProperty], int, int, int]:
+        if not self.enrich_details:
+            return items, 0, 0, 0
+
+        enriched: list[RawProperty] = []
+        attempted = 0
+        succeeded = 0
+        failed = 0
+        for item in items:
+            attempted += 1
+            await self._sleep()
+            try:
+                response = await self._get(client, item.url)
+                detail = parse_sreal_detail_page(response.text, page_url=str(response.url))
+                enriched.append(enrich_sreal_property(item, detail))
+                succeeded += 1
+            except Exception as exc:
+                payload = dict(item.raw_payload)
+                payload["detail_enriched"] = False
+                payload["detail_enrichment_error"] = f"{type(exc).__name__}: {exc}"[:500]
+                item.raw_payload = payload
+                enriched.append(item)
+                failed += 1
+        return enriched, attempted, succeeded, failed
+
     async def fetch_shard(
         self,
         shard: SourceShardSpec,
@@ -293,6 +325,9 @@ class SRealPropertySource(PropertySource):
         pages_fetched = 0
         cards_seen = 0
         cards_parsed = 0
+        detail_attempted = 0
+        detail_succeeded = 0
+        detail_failed = 0
         result_cap_hit = False
 
         async with httpx.AsyncClient(
@@ -314,7 +349,13 @@ class SRealPropertySource(PropertySource):
                 max_page if reconciliation else self.incremental_pages,
             )
 
-            items_by_id.update({item.source_listing_id: item for item in first.items})
+            first_items, attempted, succeeded, failed = await self._enrich_page_items(
+                client, first.items
+            )
+            detail_attempted += attempted
+            detail_succeeded += succeeded
+            detail_failed += failed
+            items_by_id.update({item.source_listing_id: item for item in first_items})
             pages_fetched = 1
             cards_seen = first.cards_seen
             cards_parsed = first.cards_parsed
@@ -325,7 +366,13 @@ class SRealPropertySource(PropertySource):
                 page = parse_sreal_search_page(response.text, page_url=str(response.url))
                 minimum = 0 if page_number == max_page else max(1, int(page_size * 0.75))
                 _validate_page(page, page_number=page_number, expected_minimum=minimum)
-                items_by_id.update({item.source_listing_id: item for item in page.items})
+                page_items, attempted, succeeded, failed = await self._enrich_page_items(
+                    client, page.items
+                )
+                detail_attempted += attempted
+                detail_succeeded += succeeded
+                detail_failed += failed
+                items_by_id.update({item.source_listing_id: item for item in page_items})
                 pages_fetched += 1
                 cards_seen += page.cards_seen
                 cards_parsed += page.cards_parsed
@@ -344,6 +391,9 @@ class SRealPropertySource(PropertySource):
                 "discovery_cards_seen": cards_seen,
                 "discovery_cards_parsed": cards_parsed,
                 "discovery_max_page": max_page,
+                "detail_enrichment_attempted": detail_attempted,
+                "detail_enrichment_succeeded": detail_succeeded,
+                "detail_enrichment_failed": detail_failed,
             },
             source_reported_count=None,
             coverage_complete=coverage_complete,
