@@ -36,11 +36,22 @@ def main() -> None:
         )
         for key, shard_run in rows:
             cursor = shard_run.next_cursor or {}
+            raw_anchors = cursor.get("discovery_raw_detail_anchors")
+            duplicate_anchors = cursor.get("discovery_duplicate_detail_anchors")
+            metadata_fallbacks = cursor.get("discovery_metadata_fallbacks")
+            extras = ""
+            if raw_anchors is not None:
+                extras += f" raw_anchors={raw_anchors}"
+            if duplicate_anchors is not None:
+                extras += f" duplicate_anchors={duplicate_anchors}"
+            if metadata_fallbacks is not None:
+                extras += f" metadata_fallbacks={metadata_fallbacks}"
             print(
                 f"  shard[{key}] pages={shard_run.pages_fetched} "
                 f"cards={cursor.get('discovery_cards_seen')} "
                 f"parsed={cursor.get('discovery_cards_parsed')} "
-                f"max_page={cursor.get('discovery_max_page')} "
+                f"max_page={cursor.get('discovery_max_page')}"
+                f"{extras} "
                 f"detail={cursor.get('detail_enrichment_succeeded', 0)}/"
                 f"{cursor.get('detail_enrichment_attempted', 0)} "
                 f"detail_failed={cursor.get('detail_enrichment_failed', 0)}"
