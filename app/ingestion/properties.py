@@ -16,6 +16,13 @@ from app.models import (
 from app.sources.base import RawProperty
 
 
+def _listing_payload(item: RawProperty, *, postal_resolved: bool) -> dict:
+    payload = dict(item.raw_payload)
+    payload["source_postal_code"] = item.postal_code
+    payload["postal_code_resolved"] = postal_resolved
+    return payload
+
+
 def ingest_properties(
     session: Session,
     *,
@@ -23,7 +30,11 @@ def ingest_properties(
     run: CrawlRun,
     items: list[RawProperty],
 ) -> tuple[int, int]:
-    """Persist a property batch without making unsafe cross-source dedup guesses."""
+    """Persist a property batch without making unsafe cross-source dedup guesses.
+
+    Sparse discovery updates are enrichment-only: a temporary parser/source omission
+    must not erase metadata that WohnWerk already knows for the canonical property.
+    """
     if not items:
         return 0, 0
 
@@ -52,6 +63,7 @@ def ingest_properties(
     for item in items:
         postal = known_postal.get(item.postal_code or "")
         listing = existing.get(item.source_listing_id)
+        payload = _listing_payload(item, postal_resolved=postal is not None)
 
         if listing is None:
             property_row = Property(
@@ -75,7 +87,7 @@ def ingest_properties(
                 source_listing_id=item.source_listing_id,
                 url=item.url,
                 status=ListingStatus.ACTIVE,
-                raw_payload=item.raw_payload,
+                raw_payload=payload,
                 last_seen_crawl_run_id=run.id,
                 first_seen_at=now,
                 last_seen_at=now,
@@ -85,21 +97,28 @@ def ingest_properties(
             continue
 
         property_row = listing.property
-        property_row.title = item.title
-        property_row.description = item.description
-        property_row.price_eur = item.price_eur
-        property_row.living_area_m2 = item.living_area_m2
-        property_row.plot_area_m2 = item.plot_area_m2
-        property_row.postal_code = postal.postal_code if postal else None
-        property_row.city = item.city
-        property_row.location = postal.location if postal else None
+        if item.title:
+            property_row.title = item.title
+        if item.description is not None:
+            property_row.description = item.description
+        if item.price_eur is not None:
+            property_row.price_eur = item.price_eur
+        if item.living_area_m2 is not None:
+            property_row.living_area_m2 = item.living_area_m2
+        if item.plot_area_m2 is not None:
+            property_row.plot_area_m2 = item.plot_area_m2
+        if postal is not None:
+            property_row.postal_code = postal.postal_code
+            property_row.location = postal.location
+        if item.city:
+            property_row.city = item.city
         property_row.status = ListingStatus.ACTIVE
         property_row.last_seen_at = now
         property_row.inactive_at = None
 
         listing.url = item.url
         listing.status = ListingStatus.ACTIVE
-        listing.raw_payload = item.raw_payload
+        listing.raw_payload = payload
         listing.last_seen_crawl_run_id = run.id
         listing.last_seen_at = now
         listing.inactive_at = None
