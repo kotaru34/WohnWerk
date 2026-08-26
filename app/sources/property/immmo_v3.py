@@ -37,13 +37,7 @@ def _choose_card_anchor(
     segment_end: int,
     page_url: str,
 ) -> tuple[_AnchorOccurrence, str] | None:
-    """Find the original listing link even when one <a> wraps the whole card.
-
-    IMMMO uses more than one result-card layout. Some cards contain a normal link
-    after the heading, while others can be wrapped by an external anchor whose start
-    offset is before the heading. Restrict wrapping candidates to the current segment
-    so one outer/navigation link cannot accidentally own several result cards.
-    """
+    """Find the original listing link even when one <a> wraps the whole card."""
     wrapping: list[tuple[_AnchorOccurrence, str]] = []
     following: list[tuple[_AnchorOccurrence, str]] = []
 
@@ -69,6 +63,46 @@ def _choose_card_anchor(
         if candidates:
             return candidates[0]
     return None
+
+
+def _fallback_title(card_text: str, heading_text: str) -> str:
+    body = card_text
+    if body.startswith(heading_text):
+        body = body[len(heading_text) :].strip()
+
+    boundaries: list[int] = []
+    price = PRICE_RE.search(body)
+    if price is not None:
+        boundaries.append(price.start())
+    facts = LOCATION_AREA_RE.search(body)
+    if facts is not None:
+        boundaries.append(facts.start())
+
+    if boundaries:
+        body = body[: min(boundaries)]
+    candidate = _clean_text(body).strip(" -–")
+    return candidate[:500] or heading_text[:500]
+
+
+def _synthetic_identity(
+    *,
+    postal_code: str,
+    city: str | None,
+    living_area: object | None,
+    price: object | None,
+    title: str,
+) -> tuple[str, str]:
+    key = "|".join(
+        (
+            postal_code,
+            city or "",
+            str(living_area or ""),
+            str(price or ""),
+            title.casefold(),
+        )
+    )
+    fingerprint = _source_id(f"immmo-fallback|{key}")
+    return fingerprint, f"https://www.immmo.at/immo/wohnwerk-fallback/{fingerprint}"
 
 
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
@@ -104,18 +138,6 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             if index + 1 < len(result_headings)
             else len(page_text)
         )
-        chosen = _choose_card_anchor(
-            anchors,
-            heading_start=heading.start,
-            heading_end=heading.end,
-            segment_end=segment_end,
-            page_url=page_url,
-        )
-        if chosen is None:
-            continue
-        anchor, original_url = chosen
-        cards_parsed += 1
-
         card_text = page_text[segment_start:segment_end]
         facts = LOCATION_AREA_RE.search(card_text)
         if facts is not None:
@@ -128,22 +150,49 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             living_area = None
 
         price_match = PRICE_RE.search(card_text)
-        host = (urlparse(original_url).hostname or "").casefold()
-        title = _clean_text(anchor.text) if _is_title_text(anchor.text) else heading.text
+        price = _decimal(price_match.group(1)) if price_match else None
+        chosen = _choose_card_anchor(
+            anchors,
+            heading_start=heading.start,
+            heading_end=heading.end,
+            segment_end=segment_end,
+            page_url=page_url,
+        )
 
-        items_by_url[original_url] = RawProperty(
-            source_listing_id=_source_id(original_url),
-            url=original_url,
+        original_url_missing = chosen is None
+        if chosen is not None:
+            anchor, listing_url = chosen
+            title = _clean_text(anchor.text) if _is_title_text(anchor.text) else _fallback_title(
+                card_text, heading.text
+            )
+            source_listing_id = _source_id(listing_url)
+            original_host: str | None = (urlparse(listing_url).hostname or "").casefold()
+        else:
+            title = _fallback_title(card_text, heading.text)
+            source_listing_id, listing_url = _synthetic_identity(
+                postal_code=postal_code,
+                city=city,
+                living_area=living_area,
+                price=price,
+                title=title,
+            )
+            original_host = None
+
+        cards_parsed += 1
+        items_by_url[listing_url] = RawProperty(
+            source_listing_id=source_listing_id,
+            url=listing_url,
             title=title[:500],
             description=None,
-            price_eur=_decimal(price_match.group(1)) if price_match else None,
+            price_eur=price,
             living_area_m2=living_area,
             plot_area_m2=_plot_area(card_text),
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v7",
-                "original_host": host,
+                "format": "immmo-search-discovery-v8",
+                "original_host": original_host,
+                "original_url_missing": original_url_missing,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
                 "source_heading_kind": _clean_text(heading_match.group("kind")),
@@ -183,7 +232,7 @@ def _validate_page_quality(
         )
     if page.cards_parsed != page.cards_seen:
         raise RuntimeError(
-            f"IMMMO URL discovery incomplete for shard {shard_key!r} page {page_number}: "
+            f"IMMMO card materialization incomplete for shard {shard_key!r} page {page_number}: "
             f"parsed {page.cards_parsed}/{page.cards_seen} visible cards"
         )
     if page_number < target_pages and page.cards_seen < math.ceil(PAGE_SIZE * 0.75):
@@ -193,7 +242,7 @@ def _validate_page_quality(
         )
     if not page.items:
         raise RuntimeError(
-            f"IMMMO returned no unique listing URLs for shard {shard_key!r} page {page_number}"
+            f"IMMMO returned no materialized listings for shard {shard_key!r} page {page_number}"
         )
 
     with_plz = sum(item.postal_code is not None for item in page.items)
@@ -205,7 +254,7 @@ def _validate_page_quality(
 
 
 class ImmmoPropertySource(_ImmmoPropertySourceV2):
-    """IMMMO adapter with count-driven traversal and layout-independent card links."""
+    """IMMMO adapter with count-driven traversal and lossless card discovery."""
 
     async def fetch_shard(
         self,
@@ -232,6 +281,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
         pages_fetched = 0
         cards_seen = 0
         cards_parsed = 0
+        synthetic_cards = 0
         result_cap_hit = False
         target_pages = 1
         page_number = 1
@@ -244,6 +294,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
                 "newest_ids": list(items_by_id)[:100],
                 "discovery_cards_seen": cards_seen,
                 "discovery_cards_parsed": cards_parsed,
+                "discovery_synthetic_cards": synthetic_cards,
                 "discovery_initial_reported": initial_reported_count,
                 "discovery_latest_reported": latest_reported_count,
                 "discovery_max_reported": max_reported_count or None,
@@ -297,6 +348,9 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
                     pages_fetched += 1
                     cards_seen += page.cards_seen
                     cards_parsed += page.cards_parsed
+                    synthetic_cards += sum(
+                        bool(item.raw_payload.get("original_url_missing")) for item in page.items
+                    )
 
                     if not reconciliation and page_number >= self.incremental_pages:
                         break
@@ -318,6 +372,8 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
         count_tolerance = max(PAGE_SIZE * 2, math.ceil(benchmark_count * 0.01))
         count_delta = cards_seen - benchmark_count
         count_plausible = benchmark_count > 0 and abs(count_delta) <= count_tolerance
+        synthetic_tolerance = max(3, math.ceil(cards_seen * 0.05))
+        link_quality_plausible = synthetic_cards <= synthetic_tolerance
         traversal_complete = pages_fetched >= target_pages
         coverage_complete = (
             reconciliation
@@ -325,12 +381,14 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
             and not result_cap_hit
             and cards_seen == cards_parsed
             and count_plausible
+            and link_quality_plausible
         )
 
         cursor_out = progress_cursor()
         cursor_out["discovery_traversal_complete"] = traversal_complete
         cursor_out["discovery_count_delta"] = count_delta
         cursor_out["discovery_count_tolerance"] = count_tolerance
+        cursor_out["discovery_synthetic_tolerance"] = synthetic_tolerance
         return SourceBatch(
             items=list(items_by_id.values()),
             next_cursor=cursor_out,
