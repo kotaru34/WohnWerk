@@ -1,56 +1,27 @@
 # WohnWerk
 
-WohnWerk is a private, self-hosted home-and-job matching system for Austria.
+Self-hosted Austrian home and job discovery/matching system.
 
-Its purpose is to reduce a large manual search problem to one local interface:
+WohnWerk collects Austrian houses for sale and job vacancies from multiple independent sources, normalizes and deduplicates them, ranks jobs for candidate fit, and matches homes and jobs by geographic radius using PostgreSQL/PostGIS.
 
-- collect houses for sale from multiple Austrian sources;
-- collect and normalize relevant job vacancies from multiple Austrian sources;
-- keep source records and historical state locally;
-- score jobs against a manually curated professional profile;
-- match homes and jobs dynamically by configurable geographic radius;
-- provide an intuitive web UI for browsing in both directions: **home -> nearby jobs** and **job -> nearby homes**.
+## MVP scope
 
-## Current status
+- Austria only
+- property and job discovery from source-specific adapters
+- coverage-first crawling with explicit shard/reconciliation state
+- Austrian PLZ reference data with PostGIS geography
+- house -> nearby jobs and job -> nearby houses
+- preserved source URLs and raw source payloads
+- local LAN web UI
+- optional external AI enrichment; core crawling and matching must work without AI
 
-The Austria-first data foundation is live:
+## Current live-data foundation
 
-- PostgreSQL 15 + PostGIS database deployed;
-- Austrian PLZ data imported from RTR;
-- BEV address data reduced to PLZ centroid geography;
-- PostGIS radius matching ready;
-- source adapter contracts implemented;
-- coverage-first crawl model implemented with source shards, crawl runs and reconciliation safety;
-- generic OpenImmo XML/ZIP full-feed property adapter implemented;
-- CI covers application code, migrations, operational scripts and tests.
+- RTR Austrian PLZ import
+- BEV-derived PLZ centroids
+- coverage-aware crawl runs and source shards
+- generic OpenImmo full-feed property adapter
+- ImmoAds.at Austrian house-for-sale adapter with incremental and full reconciliation modes
+- operational source-health CLI
 
-The next milestone is to connect real Austrian property sources through complete/authorized feeds, APIs, regional portals and direct broker sources, then bring the same coverage model to jobs.
-
-## Design principles
-
-- Austria-first, multi-source by design.
-- Coverage is measured, not assumed.
-- Saved-search alerts are supplemental and never treated as authoritative inventory.
-- Search spaces are sharded when pagination/result caps prevent full traversal.
-- Incomplete reconciliation is never allowed to mass-deactivate listings.
-- Source adapters may use an official API, complete feed, static HTTP acquisition, or normal browser automation depending on the source.
-- Conservative, source-specific external request rates.
-- Raw source data is retained so parsers and enrichment can be rerun locally.
-- Canonical entities are separated from source listings to support deduplication.
-- Houses and jobs are stored independently; geographic pairing is computed dynamically.
-- `job_fit_score` is separate from any home/job pair score.
-- AI enrichment is optional and isolated behind an internal API; the core application must continue working without the AI VM.
-- Approximate postal-code geography is sufficient for the intended 25/50/100/custom km matching workflow.
-
-## Stack
-
-- Python
-- FastAPI
-- PostgreSQL + PostGIS
-- SQLAlchemy / GeoAlchemy
-- Alembic
-- HTMX + server-rendered templates for the first UI
-- Playwright where browser automation is appropriate
-- Optional embedding / LLM enrichment through a separate GPU VM
-
-Detailed architecture, acquisition strategy, requirements and source research live under `docs/`.
+See `docs/architecture.md`, `docs/requirements.md`, and `docs/sources.md` for the current design.
