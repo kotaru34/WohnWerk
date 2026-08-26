@@ -23,7 +23,6 @@ COUNT_RE = re.compile(r"Es wurden\s+([\d.]+)\s+Objekte gefunden", re.IGNORECASE)
 AREA_RE = re.compile(r"([\d.]+(?:,\d+)?)\s*m(?:²|2)\b", re.IGNORECASE)
 PRICE_RE = re.compile(r"€?\s*([\d.]+(?:,\d{1,2})?)")
 
-
 _BLOCK_TAGS = {
     "address",
     "article",
@@ -111,7 +110,11 @@ class _VisibleHTMLParser(HTMLParser):
 
     @property
     def lines(self) -> list[str]:
-        return [line for line in (_clean_inline(part) for part in "".join(self.text_parts).splitlines()) if line]
+        return [
+            line
+            for line in (_clean_inline(part) for part in "".join(self.text_parts).splitlines())
+            if line
+        ]
 
 
 def _clean_inline(value: str) -> str:
@@ -182,9 +185,12 @@ def _plot_area_from_description(description: str | None) -> Decimal | None:
     if not description:
         return None
     patterns = [
+        r"(?:rund|ca\.?)?\s*([\d.]+(?:,\d+)?)\s*m(?:²|2)\s+Grundstücksfläche",
+        r"(?:rund|ca\.?)?\s*([\d.]+(?:,\d+)?)\s*m(?:²|2)\s+Grundstück\b",
         r"Grundstücksfläche\s*:?\s*(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
         r"Grundstück\s+(?:mit\s+)?(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
-        r"(?:Gesamtfläche|Grundfläche)\s*(?:von|:)?\s*(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
+        r"(?:Gesamtfläche|Grundfläche)\s*(?:von|:)?\s*(?:ca\.?\s*)?"
+        r"([\d.]+(?:,\d+)?)\s*m(?:²|2)",
     ]
     for pattern in patterns:
         match = re.search(pattern, description, flags=re.IGNORECASE)
@@ -204,7 +210,11 @@ class ImmoAdsListingRef:
     title_hint: str | None = None
 
 
-def parse_immoads_search_page(html: str, *, page_url: str) -> tuple[list[ImmoAdsListingRef], int | None, int | None]:
+def parse_immoads_search_page(
+    html: str,
+    *,
+    page_url: str,
+) -> tuple[list[ImmoAdsListingRef], int | None, int | None]:
     parser = _parse_page(html)
     refs: dict[str, ImmoAdsListingRef] = {}
     max_page: int | None = None
@@ -238,7 +248,12 @@ def parse_immoads_search_page(html: str, *, page_url: str) -> tuple[list[ImmoAds
     return list(refs.values()), reported_count, max_page
 
 
-def parse_immoads_detail(html: str, *, url: str, source_listing_id: str) -> RawProperty | None:
+def parse_immoads_detail(
+    html: str,
+    *,
+    url: str,
+    source_listing_id: str,
+) -> RawProperty | None:
     parser = _parse_page(html)
     lines = parser.lines
     if not lines:
@@ -268,7 +283,15 @@ def parse_immoads_detail(html: str, *, url: str, source_listing_id: str) -> RawP
     description = _section(
         lines,
         "Beschreibung & Informationen",
-        {"Anbieter:", "Lage", "Kosten", "Merkmale", "Ausstattung", "Energie", "Anbieter kontaktieren"},
+        {
+            "Anbieter:",
+            "Lage",
+            "Kosten",
+            "Merkmale",
+            "Ausstattung",
+            "Energie",
+            "Anbieter kontaktieren",
+        },
     )
     plot_area = _area(plot_area_text) if plot_area_text else _plot_area_from_description(description)
 
@@ -330,11 +353,11 @@ class ImmoAdsPropertySource(PropertySource):
                 if response.status_code in {429, 500, 502, 503, 504}:
                     response.raise_for_status()
                 return response
-            except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            except httpx.HTTPError as exc:
                 last_error = exc
                 if attempt == 2:
                     raise
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
         raise RuntimeError("unreachable") from last_error
 
     @staticmethod
@@ -435,11 +458,16 @@ class ImmoAdsPropertySource(PropertySource):
 
         allowable_detail_failures = max(3, len(refs) // 100)
         details_reliable = transient_detail_failures <= allowable_detail_failures
+        count_plausible = reported_count is None or len(refs) >= max(
+            1,
+            int(reported_count * 0.85),
+        )
         coverage_complete = (
             reconciliation
             and listing_pages_complete
             and not result_cap_hit
             and details_reliable
+            and count_plausible
             and bool(refs)
         )
 
