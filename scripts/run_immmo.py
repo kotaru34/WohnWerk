@@ -8,7 +8,10 @@ from sqlalchemy import select
 from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.property.immmo import BASE_URL, ImmmoPropertySource
+from app.sources.property.immmo import BASE_URL
+from app.sources.property.immmo_v2 import ImmmoPropertySource
+
+ADAPTER_PATH = "app.sources.property.immmo_v2.ImmmoPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,7 +51,7 @@ def get_or_create_source() -> Source:
             source = Source(
                 name="immmo.at",
                 category=SourceCategory.PROPERTY,
-                adapter="app.sources.property.immmo.ImmmoPropertySource",
+                adapter=ADAPTER_PATH,
                 base_url=BASE_URL,
                 enabled=True,
                 poll_interval_minutes=30,
@@ -61,8 +64,11 @@ def get_or_create_source() -> Source:
                 },
             )
             session.add(source)
-            session.commit()
-            session.refresh(source)
+        else:
+            source.adapter = ADAPTER_PATH
+            source.enabled = True
+        session.commit()
+        session.refresh(source)
         return source
 
 
