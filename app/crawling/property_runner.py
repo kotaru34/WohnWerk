@@ -14,7 +14,7 @@ from app.crawling.coverage import (
 from app.crawling.shards import sync_source_shards
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
-from app.sources.base import PropertySource
+from app.sources.base import PropertySource, SourceFetchError
 
 
 async def run_property_source(
@@ -91,6 +91,11 @@ async def run_property_source(
             failed_shard_run.finished_at = datetime.now(UTC)
             failed_shard_run.coverage_complete = False
             failed_shard_run.error = f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, SourceFetchError):
+                failed_shard_run.pages_fetched = exc.pages_fetched
+                failed_shard_run.items_seen = exc.items_seen
+                failed_shard_run.source_reported_count = exc.source_reported_count
+                failed_shard_run.next_cursor = exc.next_cursor
             failed_shard.consecutive_failures += 1
 
         session.commit()
