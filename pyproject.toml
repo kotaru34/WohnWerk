@@ -14,6 +14,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
     "geoalchemy2>=0.16",
+    "shapely>=2.0",
     "alembic>=1.14",
     "pydantic-settings>=2.7",
     "httpx>=0.28",
