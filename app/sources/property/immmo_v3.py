@@ -66,9 +66,10 @@ def _choose_card_anchor(
 
 
 def _fallback_title(card_text: str, heading_text: str) -> str:
-    body = card_text
-    if body.startswith(heading_text):
-        body = body[len(heading_text) :].strip()
+    body = _clean_text(card_text)
+    heading = _clean_text(heading_text)
+    if body.startswith(heading):
+        body = body[len(heading) :].strip()
 
     boundaries: list[int] = []
     price = PRICE_RE.search(body)
@@ -81,7 +82,7 @@ def _fallback_title(card_text: str, heading_text: str) -> str:
     if boundaries:
         body = body[: min(boundaries)]
     candidate = _clean_text(body).strip(" -–")
-    return candidate[:500] or heading_text[:500]
+    return candidate[:500] or heading[:500]
 
 
 def _synthetic_identity(
