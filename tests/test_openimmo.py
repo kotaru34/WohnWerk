@@ -1,9 +1,10 @@
 from decimal import Decimal
 
-from app.sources.property.openimmo import parse_openimmo_properties
+from app.sources.property.openimmo import openimmo_is_full_export, parse_openimmo_properties
 
 OPENIMMO_FIXTURE = b"""<?xml version="1.0" encoding="UTF-8"?>
 <openimmo>
+  <uebertragung art="ONLINE" umfang="VOLL" modus="NEW" version="1.2.7" />
   <anbieter>
     <immobilie>
       <objektkategorie>
@@ -56,3 +57,16 @@ def test_parser_keeps_only_houses_for_sale() -> None:
     assert record.plot_area_m2 == Decimal(680)
     assert record.description == "Beschreibung\n\nRuhige Lage"
     assert record.raw_payload["house_type"] == "EINFAMILIENHAUS"
+
+
+def test_full_export_marker_is_required_for_authoritative_coverage() -> None:
+    assert openimmo_is_full_export(OPENIMMO_FIXTURE) is True
+
+    partial = OPENIMMO_FIXTURE.replace(b'umfang="VOLL"', b'umfang="TEIL"')
+    assert openimmo_is_full_export(partial) is False
+
+    without_marker = OPENIMMO_FIXTURE.replace(
+        b'  <uebertragung art="ONLINE" umfang="VOLL" modus="NEW" version="1.2.7" />\n',
+        b"",
+    )
+    assert openimmo_is_full_export(without_marker) is False
