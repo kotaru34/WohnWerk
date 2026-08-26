@@ -166,11 +166,12 @@ def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
 
     source = session.get(Source, run.source_id)
     if source is not None:
-        source.coverage_status = summary.coverage_status
         if run.mode == CrawlMode.INCREMENTAL:
             source.last_incremental_at = now
-        elif run.mode == CrawlMode.RECONCILIATION and summary.coverage_status == CoverageStatus.OK:
-            source.last_reconciliation_at = now
+        elif run.mode == CrawlMode.RECONCILIATION:
+            source.coverage_status = summary.coverage_status
+            if summary.coverage_status == CoverageStatus.OK:
+                source.last_reconciliation_at = now
         if summary.run_status == RunStatus.SUCCESS:
             source.last_success_at = now
 
