@@ -86,6 +86,26 @@ def main() -> None:
                 f"{latest_run.shards_total} incomplete={incomplete} cap_hits={cap_hits}"
             )
 
+            failures = list(
+                session.execute(
+                    select(SourceShard.key, CrawlShardRun.error)
+                    .join(CrawlShardRun, CrawlShardRun.shard_id == SourceShard.id)
+                    .where(
+                        CrawlShardRun.crawl_run_id == latest_run.id,
+                        CrawlShardRun.status == RunStatus.FAILED,
+                    )
+                    .order_by(SourceShard.key)
+                    .limit(5)
+                )
+            )
+            for shard_key, error in failures:
+                compact = " ".join((error or "unknown error").split())
+                if len(compact) > 220:
+                    compact = compact[:217] + "..."
+                print(f"  error[{shard_key}]={compact}")
+            if incomplete > len(failures):
+                print(f"  ... {incomplete - len(failures)} more incomplete shard(s)")
+
 
 if __name__ == "__main__":
     main()
