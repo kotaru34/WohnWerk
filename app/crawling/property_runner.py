@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.crawling.coverage import CoverageSummary, create_run, finalize_run, reconcile_missing_listings
+from app.crawling.coverage import (
+    CoverageSummary,
+    create_run,
+    finalize_run,
+    reconcile_missing_listings,
+)
 from app.crawling.shards import sync_source_shards
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source
@@ -68,7 +73,7 @@ async def run_property_source(
             shard.consecutive_failures = 0
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - shard boundary must record arbitrary adapter failure
             shard_run.status = RunStatus.FAILED
             shard_run.finished_at = datetime.now(UTC)
             shard_run.coverage_complete = False
