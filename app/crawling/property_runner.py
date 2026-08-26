@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.crawling.coverage import create_run, finalize_run, reconcile_missing_listings
+from app.crawling.coverage import CoverageSummary, create_run, finalize_run, reconcile_missing_listings
 from app.crawling.shards import sync_source_shards
 from app.ingestion.properties import ingest_properties
-from app.models import CrawlMode, CrawlShardRun, RunStatus, Source, SourceShard
+from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source
 from app.sources.base import PropertySource
 
 
@@ -18,7 +18,7 @@ async def run_property_source(
     source: Source,
     adapter: PropertySource,
     reconciliation: bool = False,
-):
+) -> tuple[CrawlRun, CoverageSummary]:
     """Run all enabled shards sequentially and account for incomplete coverage."""
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
