@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import exists, select
 
@@ -137,7 +137,8 @@ def main() -> None:
         session.commit()
         print(
             f"applied=yes groups={len(merge_groups)} moved_listings={moved_listings} "
-            f"deleted_orphan_properties={deleted_properties} at={datetime.now().isoformat()}"
+            f"deleted_orphan_properties={deleted_properties} "
+            f"at={datetime.now(UTC).isoformat()}"
         )
 
 
