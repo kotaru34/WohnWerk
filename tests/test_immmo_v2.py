@@ -51,6 +51,23 @@ PROSE_HEADING_FIXTURE = """
 </body></html>
 """
 
+PAGINATION_FIXTURE = """
+<html><body>
+<p>13 bis 24 von 4.396</p>
+<h3>Haus kaufen in 3100 St. Pölten</h3>
+<a href="https://portal.example/3">Haus auf Seite zwei</a>
+<div>€ 410.000,-</div>
+<div>3100 St. Pölten / 120m² / 5 Zimmer</div>
+<nav>
+  <a href="/immo/Haus-kaufen/Niederoesterreich">1</a>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/2">2</a>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/3">3</a>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/367">367</a>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/3">Weiter</a>
+</nav>
+</body></html>
+"""
+
 
 def test_stream_parser_keeps_location_and_area_with_nested_links() -> None:
     page = parse_immmo_search_page(
@@ -116,3 +133,15 @@ def test_result_headings_accept_subtypes_but_not_editorial_prose() -> None:
     assert page.items[0].city == "Velden am Wörther See"
     assert page.items[0].living_area_m2 == Decimal(100)
     assert page.items[0].raw_payload["source_heading_kind"] == "Einfamilienhaus"
+
+
+def test_parser_reads_live_count_and_next_page_from_page_two() -> None:
+    page = parse_immmo_search_page(
+        PAGINATION_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich/2",
+    )
+
+    assert page.reported_count == 4396
+    assert page.current_page == 2
+    assert page.pagination_max_page == 367
+    assert page.has_next_page is True
