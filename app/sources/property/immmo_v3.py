@@ -191,9 +191,10 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v8",
+                "format": "immmo-search-discovery-v9",
                 "original_host": original_host,
                 "original_url_missing": original_url_missing,
+                "identity_stable": not original_url_missing,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
                 "source_heading_kind": _clean_text(heading_match.group("kind")),
@@ -383,7 +384,6 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
             and not result_cap_hit
             and cards_seen == cards_parsed
             and count_plausible
-            and link_quality_plausible
         )
 
         cursor_out = progress_cursor()
@@ -391,6 +391,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
         cursor_out["discovery_count_delta"] = count_delta
         cursor_out["discovery_count_tolerance"] = count_tolerance
         cursor_out["discovery_synthetic_tolerance"] = synthetic_tolerance
+        cursor_out["discovery_link_quality_ok"] = link_quality_plausible
         return SourceBatch(
             items=list(items_by_id.values()),
             next_cursor=cursor_out,
