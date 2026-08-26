@@ -21,6 +21,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "playwright>=1.49",
     "orjson>=3.10",
+    "pyproj>=3.7",
 ]
 
 [project.optional-dependencies]
