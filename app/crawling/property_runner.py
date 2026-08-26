@@ -13,7 +13,7 @@ from app.crawling.coverage import (
 )
 from app.crawling.shards import sync_source_shards
 from app.ingestion.properties import ingest_properties
-from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source
+from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import PropertySource
 
 
@@ -41,6 +41,9 @@ async def run_property_source(
         )
         if shard_run is None:
             raise RuntimeError(f"Missing crawl shard run for {source.name}/{shard.key}")
+
+        shard_id = shard.id
+        shard_run_id = shard_run.id
 
         try:
             batch = await adapter.fetch_shard(
@@ -74,11 +77,21 @@ async def run_property_source(
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
         except Exception as exc:  # noqa: BLE001 - shard boundary must record arbitrary adapter failure
-            shard_run.status = RunStatus.FAILED
-            shard_run.finished_at = datetime.now(UTC)
-            shard_run.coverage_complete = False
-            shard_run.error = f"{type(exc).__name__}: {exc}"
-            shard.consecutive_failures += 1
+            # A failed flush/commit leaves SQLAlchemy in a failed transaction state. Roll it
+            # back before touching ORM attributes, then reload the persisted shard records.
+            session.rollback()
+            failed_shard_run = session.get(CrawlShardRun, shard_run_id)
+            failed_shard = session.get(SourceShard, shard_id)
+            if failed_shard_run is None or failed_shard is None:
+                raise RuntimeError(
+                    f"Could not reload failed shard state for {source.name}/{spec.key}"
+                ) from exc
+
+            failed_shard_run.status = RunStatus.FAILED
+            failed_shard_run.finished_at = datetime.now(UTC)
+            failed_shard_run.coverage_complete = False
+            failed_shard_run.error = f"{type(exc).__name__}: {exc}"
+            failed_shard.consecutive_failures += 1
 
         session.commit()
 
