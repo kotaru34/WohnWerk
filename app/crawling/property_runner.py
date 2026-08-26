@@ -76,7 +76,7 @@ async def run_property_source(
             shard.consecutive_failures = 0
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
-        except Exception as exc:  # noqa: BLE001 - shard boundary must record arbitrary adapter failure
+        except Exception as exc:
             # A failed flush/commit leaves SQLAlchemy in a failed transaction state. Roll it
             # back before touching ORM attributes, then reload the persisted shard records.
             session.rollback()
