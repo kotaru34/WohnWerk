@@ -102,11 +102,28 @@ def main() -> None:
                     cursor = row.next_cursor or {}
                     cards = cursor.get("discovery_cards_seen")
                     parsed = cursor.get("discovery_cards_parsed")
+                    latest_reported = cursor.get("discovery_latest_reported")
+                    max_page = cursor.get("discovery_observed_max_page")
+                    terminal = cursor.get("discovery_terminal_reached")
+                    count_delta = cursor.get("discovery_count_delta")
+                    count_tolerance = cursor.get("discovery_count_tolerance")
+
                     coverage_bits = ""
                     if cards is not None:
                         coverage_bits += f" cards={cards}"
                     if parsed is not None:
                         coverage_bits += f" parsed={parsed}"
+                    if latest_reported is not None:
+                        coverage_bits += f" latest_reported={latest_reported}"
+                    if max_page is not None:
+                        coverage_bits += f" max_page={max_page}"
+                    if terminal is not None:
+                        coverage_bits += f" terminal={'yes' if terminal else 'no'}"
+                    if count_delta is not None:
+                        coverage_bits += f" delta={count_delta}"
+                    if count_tolerance is not None:
+                        coverage_bits += f" tolerance={count_tolerance}"
+
                     print(
                         f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
                         f"seen={row.items_seen}{coverage_bits} reported={row.source_reported_count} "
