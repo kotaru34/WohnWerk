@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 
 @dataclass(slots=True)
@@ -48,11 +48,8 @@ class SourceShardSpec:
     priority: int = 100
 
 
-T = TypeVar("T")
-
-
 @dataclass(slots=True)
-class SourceBatch(Generic[T]):
+class SourceBatch[T]:
     items: list[T]
     next_cursor: dict[str, Any] = field(default_factory=dict)
     source_reported_count: int | None = None
