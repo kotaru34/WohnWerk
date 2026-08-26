@@ -9,9 +9,9 @@ from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
 from app.sources.property.immmo import BASE_URL
-from app.sources.property.immmo_v2 import ImmmoPropertySource
+from app.sources.property.immmo_v3 import ImmmoPropertySource
 
-ADAPTER_PATH = "app.sources.property.immmo_v2.ImmmoPropertySource"
+ADAPTER_PATH = "app.sources.property.immmo_v3.ImmmoPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
