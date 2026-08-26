@@ -1,5 +1,3 @@
-import math
-
 from app.sources.property.immmo_v3 import parse_immmo_search_page
 
 
@@ -62,4 +60,4 @@ def test_full_target_comes_from_reported_count_not_visible_pagination_window() -
 
     assert page.pagination_max_page == 10
     assert page.reported_count == 4396
-    assert math.ceil(page.reported_count / 12) == 367
+    assert (page.reported_count + 11) // 12 == 367
