@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from app.sources.property.openimmo import parse_openimmo_properties
+
 OPENIMMO_FIXTURE = b"""<?xml version="1.0" encoding="UTF-8"?>
 <openimmo>
   <anbieter>
