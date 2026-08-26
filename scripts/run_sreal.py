@@ -8,9 +8,9 @@ from sqlalchemy import select
 from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.property.sreal import BASE_URL, SRealPropertySource
+from app.sources.property.sreal_v2 import BASE_URL, SRealPropertySource
 
-ADAPTER_PATH = "app.sources.property.sreal.SRealPropertySource"
+ADAPTER_PATH = "app.sources.property.sreal_v2.SRealPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
