@@ -41,6 +41,7 @@ LIVE_COUNT_RE = re.compile(
     r"\d+\s+bis\s+\d+\s+von\s+(?P<lower>mehr\s+als\s+)?(?P<count>[\d.]+)",
     re.IGNORECASE,
 )
+ONCLICK_URL_RE = re.compile(r"https?://[^'\"\s)]+", re.IGNORECASE)
 HEADING_TAGS = {"h2", "h3", "h4", "h5"}
 
 
@@ -74,7 +75,7 @@ class _HeadingFrame:
 
 
 class _VisibleStreamParser(HTMLParser):
-    """Keep visible text order plus anchor/heading offsets without trusting card nesting."""
+    """Keep visible text order plus links/headings without trusting card nesting."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -110,6 +111,16 @@ class _VisibleStreamParser(HTMLParser):
         if self._heading_stack:
             self._heading_stack[-1].parts.append(cleaned)
 
+    @staticmethod
+    def _link_target(attributes: dict[str, str]) -> str | None:
+        for key in ("href", "data-href", "data-url", "data-link"):
+            value = attributes.get(key)
+            if value:
+                return value
+        onclick = attributes.get("onclick", "")
+        match = ONCLICK_URL_RE.search(onclick)
+        return match.group(0) if match else None
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.casefold()
         if tag in {"script", "style", "noscript", "template"}:
@@ -123,9 +134,9 @@ class _VisibleStreamParser(HTMLParser):
 
         if tag == "a":
             attributes = {key.casefold(): value or "" for key, value in attrs}
-            href = attributes.get("href")
-            if href:
-                self._anchor_stack.append(_AnchorFrame(href=href, start=self._length))
+            target = self._link_target(attributes)
+            if target:
+                self._anchor_stack.append(_AnchorFrame(href=target, start=self._length))
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.casefold()
@@ -191,7 +202,6 @@ class ImmmoPage:
         "cards_seen",
         "count_is_lower_bound",
         "current_page",
-        "has_next_page",
         "items",
         "pagination_max_page",
         "reported_count",
@@ -206,7 +216,6 @@ class ImmmoPage:
         cards_parsed: int,
         current_page: int,
         pagination_max_page: int,
-        has_next_page: bool,
     ) -> None:
         self.items = items
         self.reported_count = reported_count
@@ -215,7 +224,6 @@ class ImmmoPage:
         self.cards_parsed = cards_parsed
         self.current_page = current_page
         self.pagination_max_page = pagination_max_page
-        self.has_next_page = has_next_page
 
 
 def _select_original_anchor(
@@ -225,9 +233,15 @@ def _select_original_anchor(
     segment_end: int,
     page_url: str,
 ) -> tuple[_AnchorOccurrence, str] | None:
+    """Pick a source link that overlaps the result segment.
+
+    Some IMMMO layouts put the heading inside a card-wide external anchor. In that
+    case the anchor starts before the heading, so requiring anchor.start >= heading.end
+    silently loses a real result. Overlap is the stable relation we actually need.
+    """
     fallback: tuple[_AnchorOccurrence, str] | None = None
     for anchor in anchors:
-        if anchor.start < segment_start:
+        if anchor.end <= segment_start:
             continue
         if anchor.start >= segment_end:
             break
@@ -245,7 +259,12 @@ def _pagination_state(
     anchors: list[_AnchorOccurrence],
     *,
     page_url: str,
-) -> tuple[int, int, bool]:
+) -> tuple[int, int]:
+    """Return current page and largest page number visible in the UI window.
+
+    IMMMO only exposes a sliding subset of numbered page links. The largest visible
+    link is diagnostic metadata, never an authoritative terminal-page signal.
+    """
     parsed_page = urlparse(page_url)
     host = (parsed_page.hostname or "").casefold()
     path = parsed_page.path.rstrip("/")
@@ -274,7 +293,7 @@ def _pagination_state(
         if suffix.isdigit():
             pages.add(int(suffix))
 
-    return current_page, max(pages), current_page + 1 in pages
+    return current_page, max(pages)
 
 
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
@@ -308,7 +327,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         )
         chosen = _select_original_anchor(
             anchors,
-            segment_start=heading.end,
+            segment_start=segment_start,
             segment_end=segment_end,
             page_url=page_url,
         )
@@ -343,7 +362,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v6",
+                "format": "immmo-search-discovery-v7",
                 "original_host": host,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
@@ -351,10 +370,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             },
         )
 
-    current_page, pagination_max_page, has_next_page = _pagination_state(
-        anchors,
-        page_url=page_url,
-    )
+    current_page, pagination_max_page = _pagination_state(anchors, page_url=page_url)
     return ImmmoPage(
         list(items_by_url.values()),
         reported_count,
@@ -363,7 +379,6 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         cards_parsed,
         current_page,
         pagination_max_page,
-        has_next_page,
     )
 
 
@@ -372,6 +387,7 @@ def _validate_page_quality(
     *,
     shard_key: str,
     page_number: int,
+    expect_more_pages: bool,
 ) -> None:
     if page.cards_seen == 0:
         raise RuntimeError(
@@ -382,7 +398,7 @@ def _validate_page_quality(
             f"IMMMO URL discovery incomplete for shard {shard_key!r} page {page_number}: "
             f"parsed {page.cards_parsed}/{page.cards_seen} visible cards"
         )
-    if page.has_next_page and page.cards_seen < math.ceil(PAGE_SIZE * 0.75):
+    if expect_more_pages and page.cards_seen < math.ceil(PAGE_SIZE * 0.75):
         raise RuntimeError(
             f"IMMMO non-terminal page unexpectedly short for shard {shard_key!r} "
             f"page {page_number}: saw {page.cards_seen} cards"
@@ -475,14 +491,19 @@ class ImmmoPropertySource(PropertySource):
         items_by_id: dict[str, RawProperty] = {}
         initial_reported_count: int | None = None
         latest_reported_count: int | None = None
+        max_reported_count: int | None = None
         count_is_lower_bound = False
         pages_fetched = 0
         cards_seen = 0
         cards_parsed = 0
         result_cap_hit = False
-        terminal_reached = False
+        traversal_complete = False
         observed_max_page = 1
+        target_pages = 1
         page_number = 1
+        failed_page: int | None = None
+        failed_cards_seen: int | None = None
+        failed_cards_parsed: int | None = None
 
         def progress_cursor() -> dict[str, Any]:
             return {
@@ -491,8 +512,13 @@ class ImmmoPropertySource(PropertySource):
                 "discovery_cards_parsed": cards_parsed,
                 "discovery_initial_reported": initial_reported_count,
                 "discovery_latest_reported": latest_reported_count,
+                "discovery_max_reported": max_reported_count,
+                "discovery_target_pages": target_pages,
                 "discovery_observed_max_page": observed_max_page,
-                "discovery_terminal_reached": terminal_reached,
+                "discovery_traversal_complete": traversal_complete,
+                "discovery_failed_page": failed_page,
+                "discovery_failed_page_cards_seen": failed_cards_seen,
+                "discovery_failed_page_cards_parsed": failed_cards_parsed,
             }
 
         try:
@@ -506,30 +532,46 @@ class ImmmoPropertySource(PropertySource):
                         await self._sleep()
                     response = await self._get(client, self._page_url(base_url, page_number))
                     page = parse_immmo_search_page(response.text, page_url=str(response.url))
-                    if page_number == 1 and page.reported_count is None:
-                        raise RuntimeError(f"IMMMO result count missing for shard {shard.key!r}")
+                    if page.reported_count is None:
+                        raise RuntimeError(
+                            f"IMMMO result count missing for shard {shard.key!r} page {page_number}"
+                        )
 
-                    if page.reported_count is not None:
-                        latest_reported_count = page.reported_count
-                        if initial_reported_count is None:
-                            initial_reported_count = page.reported_count
+                    latest_reported_count = page.reported_count
+                    if initial_reported_count is None:
+                        initial_reported_count = page.reported_count
+                    max_reported_count = max(max_reported_count or 0, page.reported_count)
                     count_is_lower_bound = count_is_lower_bound or page.count_is_lower_bound
                     observed_max_page = max(observed_max_page, page.pagination_max_page)
+                    target_pages = max(1, math.ceil(latest_reported_count / PAGE_SIZE))
 
-                    _validate_page_quality(page, shard_key=shard.key, page_number=page_number)
+                    failed_page = page_number
+                    failed_cards_seen = page.cards_seen
+                    failed_cards_parsed = page.cards_parsed
+                    _validate_page_quality(
+                        page,
+                        shard_key=shard.key,
+                        page_number=page_number,
+                        expect_more_pages=page_number < target_pages,
+                    )
+                    failed_page = None
+                    failed_cards_seen = None
+                    failed_cards_parsed = None
+
                     items_by_id.update({item.source_listing_id: item for item in page.items})
                     pages_fetched += 1
                     cards_seen += page.cards_seen
                     cards_parsed += page.cards_parsed
 
                     if not reconciliation:
-                        if page_number >= self.incremental_pages or not page.has_next_page:
+                        if page_number >= min(target_pages, self.incremental_pages):
                             break
                     else:
-                        if count_is_lower_bound or observed_max_page > self.hard_max_pages_per_shard:
+                        if count_is_lower_bound or target_pages > self.hard_max_pages_per_shard:
                             result_cap_hit = True
-                        if not page.has_next_page:
-                            terminal_reached = True
+                            break
+                        if page_number >= target_pages:
+                            traversal_complete = True
                             break
                         if page_number >= self.hard_max_pages_per_shard:
                             result_cap_hit = True
@@ -545,6 +587,7 @@ class ImmmoPropertySource(PropertySource):
                 items_seen=len(items_by_id),
                 source_reported_count=initial_reported_count,
                 next_cursor=progress_cursor(),
+                partial_items=list(items_by_id.values()),
             ) from exc
 
         benchmark_count = latest_reported_count or initial_reported_count or 0
@@ -553,7 +596,7 @@ class ImmmoPropertySource(PropertySource):
         count_plausible = benchmark_count > 0 and abs(count_delta) <= count_tolerance
         coverage_complete = (
             reconciliation
-            and terminal_reached
+            and traversal_complete
             and not result_cap_hit
             and cards_seen == cards_parsed
             and count_plausible
