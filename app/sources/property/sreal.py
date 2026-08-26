@@ -295,7 +295,7 @@ class SRealPropertySource(PropertySource):
                 detail = parse_sreal_detail_page(response.text, page_url=str(response.url))
                 enriched.append(enrich_sreal_property(item, detail))
                 succeeded += 1
-            except Exception as exc:
+            except (httpx.HTTPError, RuntimeError, ValueError) as exc:
                 payload = dict(item.raw_payload)
                 payload["detail_enriched"] = False
                 payload["detail_enrichment_error"] = f"{type(exc).__name__}: {exc}"[:500]
