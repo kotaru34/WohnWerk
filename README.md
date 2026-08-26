@@ -11,24 +11,30 @@ Its purpose is to reduce a large manual search problem to one local interface:
 - match homes and jobs dynamically by configurable geographic radius;
 - provide an intuitive web UI for browsing in both directions: **home -> nearby jobs** and **job -> nearby homes**.
 
-## Project status
+## Current status
 
-Early bootstrap / architecture phase.
+The Austria-first data foundation is live:
 
-The initial target is an Austria-first MVP that can:
+- PostgreSQL 15 + PostGIS database deployed;
+- Austrian PLZ data imported from RTR;
+- BEV address data reduced to PLZ centroid geography;
+- PostGIS radius matching ready;
+- source adapter contracts implemented;
+- coverage-first crawl model implemented with source shards, crawl runs and reconciliation safety;
+- generic OpenImmo XML/ZIP full-feed property adapter implemented;
+- CI covers application code, migrations, operational scripts and tests.
 
-1. ingest at least one real-estate source;
-2. ingest at least one job source;
-3. normalize both into PostgreSQL;
-4. resolve Austrian postal codes to approximate locations;
-5. perform radius matching with PostGIS;
-6. expose filtered results through a local web UI.
+The next milestone is to connect real Austrian property sources through complete/authorized feeds, APIs, regional portals and direct broker sources, then bring the same coverage model to jobs.
 
 ## Design principles
 
 - Austria-first, multi-source by design.
-- Source adapters may use an official API, public feed, static HTTP parsing, or browser automation depending on the source.
-- Conservative, source-specific polling rather than aggressive crawling.
+- Coverage is measured, not assumed.
+- Saved-search alerts are supplemental and never treated as authoritative inventory.
+- Search spaces are sharded when pagination/result caps prevent full traversal.
+- Incomplete reconciliation is never allowed to mass-deactivate listings.
+- Source adapters may use an official API, complete feed, static HTTP acquisition, or normal browser automation depending on the source.
+- Conservative, source-specific external request rates.
 - Raw source data is retained so parsers and enrichment can be rerun locally.
 - Canonical entities are separated from source listings to support deduplication.
 - Houses and jobs are stored independently; geographic pairing is computed dynamically.
@@ -36,7 +42,7 @@ The initial target is an Austria-first MVP that can:
 - AI enrichment is optional and isolated behind an internal API; the core application must continue working without the AI VM.
 - Approximate postal-code geography is sufficient for the intended 25/50/100/custom km matching workflow.
 
-## Planned stack
+## Stack
 
 - Python
 - FastAPI
@@ -47,6 +53,4 @@ The initial target is an Austria-first MVP that can:
 - Playwright where browser automation is appropriate
 - Optional embedding / LLM enrichment through a separate GPU VM
 
-## Repository
-
-Detailed architecture, requirements, source research, database schema, and deployment notes will live under `docs/` as implementation progresses.
+Detailed architecture, acquisition strategy, requirements and source research live under `docs/`.
