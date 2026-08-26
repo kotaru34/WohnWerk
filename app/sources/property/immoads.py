@@ -132,11 +132,10 @@ def _number(value: str) -> Decimal | None:
     if not match:
         return None
     raw = match.group(0)
+    dot_count = raw.count(".")
     if "," in raw:
         normalized = raw.replace(".", "").replace(",", ".")
-    elif raw.count(".") > 1:
-        normalized = raw.replace(".", "")
-    elif raw.count(".") == 1 and len(raw.rsplit(".", 1)[1]) == 3:
+    elif dot_count > 1 or (dot_count == 1 and len(raw.rsplit(".", 1)[1]) == 3):
         normalized = raw.replace(".", "")
     else:
         normalized = raw
