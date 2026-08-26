@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -11,8 +11,10 @@ from app.models import (
     CrawlMode,
     CrawlRun,
     CrawlShardRun,
+    Job,
     JobListing,
     ListingStatus,
+    Property,
     PropertyListing,
     RunStatus,
     Source,
@@ -179,6 +181,39 @@ def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
     return summary
 
 
+def _sync_canonical_lifecycle(session: Session, *, now: datetime) -> None:
+    """Deactivate canonical rows only when none of their source listings is active."""
+    active_property_listing = exists(
+        select(PropertyListing.id).where(
+            PropertyListing.property_id == Property.id,
+            PropertyListing.status == ListingStatus.ACTIVE,
+        )
+    )
+    session.execute(
+        update(Property)
+        .where(
+            Property.status == ListingStatus.ACTIVE,
+            ~active_property_listing,
+        )
+        .values(status=ListingStatus.INACTIVE, inactive_at=now)
+    )
+
+    active_job_listing = exists(
+        select(JobListing.id).where(
+            JobListing.job_id == Job.id,
+            JobListing.status == ListingStatus.ACTIVE,
+        )
+    )
+    session.execute(
+        update(Job)
+        .where(
+            Job.status == ListingStatus.ACTIVE,
+            ~active_job_listing,
+        )
+        .values(status=ListingStatus.INACTIVE, inactive_at=now)
+    )
+
+
 def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, int]:
     """Deactivate unseen source listings only after a complete reconciliation cycle."""
     if run.mode != CrawlMode.RECONCILIATION or run.coverage_status != CoverageStatus.OK:
@@ -205,6 +240,9 @@ def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, in
     )
     property_count = property_result.rowcount or 0
     job_count = job_result.rowcount or 0
+
+    _sync_canonical_lifecycle(session, now=now)
+
     run.items_disappeared = property_count + job_count
     session.commit()
     return property_count, job_count
