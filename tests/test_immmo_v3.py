@@ -49,20 +49,23 @@ def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
     assert wrapped.living_area_m2 == Decimal(145)
     assert wrapped.price_eur == Decimal(449000)
     assert wrapped.raw_payload["original_url_missing"] is False
+    assert wrapped.raw_payload["identity_stable"] is True
 
     synthetic = next(item for item in page.items if item.postal_code == "7000")
     assert "/wohnwerk-fallback/" in synthetic.url
     assert synthetic.title == "Linkloses Haus mit Innenhof"
     assert synthetic.living_area_m2 == Decimal(110)
     assert synthetic.raw_payload["original_url_missing"] is True
+    assert synthetic.raw_payload["identity_stable"] is False
 
 
-def test_linkless_card_identity_is_stable_across_scans() -> None:
+def test_linkless_card_identity_is_repeatable_but_not_authoritative() -> None:
     first = next(item for item in _parse_fixture().items if item.postal_code == "7000")
     second = next(item for item in _parse_fixture().items if item.postal_code == "7000")
 
     assert first.source_listing_id == second.source_listing_id
     assert first.url == second.url
+    assert first.raw_payload["identity_stable"] is False
 
 
 def test_full_target_comes_from_reported_count_not_visible_pagination_window() -> None:
