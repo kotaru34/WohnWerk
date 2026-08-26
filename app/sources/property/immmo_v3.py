@@ -325,11 +325,12 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
                         initial_reported_count = page.reported_count
                     max_reported_count = max(max_reported_count, page.reported_count)
                     count_is_lower_bound = count_is_lower_bound or page.count_is_lower_bound
-                    target_pages = max(target_pages, _page_target(max_reported_count))
+                    target_pages = max(page_number, _page_target(latest_reported_count))
+                    max_target_pages = _page_target(max_reported_count)
 
-                    if count_is_lower_bound or target_pages > self.hard_max_pages_per_shard:
+                    if count_is_lower_bound or max_target_pages > self.hard_max_pages_per_shard:
                         result_cap_hit = True
-                        target_pages = min(target_pages, self.hard_max_pages_per_shard)
+                    target_pages = min(target_pages, self.hard_max_pages_per_shard)
 
                     failed_page_number = page_number
                     failed_page_cards_seen = page.cards_seen
@@ -368,7 +369,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
                 next_cursor=progress_cursor(),
             ) from exc
 
-        benchmark_count = max_reported_count
+        benchmark_count = latest_reported_count or initial_reported_count or 0
         count_tolerance = max(PAGE_SIZE * 2, math.ceil(benchmark_count * 0.01))
         count_delta = cards_seen - benchmark_count
         count_plausible = benchmark_count > 0 and abs(count_delta) <= count_tolerance
