@@ -136,6 +136,8 @@ def _number(value: str) -> Decimal | None:
         normalized = raw.replace(".", "").replace(",", ".")
     elif raw.count(".") > 1:
         normalized = raw.replace(".", "")
+    elif raw.count(".") == 1 and len(raw.rsplit(".", 1)[1]) == 3:
+        normalized = raw.replace(".", "")
     else:
         normalized = raw
     try:
