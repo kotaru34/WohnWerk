@@ -9,6 +9,7 @@ from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
 from app.sources.property.immmo import BASE_URL
+# Keep the live runner pinned to the hardened deep-pagination adapter.
 from app.sources.property.immmo_v3 import ImmmoPropertySource
 
 ADAPTER_PATH = "app.sources.property.immmo_v3.ImmmoPropertySource"
