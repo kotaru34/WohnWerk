@@ -1,8 +1,6 @@
 from decimal import Decimal
 
 from app.sources.property.openimmo import parse_openimmo_properties
-
-
 OPENIMMO_FIXTURE = b"""<?xml version="1.0" encoding="UTF-8"?>
 <openimmo>
   <anbieter>
@@ -54,6 +52,6 @@ def test_parser_keeps_only_houses_for_sale() -> None:
     assert record.city == "Linz"
     assert record.price_eur == Decimal("485000.00")
     assert record.living_area_m2 == Decimal("142.5")
-    assert record.plot_area_m2 == Decimal("680")
+    assert record.plot_area_m2 == Decimal(680)
     assert record.description == "Beschreibung\n\nRuhige Lage"
     assert record.raw_payload["house_type"] == "EINFAMILIENHAUS"
