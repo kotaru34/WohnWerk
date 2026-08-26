@@ -368,6 +368,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
                 items_seen=len(items_by_id),
                 source_reported_count=initial_reported_count,
                 next_cursor=progress_cursor(),
+                partial_items=list(items_by_id.values()),
             ) from exc
 
         benchmark_count = latest_reported_count or initial_reported_count or 0
