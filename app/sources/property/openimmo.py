@@ -73,6 +73,18 @@ def _extract_xml(payload: bytes) -> bytes:
         raise ValueError("Invalid ZIP payload returned for OpenImmo feed") from exc
 
 
+def openimmo_is_full_export(xml_payload: bytes) -> bool:
+    """Trust reconciliation only when OpenImmo explicitly declares a full export."""
+    root = ET.fromstring(xml_payload)
+    transfer = next(
+        (element for element in root.iter() if _local_name(element.tag) == "uebertragung"),
+        None,
+    )
+    if transfer is None:
+        return False
+    return str(transfer.attrib.get("umfang", "")).strip().casefold() == "voll"
+
+
 def parse_openimmo_properties(xml_payload: bytes, *, fallback_url: str) -> list[RawProperty]:
     """Parse residential houses for sale from an OpenImmo 1.x XML payload."""
     root = ET.fromstring(xml_payload)
@@ -143,7 +155,7 @@ def parse_openimmo_properties(xml_payload: bytes, *, fallback_url: str) -> list[
 
 
 class OpenImmoFeedPropertySource(PropertySource):
-    """Full-export OpenImmo feed adapter for Austrian brokers and portals."""
+    """OpenImmo feed adapter for Austrian brokers and portals."""
 
     def __init__(self, *, name: str, feed_url: str, timeout_seconds: float = 60.0) -> None:
         self.name = name
@@ -170,10 +182,11 @@ class OpenImmoFeedPropertySource(PropertySource):
 
         xml_payload = _extract_xml(response.content)
         items = parse_openimmo_properties(xml_payload, fallback_url=self.feed_url)
+        is_full_export = openimmo_is_full_export(xml_payload)
         return SourceBatch(
             items=items,
             source_reported_count=len(items),
-            coverage_complete=True,
+            coverage_complete=is_full_export,
             result_cap_hit=False,
             pages_fetched=1,
         )
