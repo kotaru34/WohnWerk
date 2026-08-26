@@ -10,7 +10,6 @@ import httpx
 
 from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceShardSpec
 from app.sources.property.immmo import (
-    BASE_URL,
     BUNDESLAENDER,
     COUNT_RE,
     IGNORED_EXTERNAL_HOSTS,
@@ -19,11 +18,11 @@ from app.sources.property.immmo import (
     PLOT_PATTERNS,
     PRICE_RE,
     SEARCH_ROOT,
-    _DOMParser,
-    _Node,
     _canonical_external_url,
     _clean_text,
     _decimal,
+    _DOMParser,
+    _Node,
     _source_id,
 )
 
@@ -99,7 +98,7 @@ def _best_title(card: _Node, *, page_url: str, original_url: str) -> str:
 
 
 class ImmmoPage:
-    __slots__ = ("items", "reported_count", "count_is_lower_bound")
+    __slots__ = ("count_is_lower_bound", "items", "reported_count")
 
     def __init__(self, items: list[RawProperty], reported_count: int | None, count_is_lower_bound: bool):
         self.items = items
