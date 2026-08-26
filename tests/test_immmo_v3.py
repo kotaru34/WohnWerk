@@ -14,6 +14,10 @@ WRAPPED_CARD_FIXTURE = """
 <a href="https://other.example/normal-object">Kleines Stadthaus</a>
 <div>€ 279.000,-</div>
 <div>2700 Wiener Neustadt / 92m² / 4 Zimmer</div>
+<h3>Haus kaufen in 7000 Eisenstadt</h3>
+<div>Linkloses Haus mit Innenhof</div>
+<div>€ 319.000,-</div>
+<div>7000 Eisenstadt / 110m² / 4 Zimmer</div>
 <nav>
   <a href="/immo/Haus-kaufen/Niederoesterreich/2">2</a>
   <a href="/immo/Haus-kaufen/Niederoesterreich/10">10</a>
@@ -23,22 +27,29 @@ WRAPPED_CARD_FIXTURE = """
 """
 
 
-def test_parser_accepts_external_anchor_wrapping_whole_card() -> None:
+def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
     page = parse_immmo_search_page(
         WRAPPED_CARD_FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
     )
 
     assert page.reported_count == 4396
-    assert page.cards_seen == 2
-    assert page.cards_parsed == 2
-    assert len(page.items) == 2
+    assert page.cards_seen == 3
+    assert page.cards_parsed == 3
+    assert len(page.items) == 3
 
     wrapped = next(item for item in page.items if item.url.endswith("/wrapped-object"))
     assert wrapped.postal_code == "3100"
     assert wrapped.city == "St. Pölten"
     assert wrapped.living_area_m2 == 145
     assert wrapped.price_eur == 449000
+    assert wrapped.raw_payload["original_url_missing"] is False
+
+    synthetic = next(item for item in page.items if item.postal_code == "7000")
+    assert "/wohnwerk-fallback/" in synthetic.url
+    assert synthetic.title == "Linkloses Haus mit Innenhof"
+    assert synthetic.living_area_m2 == 110
+    assert synthetic.raw_payload["original_url_missing"] is True
 
 
 def test_full_target_comes_from_reported_count_not_visible_pagination_window() -> None:
