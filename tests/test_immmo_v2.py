@@ -62,9 +62,33 @@ PAGINATION_FIXTURE = """
   <a href="/immo/Haus-kaufen/Niederoesterreich">1</a>
   <a href="/immo/Haus-kaufen/Niederoesterreich/2">2</a>
   <a href="/immo/Haus-kaufen/Niederoesterreich/3">3</a>
-  <a href="/immo/Haus-kaufen/Niederoesterreich/367">367</a>
+  <span>...</span><span>367</span>
   <a href="/immo/Haus-kaufen/Niederoesterreich/3">Weiter</a>
 </nav>
+</body></html>
+"""
+
+WRAPPED_LINK_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 1.049</p>
+<a href="https://portal.example/wrapped-card">
+  <article>
+    <h3>Einfamilienhaus kaufen in 7343 Neutal</h3>
+    <strong>Modernes Haus mit Garten</strong>
+    <div>€ 249.000,-</div>
+    <div>7343 Neutal / 120m² / 4 Zimmer</div>
+  </article>
+</a>
+</body></html>
+"""
+
+DATA_URL_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 1</p>
+<h3>Haus kaufen in 6850 Dornbirn</h3>
+<a data-url="https://portal.example/data-link">Haus mit Daten-Link</a>
+<div>€ 586.140,-</div>
+<div>6850 Dornbirn / 382m² / 8 Zimmer</div>
 </body></html>
 """
 
@@ -135,7 +159,7 @@ def test_result_headings_accept_subtypes_but_not_editorial_prose() -> None:
     assert page.items[0].raw_payload["source_heading_kind"] == "Einfamilienhaus"
 
 
-def test_parser_reads_live_count_and_next_page_from_page_two() -> None:
+def test_parser_reads_count_without_treating_ui_window_as_terminal() -> None:
     page = parse_immmo_search_page(
         PAGINATION_FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich/2",
@@ -143,5 +167,29 @@ def test_parser_reads_live_count_and_next_page_from_page_two() -> None:
 
     assert page.reported_count == 4396
     assert page.current_page == 2
-    assert page.pagination_max_page == 367
-    assert page.has_next_page is True
+    assert page.pagination_max_page == 3
+
+
+def test_card_wide_anchor_starting_before_heading_is_discovered() -> None:
+    page = parse_immmo_search_page(
+        WRAPPED_LINK_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Burgenland/8",
+    )
+
+    assert page.cards_seen == 1
+    assert page.cards_parsed == 1
+    assert len(page.items) == 1
+    assert page.items[0].url == "https://portal.example/wrapped-card"
+    assert page.items[0].postal_code == "7343"
+    assert page.items[0].living_area_m2 == Decimal(120)
+
+
+def test_data_url_link_target_is_discovered() -> None:
+    page = parse_immmo_search_page(
+        DATA_URL_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Vorarlberg/2",
+    )
+
+    assert page.cards_seen == 1
+    assert page.cards_parsed == 1
+    assert page.items[0].url == "https://portal.example/data-link"
