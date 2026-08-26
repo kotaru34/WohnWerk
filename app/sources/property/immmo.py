@@ -5,10 +5,11 @@ import hashlib
 import math
 import random
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
