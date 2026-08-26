@@ -189,8 +189,7 @@ def _plot_area_from_description(description: str | None) -> Decimal | None:
         r"(?:rund|ca\.?)?\s*([\d.]+(?:,\d+)?)\s*m(?:²|2)\s+Grundstück\b",
         r"Grundstücksfläche\s*:?\s*(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
         r"Grundstück\s+(?:mit\s+)?(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
-        r"(?:Gesamtfläche|Grundfläche)\s*(?:von|:)?\s*(?:ca\.?\s*)?"
-        r"([\d.]+(?:,\d+)?)\s*m(?:²|2)",
+        r"(?:Gesamtfläche|Grundfläche)\s*(?:von|:)?\s*(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
     ]
     for pattern in patterns:
         match = re.search(pattern, description, flags=re.IGNORECASE)
