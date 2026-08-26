@@ -104,6 +104,7 @@ def main() -> None:
                     parsed = cursor.get("discovery_cards_parsed")
                     synthetic = cursor.get("discovery_synthetic_cards")
                     synthetic_tolerance = cursor.get("discovery_synthetic_tolerance")
+                    link_quality = cursor.get("discovery_link_quality_ok")
                     latest_reported = cursor.get("discovery_latest_reported")
                     max_reported = cursor.get("discovery_max_reported")
                     target_pages = cursor.get("discovery_target_pages")
@@ -125,6 +126,8 @@ def main() -> None:
                         coverage_bits += f" synthetic={synthetic}"
                     if synthetic_tolerance is not None:
                         coverage_bits += f" synthetic_tol={synthetic_tolerance}"
+                    if link_quality is not None:
+                        coverage_bits += f" link_quality={'ok' if link_quality else 'warn'}"
                     if latest_reported is not None:
                         coverage_bits += f" latest_reported={latest_reported}"
                     if max_reported is not None:
