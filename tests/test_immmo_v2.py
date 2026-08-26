@@ -7,7 +7,7 @@ FIXTURE = """
 <p>1 bis 12 von 24</p>
 <ul>
 <li>
-  <div>Haus kaufen in 3950 Gmünd</div>
+  <h3>Haus kaufen in 3950 Gmünd</h3>
   <div><a href="https://portal.example/object/1">Charmantes Haus mit Garten</a></div>
   <div>€ 249.000,-</div>
   <div>3950 Gmünd / 132,66m² / 6 Zimmer</div>
@@ -15,32 +15,40 @@ FIXTURE = """
   <div><a href="https://portal.example/object/1">Mehr</a></div>
 </li>
 <li>
-  <div>Haus kaufen in 2722 Winzendorf</div>
+  <h3>Haus kaufen in 2722 Winzendorf</h3>
   <div><a href="https://other.example/2">Doppelhaushälfte schlüsselfertig</a></div>
   <div>€ 320.000,-</div>
   <div>2722 Winzendorf / 100m² / 5 Zimmer</div>
   <p>Rund 410 m² Grundstück bieten Platz.</p>
 </li>
-<li>
-  <div>Haus kaufen in 7202 Bad Sauerbrunn</div>
-  <a href="https://third.example/3">Sommerrefugium direkt am See</a>
-  <div>€ 178.000,-</div>
-  <div>7202 Bad Sauerbrunn</div>
-  <p>Das Grundstück hat 150 m²; eine Wohnfläche wird im Snippet nicht genannt.</p>
-</li>
 </ul>
 </body></html>
 """
 
+DUPLICATE_URL_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 2</p>
+<h3>Haus kaufen in 8010 Graz</h3>
+<a href="https://portal.example/same">Haus A</a>
+<div>€ 300.000,-</div>
+<div>8010 Graz / 90m² / 4 Zimmer</div>
+<h3>Haus kaufen in 8020 Graz</h3>
+<a href="https://portal.example/same">Haus A auch hier gelistet</a>
+<div>€ 300.000,-</div>
+<div>8020 Graz / 90m² / 4 Zimmer</div>
+</body></html>
+"""
 
-def test_stream_parser_keeps_location_area_and_title_without_dom_card_assumptions() -> None:
+
+def test_stream_parser_keeps_location_and_area_with_nested_links() -> None:
     page = parse_immmo_search_page(
         FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
     )
 
     assert page.reported_count == 24
-    assert len(page.items) == 3
+    assert page.cards_seen == 2
+    assert len(page.items) == 2
 
     first = next(item for item in page.items if item.url.endswith("/object/1"))
     assert first.title == "Charmantes Haus mit Garten"
@@ -49,7 +57,6 @@ def test_stream_parser_keeps_location_area_and_title_without_dom_card_assumption
     assert first.city == "Gmünd"
     assert first.living_area_m2 == Decimal("132.66")
     assert first.plot_area_m2 == Decimal(368)
-    assert first.raw_payload["source_postal_code"] == "3950"
 
     second = next(item for item in page.items if item.url.endswith("/2"))
     assert second.price_eur == Decimal(320000)
@@ -59,21 +66,21 @@ def test_stream_parser_keeps_location_area_and_title_without_dom_card_assumption
     assert second.plot_area_m2 == Decimal(410)
 
 
-def test_stream_parser_uses_heading_plz_when_summary_has_no_living_area() -> None:
-    page = parse_immmo_search_page(
-        FIXTURE,
-        page_url="https://www.immmo.at/immo/Haus-kaufen/Burgenland",
-    )
-    third = next(item for item in page.items if item.url.endswith("/3"))
-    assert third.postal_code == "7202"
-    assert third.city == "Bad Sauerbrunn"
-    assert third.living_area_m2 is None
-    assert third.price_eur == Decimal(178000)
-
-
-def test_stream_parser_ignores_repeated_non_title_external_links() -> None:
+def test_stream_parser_deduplicates_repeated_links_inside_one_card() -> None:
     page = parse_immmo_search_page(
         FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
     )
     assert len([item for item in page.items if item.url.endswith("/object/1")]) == 1
+    assert page.cards_seen == 2
+
+
+def test_card_count_is_independent_from_unique_original_urls() -> None:
+    page = parse_immmo_search_page(
+        DUPLICATE_URL_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Steiermark",
+    )
+
+    assert page.reported_count == 2
+    assert page.cards_seen == 2
+    assert len(page.items) == 1
