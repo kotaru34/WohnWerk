@@ -28,11 +28,10 @@ from app.sources.property.immmo import (
     _source_id,
 )
 
-HEADING_BEFORE_RE = re.compile(
-    r"Haus\s+kaufen\s+in\s+(?P<plz>\d{4})\s+(?P<city>[^€]{1,100}?)\s*$",
+HEADING_START_RE = re.compile(
+    r"\bHaus\s+kaufen\s+in\s+(?P<plz>\d{4})\s+",
     re.IGNORECASE,
 )
-NEXT_HEADING_RE = re.compile(r"\bHaus\s+kaufen\s+in\s+\d{4}\s+", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,7 +133,13 @@ def _is_title_text(text: str) -> bool:
 
 
 class ImmmoPage:
-    __slots__ = ("cards_seen", "count_is_lower_bound", "items", "reported_count")
+    __slots__ = (
+        "cards_parsed",
+        "cards_seen",
+        "count_is_lower_bound",
+        "items",
+        "reported_count",
+    )
 
     def __init__(
         self,
@@ -142,11 +147,31 @@ class ImmmoPage:
         reported_count: int | None,
         count_is_lower_bound: bool,
         cards_seen: int,
+        cards_parsed: int,
     ) -> None:
         self.items = items
         self.reported_count = reported_count
         self.count_is_lower_bound = count_is_lower_bound
         self.cards_seen = cards_seen
+        self.cards_parsed = cards_parsed
+
+
+def _first_original_anchor(
+    anchors: list[_AnchorOccurrence],
+    *,
+    segment_start: int,
+    segment_end: int,
+    page_url: str,
+) -> tuple[_AnchorOccurrence, str] | None:
+    for anchor in anchors:
+        if anchor.start < segment_start:
+            continue
+        if anchor.start >= segment_end:
+            break
+        original_url = _canonical_external_url(anchor.href, page_url=page_url)
+        if original_url and _is_title_text(anchor.text):
+            return anchor, original_url
+    return None
 
 
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
@@ -161,29 +186,26 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         reported_count = int(count_match.group("count").replace(".", ""))
         count_is_lower_bound = bool(count_match.group("lower"))
 
+    headings = list(HEADING_START_RE.finditer(page_text))
+    anchors = sorted(parser.anchors, key=lambda item: item.start)
     items_by_url: dict[str, RawProperty] = {}
-    cards_seen = 0
+    cards_parsed = 0
 
-    for anchor in parser.anchors:
-        original_url = _canonical_external_url(anchor.href, page_url=page_url)
-        if not original_url or not _is_title_text(anchor.text):
+    for index, heading in enumerate(headings):
+        segment_start = heading.start()
+        segment_end = headings[index + 1].start() if index + 1 < len(headings) else len(page_text)
+        chosen = _first_original_anchor(
+            anchors,
+            segment_start=heading.end(),
+            segment_end=segment_end,
+            page_url=page_url,
+        )
+        if chosen is None:
             continue
+        anchor, original_url = chosen
+        cards_parsed += 1
 
-        before_start = max(0, anchor.start - 240)
-        before = page_text[before_start : anchor.start]
-        heading = HEADING_BEFORE_RE.search(before)
-        if heading is None:
-            continue
-
-        # This is the title-link occurrence for one visible result card. Count it
-        # before URL deduplication so repeated listings do not look like parser misses.
-        cards_seen += 1
-
-        card_start = before_start + heading.start()
-        next_heading = NEXT_HEADING_RE.search(page_text, anchor.end)
-        card_end = next_heading.start() if next_heading else min(len(page_text), anchor.end + 12000)
-        card_text = page_text[card_start:card_end]
-
+        card_text = page_text[segment_start:segment_end]
         facts = LOCATION_AREA_RE.search(card_text)
         if facts is not None:
             postal_code = facts.group("plz")
@@ -191,7 +213,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             living_area = _decimal(facts.group("area"))
         else:
             postal_code = heading.group("plz")
-            city = _clean_text(heading.group("city")).strip(" ,")
+            city = _clean_text(page_text[heading.end() : anchor.start]).strip(" ,") or None
             living_area = None
 
         price_match = PRICE_RE.search(card_text)
@@ -208,7 +230,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v3",
+                "format": "immmo-search-discovery-v4",
                 "original_host": host,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
@@ -219,7 +241,8 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         list(items_by_url.values()),
         reported_count,
         count_is_lower_bound,
-        cards_seen,
+        len(headings),
+        cards_parsed,
     )
 
 
@@ -235,10 +258,14 @@ def _validate_page_quality(
 
     if page.cards_seen < expected_items:
         raise RuntimeError(
-            f"IMMMO discovery coverage incomplete for shard {shard_key!r} page {page_number}: "
-            f"parsed {page.cards_seen}/{expected_items} visible result cards"
+            f"IMMMO visible-card coverage incomplete for shard {shard_key!r} page {page_number}: "
+            f"saw {page.cards_seen}/{expected_items} result headings"
         )
-
+    if page.cards_parsed < expected_items:
+        raise RuntimeError(
+            f"IMMMO URL discovery incomplete for shard {shard_key!r} page {page_number}: "
+            f"parsed {page.cards_parsed}/{expected_items} result cards"
+        )
     if not page.items:
         raise RuntimeError(
             f"IMMMO returned no unique listing URLs for shard {shard_key!r} page {page_number}"
@@ -329,6 +356,7 @@ class ImmmoPropertySource(PropertySource):
         count_is_lower_bound = False
         pages_fetched = 0
         cards_seen = 0
+        cards_parsed = 0
         result_cap_hit = False
 
         async with httpx.AsyncClient(
@@ -354,6 +382,7 @@ class ImmmoPropertySource(PropertySource):
             items_by_id.update({item.source_listing_id: item for item in parsed.items})
             pages_fetched = 1
             cards_seen = parsed.cards_seen
+            cards_parsed = parsed.cards_parsed
 
             total_pages = max(1, math.ceil(reported_count / PAGE_SIZE))
             if reconciliation:
@@ -377,6 +406,7 @@ class ImmmoPropertySource(PropertySource):
                 items_by_id.update({item.source_listing_id: item for item in page_data.items})
                 pages_fetched += 1
                 cards_seen += page_data.cards_seen
+                cards_parsed += page_data.cards_parsed
 
         expected_pages = max(1, math.ceil((reported_count or 0) / PAGE_SIZE))
         coverage_complete = (
@@ -384,6 +414,7 @@ class ImmmoPropertySource(PropertySource):
             and not result_cap_hit
             and pages_fetched >= expected_pages
             and cards_seen >= (reported_count or 0)
+            and cards_parsed >= (reported_count or 0)
         )
 
         return SourceBatch(
@@ -391,6 +422,7 @@ class ImmmoPropertySource(PropertySource):
             next_cursor={
                 "newest_ids": list(items_by_id)[:100],
                 "discovery_cards_seen": cards_seen,
+                "discovery_cards_parsed": cards_parsed,
             },
             source_reported_count=reported_count,
             coverage_complete=coverage_complete,
