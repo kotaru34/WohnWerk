@@ -23,6 +23,34 @@ def _listing_payload(item: RawProperty, *, postal_resolved: bool) -> dict:
     return payload
 
 
+def _enrich_property(
+    property_row: Property,
+    *,
+    item: RawProperty,
+    postal: PostalCode | None,
+    now: datetime,
+) -> None:
+    """Apply non-null source metadata without degrading already-known fields."""
+    if item.title:
+        property_row.title = item.title
+    if item.description is not None:
+        property_row.description = item.description
+    if item.price_eur is not None:
+        property_row.price_eur = item.price_eur
+    if item.living_area_m2 is not None:
+        property_row.living_area_m2 = item.living_area_m2
+    if item.plot_area_m2 is not None:
+        property_row.plot_area_m2 = item.plot_area_m2
+    if postal is not None:
+        property_row.postal_code = postal.postal_code
+        property_row.location = postal.location
+    if item.city:
+        property_row.city = item.city
+    property_row.status = ListingStatus.ACTIVE
+    property_row.last_seen_at = now
+    property_row.inactive_at = None
+
+
 def ingest_properties(
     session: Session,
     *,
@@ -30,10 +58,11 @@ def ingest_properties(
     run: CrawlRun,
     items: list[RawProperty],
 ) -> tuple[int, int]:
-    """Persist a property batch without making unsafe cross-source dedup guesses.
+    """Persist a property batch with only deterministic cross-source deduplication.
 
-    Sparse discovery updates are enrichment-only: a temporary parser/source omission
-    must not erase metadata that WohnWerk already knows for the canonical property.
+    Sparse discovery updates are enrichment-only. Cross-source identity is reused only
+    when the canonical listing URL is exactly equal; fuzzy/content deduplication is a
+    separate later stage and must not be guessed here.
     """
     if not items:
         return 0, 0
@@ -57,6 +86,16 @@ def ingest_properties(
         )
     }
 
+    urls = {item.url for item in items}
+    exact_url_properties: dict[str, Property] = {}
+    if urls:
+        for listing in session.scalars(
+            select(PropertyListing)
+            .where(PropertyListing.url.in_(urls))
+            .order_by(PropertyListing.id)
+        ):
+            exact_url_properties.setdefault(listing.url, listing.property)
+
     new_count = 0
     updated_count = 0
 
@@ -66,21 +105,27 @@ def ingest_properties(
         payload = _listing_payload(item, postal_resolved=postal is not None)
 
         if listing is None:
-            property_row = Property(
-                title=item.title,
-                description=item.description,
-                price_eur=item.price_eur,
-                living_area_m2=item.living_area_m2,
-                plot_area_m2=item.plot_area_m2,
-                postal_code=postal.postal_code if postal else None,
-                city=item.city,
-                location=postal.location if postal else None,
-                status=ListingStatus.ACTIVE,
-                first_seen_at=now,
-                last_seen_at=now,
-            )
-            session.add(property_row)
-            session.flush()
+            property_row = exact_url_properties.get(item.url)
+            if property_row is None:
+                property_row = Property(
+                    title=item.title,
+                    description=item.description,
+                    price_eur=item.price_eur,
+                    living_area_m2=item.living_area_m2,
+                    plot_area_m2=item.plot_area_m2,
+                    postal_code=postal.postal_code if postal else None,
+                    city=item.city,
+                    location=postal.location if postal else None,
+                    status=ListingStatus.ACTIVE,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                )
+                session.add(property_row)
+                session.flush()
+                exact_url_properties[item.url] = property_row
+            else:
+                _enrich_property(property_row, item=item, postal=postal, now=now)
+
             listing = PropertyListing(
                 property_id=property_row.id,
                 source_id=source.id,
@@ -93,28 +138,12 @@ def ingest_properties(
                 last_seen_at=now,
             )
             session.add(listing)
+            existing[item.source_listing_id] = listing
             new_count += 1
             continue
 
         property_row = listing.property
-        if item.title:
-            property_row.title = item.title
-        if item.description is not None:
-            property_row.description = item.description
-        if item.price_eur is not None:
-            property_row.price_eur = item.price_eur
-        if item.living_area_m2 is not None:
-            property_row.living_area_m2 = item.living_area_m2
-        if item.plot_area_m2 is not None:
-            property_row.plot_area_m2 = item.plot_area_m2
-        if postal is not None:
-            property_row.postal_code = postal.postal_code
-            property_row.location = postal.location
-        if item.city:
-            property_row.city = item.city
-        property_row.status = ListingStatus.ACTIVE
-        property_row.last_seen_at = now
-        property_row.inactive_at = None
+        _enrich_property(property_row, item=item, postal=postal, now=now)
 
         listing.url = item.url
         listing.status = ListingStatus.ACTIVE
@@ -122,6 +151,7 @@ def ingest_properties(
         listing.last_seen_crawl_run_id = run.id
         listing.last_seen_at = now
         listing.inactive_at = None
+        exact_url_properties.setdefault(item.url, property_row)
         updated_count += 1
 
     session.commit()
