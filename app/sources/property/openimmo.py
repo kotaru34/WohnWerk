@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from io import BytesIO
-from zipfile import BadZipFile, ZipFile
 import xml.etree.ElementTree as ET
+from decimal import Decimal, InvalidOperation
+from io import BytesIO
+from typing import Any
+from zipfile import BadZipFile, ZipFile
 
 import httpx
 
-from app.sources.base import RawProperty, SourceBatch, SourceShardSpec
+from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceShardSpec
 
 
 def _local_name(tag: str) -> str:
@@ -39,9 +41,7 @@ def _text(element: ET.Element | None, *names: str) -> str | None:
     return value or None
 
 
-def _decimal_text(element: ET.Element | None, *names: str):
-    from decimal import Decimal, InvalidOperation
-
+def _decimal_text(element: ET.Element | None, *names: str) -> Decimal | None:
     value = _text(element, *names)
     if value is None:
         return None
@@ -142,7 +142,7 @@ def parse_openimmo_properties(xml_payload: bytes, *, fallback_url: str) -> list[
     return records
 
 
-class OpenImmoFeedPropertySource:
+class OpenImmoFeedPropertySource(PropertySource):
     """Full-export OpenImmo feed adapter for Austrian brokers and portals."""
 
     def __init__(self, *, name: str, feed_url: str, timeout_seconds: float = 60.0) -> None:
@@ -157,7 +157,7 @@ class OpenImmoFeedPropertySource:
         self,
         shard: SourceShardSpec,
         *,
-        cursor: dict | None = None,
+        cursor: dict[str, Any] | None = None,
         reconciliation: bool = False,
     ) -> SourceBatch[RawProperty]:
         del cursor, reconciliation
