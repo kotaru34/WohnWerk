@@ -58,6 +58,25 @@ class SourceBatch[T]:
     pages_fetched: int = 1
 
 
+class SourceFetchError(RuntimeError):
+    """Source failure that preserves useful progress from a partially fetched shard."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        pages_fetched: int = 0,
+        items_seen: int = 0,
+        source_reported_count: int | None = None,
+        next_cursor: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.pages_fetched = pages_fetched
+        self.items_seen = items_seen
+        self.source_reported_count = source_reported_count
+        self.next_cursor = next_cursor or {}
+
+
 class PropertySource(ABC):
     """Contract implemented by every Austrian property source adapter."""
 
