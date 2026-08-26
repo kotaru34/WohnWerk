@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
         default=100,
         help="Safety ceiling for reconciliation pagination (default: 100 pages).",
     )
+    parser.add_argument(
+        "--enrich-details",
+        action="store_true",
+        help="Load s REAL detail pages to enrich description and complete area metadata.",
+    )
     return parser.parse_args()
 
 
@@ -78,6 +83,7 @@ async def async_main() -> int:
         request_delay_seconds=args.delay,
         incremental_pages=args.incremental_pages,
         hard_max_pages=args.hard_max_pages,
+        enrich_details=args.enrich_details,
     )
 
     with SessionLocal() as session:
