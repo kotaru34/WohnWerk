@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from app.crawling.coverage import (
 from app.crawling.shards import sync_source_shards
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
-from app.sources.base import PropertySource, SourceFetchError
+from app.sources.base import PropertySource, RawProperty, SourceFetchError
 
 
 async def run_property_source(
@@ -30,6 +31,8 @@ async def run_property_source(
     specs_by_key = {spec.key: spec for spec in specs}
     mode = CrawlMode.RECONCILIATION if reconciliation else CrawlMode.INCREMENTAL
     run = create_run(session, source, mode)
+    source_id = source.id
+    run_id = run.id
 
     for shard in sorted(shards, key=lambda item: (item.priority, item.id)):
         spec = specs_by_key[shard.key]
@@ -78,8 +81,26 @@ async def run_property_source(
                 shard.last_full_scan_at = now
         except Exception as exc:
             # A failed flush/commit leaves SQLAlchemy in a failed transaction state. Roll it
-            # back before touching ORM attributes, then reload the persisted shard records.
+            # back before touching ORM attributes. Source adapters may still provide all
+            # successfully materialized items from pages completed before the failure; persist
+            # those as non-authoritative discovery while keeping the shard itself FAILED.
             session.rollback()
+            partial_new = 0
+            partial_updated = 0
+            if isinstance(exc, SourceFetchError) and exc.partial_items:
+                partial_source = session.get(Source, source_id)
+                partial_run = session.get(CrawlRun, run_id)
+                if partial_source is None or partial_run is None:
+                    raise RuntimeError(
+                        f"Could not reload partial-run state for {source.name}/{spec.key}"
+                    ) from exc
+                partial_new, partial_updated = ingest_properties(
+                    session,
+                    source=partial_source,
+                    run=partial_run,
+                    items=cast(list[RawProperty], exc.partial_items),
+                )
+
             failed_shard_run = session.get(CrawlShardRun, shard_run_id)
             failed_shard = session.get(SourceShard, shard_id)
             if failed_shard_run is None or failed_shard is None:
@@ -94,6 +115,8 @@ async def run_property_source(
             if isinstance(exc, SourceFetchError):
                 failed_shard_run.pages_fetched = exc.pages_fetched
                 failed_shard_run.items_seen = exc.items_seen
+                failed_shard_run.items_new = partial_new
+                failed_shard_run.items_updated = partial_updated
                 failed_shard_run.source_reported_count = exc.source_reported_count
                 failed_shard_run.next_cursor = exc.next_cursor
             failed_shard.consecutive_failures += 1
