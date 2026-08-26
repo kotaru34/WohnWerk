@@ -17,9 +17,12 @@ BASE_URL = "https://www.sreal.at"
 SEARCH_URL = f"{BASE_URL}/de/haeuser-kauf/angebot/10"
 DETAIL_PATH_RE = re.compile(r"^/de/immobilie/(?P<listing_id>[^/]+)/", re.IGNORECASE)
 AREA_RE = re.compile(
-    r"(?:(?:ab|ca\.)\s+)?(?P<area>[\d.]+(?:,\d+)?)\s*m(?:²|2)\s+"
-    r"(?P<area_kind>Wohnfläche|Grundfläche|Nutzfläche)"
-    r"(?:\s+(?:ab\s+)?(?P<price>[\d.]+(?:,\d+)?)\s*€\s*(?:Kaufpreis|Preis))?\s*$",
+    r"(?:(?:ab|ca\.)\s+)?(?P<area>[\d.]+(?:,\d+)?)\s*m\s*(?:²|2)\s+"
+    r"(?P<area_kind>Wohnfläche|Grundfläche|Nutzfläche)\b",
+    re.IGNORECASE,
+)
+PRICE_RE = re.compile(
+    r"(?:ab\s+)?(?P<price>[\d.]+(?:,\d+)?)\s*€\s*(?:Kaufpreis|Preis)\b",
     re.IGNORECASE,
 )
 PLZ_RE = re.compile(r"\b(?P<plz>\d{4})\s+")
@@ -135,13 +138,17 @@ def _parse_card_facts(text: str) -> _CardFacts | None:
     if not city:
         return None
 
+    price_match = PRICE_RE.search(text[area_match.end() :])
+    if price_match is None:
+        price_match = PRICE_RE.search(text)
+
     return _CardFacts(
         title=title,
         postal_code=location.group("plz"),
         city=city,
         area=area_match.group("area"),
         area_kind=area_match.group("area_kind"),
-        price=area_match.group("price"),
+        price=price_match.group("price") if price_match else None,
     )
 
 
@@ -179,11 +186,12 @@ def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
             postal_code=facts.postal_code,
             city=facts.city,
             raw_payload={
-                "format": "sreal-search-discovery-v1",
+                "format": "sreal-search-discovery-v2",
                 "discovery_url": page_url,
                 "source_postal_code": facts.postal_code,
                 "listed_area_kind": facts.area_kind,
                 "listed_area_m2": str(area) if area is not None else None,
+                "identity_stable": True,
             },
         )
 
