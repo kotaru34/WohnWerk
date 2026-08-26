@@ -69,12 +69,14 @@ class SourceFetchError(RuntimeError):
         items_seen: int = 0,
         source_reported_count: int | None = None,
         next_cursor: dict[str, Any] | None = None,
+        partial_items: list[Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.pages_fetched = pages_fetched
         self.items_seen = items_seen
         self.source_reported_count = source_reported_count
         self.next_cursor = next_cursor or {}
+        self.partial_items = partial_items or []
 
 
 class PropertySource(ABC):
