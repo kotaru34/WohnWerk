@@ -200,7 +200,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             },
         )
 
-    current_page, pagination_max_page, has_next_page = _pagination_state(
+    current_page, pagination_max_page = _pagination_state(
         anchors,
         page_url=page_url,
     )
@@ -212,7 +212,6 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         cards_parsed,
         current_page,
         pagination_max_page,
-        has_next_page,
     )
 
 
