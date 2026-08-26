@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from decimal import Decimal
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
+from app.sources.base import RawProperty
+from app.sources.property.immmo import _clean_text, _decimal
+
+DETAIL_PATH_RE = re.compile(r"^/de/immobilie/(?P<listing_id>[^/]+)/", re.IGNORECASE)
+LIVING_AREA_RE = re.compile(
+    r"\bWohnfläche\s+(?P<value>[\d.]+(?:,\d+)?)\s*m\s*(?:²|2)\b",
+    re.IGNORECASE,
+)
+PLOT_AREA_RE = re.compile(
+    r"\bGrundfläche\s+(?P<value>[\d.]+(?:,\d+)?)\s*m\s*(?:²|2)\b",
+    re.IGNORECASE,
+)
+PRICE_RE = re.compile(
+    r"\bKaufpreis\s+(?P<value>[\d.]+(?:,\d+)?)\s*€",
+    re.IGNORECASE,
+)
+HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5"}
+
+
+@dataclass(frozen=True, slots=True)
+class _Heading:
+    text: str
+    start: int
+    end: int
+
+
+@dataclass(slots=True)
+class _HeadingFrame:
+    tag: str
+    start: int
+    parts: list[str] = field(default_factory=list)
+
+
+class _VisibleTextParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._length = 0
+        self._hidden_depth = 0
+        self._heading_stack: list[_HeadingFrame] = []
+        self.headings: list[_Heading] = []
+
+    @property
+    def text(self) -> str:
+        return "".join(self._chunks)
+
+    def _append(self, value: str) -> None:
+        cleaned = _clean_text(value)
+        if not cleaned:
+            return
+        prefix = " " if self._length else ""
+        self._chunks.append(prefix + cleaned)
+        self._length += len(prefix) + len(cleaned)
+        if self._heading_stack:
+            self._heading_stack[-1].parts.append(cleaned)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        tag = tag.casefold()
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden_depth += 1
+            return
+        if self._hidden_depth:
+            return
+        if tag in HEADING_TAGS:
+            self._heading_stack.append(_HeadingFrame(tag=tag, start=self._length))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.casefold()
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden_depth = max(0, self._hidden_depth - 1)
+            return
+        if self._hidden_depth or tag not in HEADING_TAGS:
+            return
+        for index in range(len(self._heading_stack) - 1, -1, -1):
+            if self._heading_stack[index].tag != tag:
+                continue
+            frame = self._heading_stack.pop(index)
+            self.headings.append(
+                _Heading(
+                    text=_clean_text(" ".join(frame.parts)),
+                    start=frame.start,
+                    end=self._length,
+                )
+            )
+            break
+
+    def handle_data(self, data: str) -> None:
+        if not self._hidden_depth:
+            self._append(data)
+
+
+@dataclass(frozen=True, slots=True)
+class SRealDetail:
+    listing_id: str
+    postal_code: str | None
+    city: str | None
+    price_eur: Decimal | None
+    living_area_m2: Decimal | None
+    plot_area_m2: Decimal | None
+    description: str | None
+
+
+def _listing_id(page_url: str) -> str:
+    parsed = urlparse(page_url)
+    match = DETAIL_PATH_RE.match(parsed.path)
+    if match is None:
+        raise ValueError(f"Not an s REAL detail URL: {page_url!r}")
+    return match.group("listing_id")
+
+
+def _description(parser: _VisibleTextParser) -> str | None:
+    headings = sorted(parser.headings, key=lambda item: item.start)
+    for index, heading in enumerate(headings):
+        if heading.text.casefold() != "objektbeschreibung":
+            continue
+        end = headings[index + 1].start if index + 1 < len(headings) else len(parser.text)
+        value = _clean_text(parser.text[heading.end:end])
+        return value or None
+    return None
+
+
+def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
+    parser = _VisibleTextParser()
+    parser.feed(html)
+    text = parser.text
+    listing_id = _listing_id(page_url)
+
+    display_id = listing_id.replace("-", "/", 1)
+    location_re = re.compile(
+        rf"\b(?P<plz>\d{{4}})\s+(?P<city>.{{1,100}}?)\s*-\s*{re.escape(display_id)}\b",
+        re.IGNORECASE,
+    )
+    location = location_re.search(text)
+
+    living = LIVING_AREA_RE.search(text)
+    plot = PLOT_AREA_RE.search(text)
+    price = PRICE_RE.search(text)
+
+    return SRealDetail(
+        listing_id=listing_id,
+        postal_code=location.group("plz") if location else None,
+        city=_clean_text(location.group("city")).strip(" ,") if location else None,
+        price_eur=_decimal(price.group("value")) if price else None,
+        living_area_m2=_decimal(living.group("value")) if living else None,
+        plot_area_m2=_decimal(plot.group("value")) if plot else None,
+        description=_description(parser),
+    )
+
+
+def enrich_sreal_property(item: RawProperty, detail: SRealDetail) -> RawProperty:
+    if item.source_listing_id != detail.listing_id:
+        raise ValueError(
+            f"s REAL detail ID mismatch: card={item.source_listing_id!r} detail={detail.listing_id!r}"
+        )
+
+    payload = dict(item.raw_payload)
+    payload.update(
+        {
+            "detail_enriched": True,
+            "detail_price_eur": str(detail.price_eur) if detail.price_eur is not None else None,
+            "detail_living_area_m2": (
+                str(detail.living_area_m2) if detail.living_area_m2 is not None else None
+            ),
+            "detail_plot_area_m2": (
+                str(detail.plot_area_m2) if detail.plot_area_m2 is not None else None
+            ),
+        }
+    )
+
+    return RawProperty(
+        source_listing_id=item.source_listing_id,
+        url=item.url,
+        title=item.title,
+        description=detail.description or item.description,
+        price_eur=detail.price_eur if detail.price_eur is not None else item.price_eur,
+        living_area_m2=(
+            detail.living_area_m2
+            if detail.living_area_m2 is not None
+            else item.living_area_m2
+        ),
+        plot_area_m2=detail.plot_area_m2 if detail.plot_area_m2 is not None else item.plot_area_m2,
+        postal_code=detail.postal_code or item.postal_code,
+        city=detail.city or item.city,
+        raw_payload=payload,
+    )
