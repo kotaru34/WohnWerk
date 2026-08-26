@@ -27,6 +27,28 @@ def _listing_payload(item: RawProperty, *, postal_resolved: bool) -> dict:
     return payload
 
 
+def _merge_listing_payload(existing_payload: dict | None, incoming_payload: dict) -> dict:
+    """Merge sparse discovery payloads without discarding prior detail enrichment."""
+    existing = dict(existing_payload or {})
+    merged = dict(existing)
+    merged.update(incoming_payload)
+
+    previous_enriched = existing.get("detail_enriched") is True
+    incoming_enriched = incoming_payload.get("detail_enriched")
+
+    if previous_enriched and incoming_enriched is not True:
+        merged["detail_enriched"] = True
+        transient_error = incoming_payload.get("detail_enrichment_error")
+        if transient_error:
+            merged["detail_enrichment_last_error"] = transient_error
+        merged.pop("detail_enrichment_error", None)
+    elif incoming_enriched is True:
+        merged.pop("detail_enrichment_error", None)
+        merged.pop("detail_enrichment_last_error", None)
+
+    return merged
+
+
 def _enrich_property(
     property_row: Property,
     *,
@@ -214,7 +236,7 @@ def ingest_properties(
 
         listing.url = item.url
         listing.status = ListingStatus.ACTIVE
-        listing.raw_payload = payload
+        listing.raw_payload = _merge_listing_payload(listing.raw_payload, payload)
         listing.last_seen_crawl_run_id = run.id
         listing.last_seen_at = now
         listing.inactive_at = None
