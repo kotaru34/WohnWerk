@@ -8,14 +8,19 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceShardSpec
+from app.sources.base import (
+    PropertySource,
+    RawProperty,
+    SourceBatch,
+    SourceFetchError,
+    SourceShardSpec,
+)
 from app.sources.property.immmo import (
     BUNDESLAENDER,
-    COUNT_RE,
     IGNORED_EXTERNAL_HOSTS,
     LOCATION_AREA_RE,
     PAGE_SIZE,
@@ -30,6 +35,10 @@ from app.sources.property.immmo import (
 
 RESULT_HEADING_RE = re.compile(
     r"^(?P<kind>.+?)\s+kaufen\s+in\s+(?P<plz>\d{4})\s+(?P<city>.+?)$",
+    re.IGNORECASE,
+)
+LIVE_COUNT_RE = re.compile(
+    r"\d+\s+bis\s+\d+\s+von\s+(?P<lower>mehr\s+als\s+)?(?P<count>[\d.]+)",
     re.IGNORECASE,
 )
 HEADING_TAGS = {"h2", "h3", "h4", "h5"}
@@ -181,7 +190,10 @@ class ImmmoPage:
         "cards_parsed",
         "cards_seen",
         "count_is_lower_bound",
+        "current_page",
+        "has_next_page",
         "items",
+        "pagination_max_page",
         "reported_count",
     )
 
@@ -192,12 +204,18 @@ class ImmmoPage:
         count_is_lower_bound: bool,
         cards_seen: int,
         cards_parsed: int,
+        current_page: int,
+        pagination_max_page: int,
+        has_next_page: bool,
     ) -> None:
         self.items = items
         self.reported_count = reported_count
         self.count_is_lower_bound = count_is_lower_bound
         self.cards_seen = cards_seen
         self.cards_parsed = cards_parsed
+        self.current_page = current_page
+        self.pagination_max_page = pagination_max_page
+        self.has_next_page = has_next_page
 
 
 def _select_original_anchor(
@@ -223,12 +241,48 @@ def _select_original_anchor(
     return fallback
 
 
+def _pagination_state(
+    anchors: list[_AnchorOccurrence],
+    *,
+    page_url: str,
+) -> tuple[int, int, bool]:
+    parsed_page = urlparse(page_url)
+    host = (parsed_page.hostname or "").casefold()
+    path = parsed_page.path.rstrip("/")
+    tail = path.rsplit("/", 1)[-1]
+    if tail.isdigit():
+        current_page = int(tail)
+        root_path = path.rsplit("/", 1)[0]
+    else:
+        current_page = 1
+        root_path = path
+
+    pages = {1, current_page}
+    for anchor in anchors:
+        absolute = urljoin(page_url, anchor.href)
+        parsed = urlparse(absolute)
+        if (parsed.hostname or "").casefold() != host:
+            continue
+        candidate = parsed.path.rstrip("/")
+        if candidate == root_path:
+            pages.add(1)
+            continue
+        prefix = f"{root_path}/"
+        if not candidate.startswith(prefix):
+            continue
+        suffix = candidate[len(prefix) :]
+        if suffix.isdigit():
+            pages.add(int(suffix))
+
+    return current_page, max(pages), current_page + 1 in pages
+
+
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
     parser = _VisibleStreamParser()
     parser.feed(html)
     page_text = parser.text
 
-    count_match = COUNT_RE.search(page_text)
+    count_match = LIVE_COUNT_RE.search(page_text)
     reported_count = None
     count_is_lower_bound = False
     if count_match:
@@ -289,7 +343,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v5",
+                "format": "immmo-search-discovery-v6",
                 "original_host": host,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
@@ -297,12 +351,19 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             },
         )
 
+    current_page, pagination_max_page, has_next_page = _pagination_state(
+        anchors,
+        page_url=page_url,
+    )
     return ImmmoPage(
         list(items_by_url.values()),
         reported_count,
         count_is_lower_bound,
         len(result_headings),
         cards_parsed,
+        current_page,
+        pagination_max_page,
+        has_next_page,
     )
 
 
@@ -311,20 +372,20 @@ def _validate_page_quality(
     *,
     shard_key: str,
     page_number: int,
-    expected_items: int,
 ) -> None:
-    if expected_items <= 0:
-        return
-
-    if page.cards_seen < expected_items:
+    if page.cards_seen == 0:
         raise RuntimeError(
-            f"IMMMO visible-card coverage incomplete for shard {shard_key!r} page {page_number}: "
-            f"saw {page.cards_seen}/{expected_items} result headings"
+            f"IMMMO returned no result cards for shard {shard_key!r} page {page_number}"
         )
-    if page.cards_parsed < expected_items:
+    if page.cards_parsed != page.cards_seen:
         raise RuntimeError(
             f"IMMMO URL discovery incomplete for shard {shard_key!r} page {page_number}: "
-            f"parsed {page.cards_parsed}/{expected_items} result cards"
+            f"parsed {page.cards_parsed}/{page.cards_seen} visible cards"
+        )
+    if page.has_next_page and page.cards_seen < math.ceil(PAGE_SIZE * 0.75):
+        raise RuntimeError(
+            f"IMMMO non-terminal page unexpectedly short for shard {shard_key!r} "
+            f"page {page_number}: saw {page.cards_seen} cards"
         )
     if not page.items:
         raise RuntimeError(
@@ -412,79 +473,99 @@ class ImmmoPropertySource(PropertySource):
             "Accept-Language": "de-AT,de;q=0.9,en;q=0.5",
         }
         items_by_id: dict[str, RawProperty] = {}
-        reported_count: int | None = None
+        initial_reported_count: int | None = None
+        latest_reported_count: int | None = None
         count_is_lower_bound = False
         pages_fetched = 0
         cards_seen = 0
         cards_parsed = 0
         result_cap_hit = False
+        terminal_reached = False
+        observed_max_page = 1
+        page_number = 1
 
-        async with httpx.AsyncClient(
-            headers=headers,
-            timeout=self.timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            first = await self._get(client, self._page_url(base_url, 1))
-            parsed = parse_immmo_search_page(first.text, page_url=str(first.url))
-            if parsed.reported_count is None:
-                raise RuntimeError(f"IMMMO result count missing for shard {shard.key!r}")
-
-            reported_count = parsed.reported_count
-            count_is_lower_bound = parsed.count_is_lower_bound
-            expected_first = min(PAGE_SIZE, reported_count)
-            _validate_page_quality(
-                parsed,
-                shard_key=shard.key,
-                page_number=1,
-                expected_items=expected_first,
-            )
-
-            items_by_id.update({item.source_listing_id: item for item in parsed.items})
-            pages_fetched = 1
-            cards_seen = parsed.cards_seen
-            cards_parsed = parsed.cards_parsed
-
-            total_pages = max(1, math.ceil(reported_count / PAGE_SIZE))
-            if reconciliation:
-                result_cap_hit = count_is_lower_bound or total_pages > self.hard_max_pages_per_shard
-                target_pages = min(total_pages, self.hard_max_pages_per_shard)
-            else:
-                target_pages = min(total_pages, self.incremental_pages)
-
-            for page_number in range(2, target_pages + 1):
-                await self._sleep()
-                response = await self._get(client, self._page_url(base_url, page_number))
-                page_data = parse_immmo_search_page(response.text, page_url=str(response.url))
-                remaining = max(0, reported_count - ((page_number - 1) * PAGE_SIZE))
-                expected_items = min(PAGE_SIZE, remaining)
-                _validate_page_quality(
-                    page_data,
-                    shard_key=shard.key,
-                    page_number=page_number,
-                    expected_items=expected_items,
-                )
-                items_by_id.update({item.source_listing_id: item for item in page_data.items})
-                pages_fetched += 1
-                cards_seen += page_data.cards_seen
-                cards_parsed += page_data.cards_parsed
-
-        expected_pages = max(1, math.ceil((reported_count or 0) / PAGE_SIZE))
-        coverage_complete = (
-            reconciliation
-            and not result_cap_hit
-            and pages_fetched >= expected_pages
-            and cards_seen >= (reported_count or 0)
-            and cards_parsed >= (reported_count or 0)
-        )
-
-        return SourceBatch(
-            items=list(items_by_id.values()),
-            next_cursor={
+        def progress_cursor() -> dict[str, Any]:
+            return {
                 "newest_ids": list(items_by_id)[:100],
                 "discovery_cards_seen": cards_seen,
                 "discovery_cards_parsed": cards_parsed,
-            },
-            source_reported_count=reported_count,
+                "discovery_initial_reported": initial_reported_count,
+                "discovery_latest_reported": latest_reported_count,
+                "discovery_observed_max_page": observed_max_page,
+                "discovery_terminal_reached": terminal_reached,
+            }
+
+        try:
+            async with httpx.AsyncClient(
+                headers=headers,
+                timeout=self.timeout_seconds,
+                follow_redirects=True,
+            ) as client:
+                while True:
+                    if page_number > 1:
+                        await self._sleep()
+                    response = await self._get(client, self._page_url(base_url, page_number))
+                    page = parse_immmo_search_page(response.text, page_url=str(response.url))
+                    if page_number == 1 and page.reported_count is None:
+                        raise RuntimeError(f"IMMMO result count missing for shard {shard.key!r}")
+
+                    if page.reported_count is not None:
+                        latest_reported_count = page.reported_count
+                        if initial_reported_count is None:
+                            initial_reported_count = page.reported_count
+                    count_is_lower_bound = count_is_lower_bound or page.count_is_lower_bound
+                    observed_max_page = max(observed_max_page, page.pagination_max_page)
+
+                    _validate_page_quality(page, shard_key=shard.key, page_number=page_number)
+                    items_by_id.update({item.source_listing_id: item for item in page.items})
+                    pages_fetched += 1
+                    cards_seen += page.cards_seen
+                    cards_parsed += page.cards_parsed
+
+                    if not reconciliation:
+                        if page_number >= self.incremental_pages or not page.has_next_page:
+                            break
+                    else:
+                        if count_is_lower_bound or observed_max_page > self.hard_max_pages_per_shard:
+                            result_cap_hit = True
+                        if not page.has_next_page:
+                            terminal_reached = True
+                            break
+                        if page_number >= self.hard_max_pages_per_shard:
+                            result_cap_hit = True
+                            break
+
+                    page_number += 1
+        except SourceFetchError:
+            raise
+        except Exception as exc:
+            raise SourceFetchError(
+                f"{type(exc).__name__}: {exc}",
+                pages_fetched=pages_fetched,
+                items_seen=len(items_by_id),
+                source_reported_count=initial_reported_count,
+                next_cursor=progress_cursor(),
+            ) from exc
+
+        benchmark_count = latest_reported_count or initial_reported_count or 0
+        count_tolerance = max(PAGE_SIZE * 2, math.ceil(benchmark_count * 0.01))
+        count_delta = cards_seen - benchmark_count
+        count_plausible = benchmark_count > 0 and abs(count_delta) <= count_tolerance
+        coverage_complete = (
+            reconciliation
+            and terminal_reached
+            and not result_cap_hit
+            and cards_seen == cards_parsed
+            and count_plausible
+        )
+
+        cursor = progress_cursor()
+        cursor["discovery_count_delta"] = count_delta
+        cursor["discovery_count_tolerance"] = count_tolerance
+        return SourceBatch(
+            items=list(items_by_id.values()),
+            next_cursor=cursor,
+            source_reported_count=initial_reported_count,
             coverage_complete=coverage_complete,
             result_cap_hit=result_cap_hit,
             pages_fetched=pages_fetched,
