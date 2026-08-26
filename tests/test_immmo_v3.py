@@ -1,4 +1,6 @@
-from app.sources.property.immmo_v3 import _page_target, parse_immmo_search_page
+import math
+
+from app.sources.property.immmo_v3 import parse_immmo_search_page
 
 
 WRAPPED_CARD_FIXTURE = """
@@ -60,4 +62,4 @@ def test_full_target_comes_from_reported_count_not_visible_pagination_window() -
 
     assert page.pagination_max_page == 10
     assert page.reported_count == 4396
-    assert _page_target(page.reported_count) == 367
+    assert math.ceil(page.reported_count / 12) == 367
