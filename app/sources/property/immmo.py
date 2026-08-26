@@ -38,11 +38,11 @@ COUNT_RE = re.compile(
 )
 PRICE_RE = re.compile(r"€\s*([\d.]+(?:,\d{1,2})?)")
 LOCATION_AREA_RE = re.compile(
-    r"\b(?P<plz>\d{4})\s+(?P<city>[^/\n]{1,120}?)\s*/\s*"
+    r"\b(?P<plz>\d{4})\s+(?P<city>[^/€]{1,80}?)\s*/\s*"
     r"(?P<area>[\d.]+(?:,\d+)?)\s*m(?:²|2)\b",
     re.IGNORECASE,
 )
-PLZ_CITY_RE = re.compile(r"\b(?P<plz>\d{4})\s+(?P<city>[^/\n]{1,120}?)(?:\s*/|$)")
+PLZ_CITY_RE = re.compile(r"\b(?P<plz>\d{4})\s+(?P<city>[^/€]{1,80}?)(?:\s*/|$)")
 PLOT_PATTERNS = (
     re.compile(
         r"Grundstücksfläche\s*(?:von|:)?\s*(?:ca\.?\s*)?([\d.]+(?:,\d+)?)\s*m(?:²|2)",
