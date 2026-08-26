@@ -28,10 +28,11 @@ from app.sources.property.immmo import (
     _source_id,
 )
 
-HEADING_START_RE = re.compile(
-    r"\bHaus\s+kaufen\s+in\s+(?P<plz>\d{4})\s+",
+RESULT_HEADING_RE = re.compile(
+    r"^(?P<kind>.+?)\s+kaufen\s+in\s+(?P<plz>\d{4})\s+(?P<city>.+?)$",
     re.IGNORECASE,
 )
+HEADING_TAGS = {"h2", "h3", "h4", "h5"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,8 +50,22 @@ class _AnchorFrame:
     parts: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class _HeadingOccurrence:
+    text: str
+    start: int
+    end: int
+
+
+@dataclass(slots=True)
+class _HeadingFrame:
+    tag: str
+    start: int
+    parts: list[str] = field(default_factory=list)
+
+
 class _VisibleStreamParser(HTMLParser):
-    """Keep visible text order plus anchor offsets without trusting DOM nesting."""
+    """Keep visible text order plus anchor/heading offsets without trusting card nesting."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -59,6 +74,8 @@ class _VisibleStreamParser(HTMLParser):
         self._hidden_depth = 0
         self._anchors: list[_AnchorOccurrence] = []
         self._anchor_stack: list[_AnchorFrame] = []
+        self._headings: list[_HeadingOccurrence] = []
+        self._heading_stack: list[_HeadingFrame] = []
 
     @property
     def text(self) -> str:
@@ -67,6 +84,10 @@ class _VisibleStreamParser(HTMLParser):
     @property
     def anchors(self) -> list[_AnchorOccurrence]:
         return self._anchors
+
+    @property
+    def headings(self) -> list[_HeadingOccurrence]:
+        return self._headings
 
     def _append(self, value: str) -> None:
         cleaned = _clean_text(value)
@@ -77,35 +98,58 @@ class _VisibleStreamParser(HTMLParser):
         self._length += len(prefix) + len(cleaned)
         if self._anchor_stack:
             self._anchor_stack[-1].parts.append(cleaned)
+        if self._heading_stack:
+            self._heading_stack[-1].parts.append(cleaned)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.casefold()
         if tag in {"script", "style", "noscript", "template"}:
             self._hidden_depth += 1
             return
-        if self._hidden_depth or tag != "a":
+        if self._hidden_depth:
             return
-        attributes = {key.casefold(): value or "" for key, value in attrs}
-        href = attributes.get("href")
-        if href:
-            self._anchor_stack.append(_AnchorFrame(href=href, start=self._length))
+
+        if tag in HEADING_TAGS:
+            self._heading_stack.append(_HeadingFrame(tag=tag, start=self._length))
+
+        if tag == "a":
+            attributes = {key.casefold(): value or "" for key, value in attrs}
+            href = attributes.get("href")
+            if href:
+                self._anchor_stack.append(_AnchorFrame(href=href, start=self._length))
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.casefold()
         if tag in {"script", "style", "noscript", "template"}:
             self._hidden_depth = max(0, self._hidden_depth - 1)
             return
-        if self._hidden_depth or tag != "a" or not self._anchor_stack:
+        if self._hidden_depth:
             return
-        frame = self._anchor_stack.pop()
-        self._anchors.append(
-            _AnchorOccurrence(
-                href=frame.href,
-                text=_clean_text(" ".join(frame.parts)),
-                start=frame.start,
-                end=self._length,
+
+        if tag == "a" and self._anchor_stack:
+            frame = self._anchor_stack.pop()
+            self._anchors.append(
+                _AnchorOccurrence(
+                    href=frame.href,
+                    text=_clean_text(" ".join(frame.parts)),
+                    start=frame.start,
+                    end=self._length,
+                )
             )
-        )
+
+        if tag in HEADING_TAGS and self._heading_stack:
+            for index in range(len(self._heading_stack) - 1, -1, -1):
+                if self._heading_stack[index].tag != tag:
+                    continue
+                frame = self._heading_stack.pop(index)
+                self._headings.append(
+                    _HeadingOccurrence(
+                        text=_clean_text(" ".join(frame.parts)),
+                        start=frame.start,
+                        end=self._length,
+                    )
+                )
+                break
 
     def handle_data(self, data: str) -> None:
         if not self._hidden_depth:
@@ -156,22 +200,27 @@ class ImmmoPage:
         self.cards_parsed = cards_parsed
 
 
-def _first_original_anchor(
+def _select_original_anchor(
     anchors: list[_AnchorOccurrence],
     *,
     segment_start: int,
     segment_end: int,
     page_url: str,
 ) -> tuple[_AnchorOccurrence, str] | None:
+    fallback: tuple[_AnchorOccurrence, str] | None = None
     for anchor in anchors:
         if anchor.start < segment_start:
             continue
         if anchor.start >= segment_end:
             break
         original_url = _canonical_external_url(anchor.href, page_url=page_url)
-        if original_url and _is_title_text(anchor.text):
+        if not original_url:
+            continue
+        if fallback is None:
+            fallback = (anchor, original_url)
+        if _is_title_text(anchor.text):
             return anchor, original_url
-    return None
+    return fallback
 
 
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
@@ -186,17 +235,26 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         reported_count = int(count_match.group("count").replace(".", ""))
         count_is_lower_bound = bool(count_match.group("lower"))
 
-    headings = list(HEADING_START_RE.finditer(page_text))
+    result_headings: list[tuple[_HeadingOccurrence, re.Match[str]]] = []
+    for heading in sorted(parser.headings, key=lambda item: item.start):
+        match = RESULT_HEADING_RE.match(heading.text)
+        if match is not None:
+            result_headings.append((heading, match))
+
     anchors = sorted(parser.anchors, key=lambda item: item.start)
     items_by_url: dict[str, RawProperty] = {}
     cards_parsed = 0
 
-    for index, heading in enumerate(headings):
-        segment_start = heading.start()
-        segment_end = headings[index + 1].start() if index + 1 < len(headings) else len(page_text)
-        chosen = _first_original_anchor(
+    for index, (heading, heading_match) in enumerate(result_headings):
+        segment_start = heading.start
+        segment_end = (
+            result_headings[index + 1][0].start
+            if index + 1 < len(result_headings)
+            else len(page_text)
+        )
+        chosen = _select_original_anchor(
             anchors,
-            segment_start=heading.end(),
+            segment_start=heading.end,
             segment_end=segment_end,
             page_url=page_url,
         )
@@ -212,17 +270,18 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             city = _clean_text(facts.group("city")).strip(" ,")
             living_area = _decimal(facts.group("area"))
         else:
-            postal_code = heading.group("plz")
-            city = _clean_text(page_text[heading.end() : anchor.start]).strip(" ,") or None
+            postal_code = heading_match.group("plz")
+            city = _clean_text(heading_match.group("city")).strip(" ,") or None
             living_area = None
 
         price_match = PRICE_RE.search(card_text)
         host = (urlparse(original_url).hostname or "").casefold()
+        title = _clean_text(anchor.text) if _is_title_text(anchor.text) else heading.text
 
         items_by_url[original_url] = RawProperty(
             source_listing_id=_source_id(original_url),
             url=original_url,
-            title=_clean_text(anchor.text)[:500],
+            title=title[:500],
             description=None,
             price_eur=_decimal(price_match.group(1)) if price_match else None,
             living_area_m2=living_area,
@@ -230,10 +289,11 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v4",
+                "format": "immmo-search-discovery-v5",
                 "original_host": host,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
+                "source_heading_kind": _clean_text(heading_match.group("kind")),
             },
         )
 
@@ -241,7 +301,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         list(items_by_url.values()),
         reported_count,
         count_is_lower_bound,
-        len(headings),
+        len(result_headings),
         cards_parsed,
     )
 
