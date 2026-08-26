@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -229,6 +229,19 @@ def _previous_ok_reconciliation(session: Session, run: CrawlRun) -> CrawlRun | N
     )
 
 
+def _stable_property_identity() -> tuple:
+    """Treat legacy rows as stable except known IMMMO synthetic fallback identities."""
+    identity_stable = func.coalesce(
+        PropertyListing.raw_payload.op("->>")("identity_stable"),
+        "true",
+    )
+    original_url_missing = func.coalesce(
+        PropertyListing.raw_payload.op("->>")("original_url_missing"),
+        "false",
+    )
+    return identity_stable != "false", original_url_missing != "true"
+
+
 def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, int]:
     """Deactivate only listings confirmed absent across consecutive complete scans.
 
@@ -237,6 +250,10 @@ def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, in
     enough to deactivate a listing. A listing is deactivated only when it is unseen in
     the current complete scan and has not been seen since before the previous complete
     reconciliation began. Incremental sightings between full scans keep it active.
+
+    Synthetic fallback identities are deliberately excluded from automatic deactivation:
+    their fingerprint contains mutable card metadata, so an upstream price/title change
+    can legitimately produce a different synthetic ID even when the property still exists.
     """
     if run.mode != CrawlMode.RECONCILIATION or run.coverage_status != CoverageStatus.OK:
         return 0, 0
@@ -256,6 +273,7 @@ def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, in
             PropertyListing.status == ListingStatus.ACTIVE,
             PropertyListing.last_seen_crawl_run_id.is_distinct_from(run.id),
             PropertyListing.last_seen_at < confirmed_absence_cutoff,
+            *_stable_property_identity(),
         )
         .values(status=ListingStatus.INACTIVE, inactive_at=now)
     )
