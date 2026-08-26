@@ -10,13 +10,37 @@ See `docs/acquisition.md` for shard, incremental scan, cap detection and reconci
 
 WohnWerk should combine independent layers rather than depend on one portal:
 
-1. large Austrian portals;
-2. regional portals;
-3. direct broker and broker-network sites;
-4. structured broker feeds and APIs (OpenImmo, Justimmo and similar) where access is available;
-5. saved-search notifications only as a supplemental low-latency signal.
+1. a high-recall public meta-search discovery layer;
+2. large Austrian portals where a suitable acquisition path exists;
+3. regional portals;
+4. direct broker and broker-network sites;
+5. structured broker feeds and APIs (OpenImmo, Justimmo and similar) where access is available;
+6. saved-search notifications only as a supplemental low-latency signal.
 
 Cross-source duplicates remain distinct source listings underneath a later canonical property entity.
+
+### IMMMO meta-search discovery
+
+`immmo.at` is a live Austrian meta-search engine for third-party property offers. Its public house-for-sale result pages expose enough discovery metadata to retain a minimal local index: title, original external listing URL, price, PLZ/city and living area, with plot area sometimes recoverable from the visible result snippet.
+
+The Austria-wide `Haus-kaufen` result is larger than the site's visible 12,000-result boundary, so WohnWerk must never treat that single search as complete. The adapter partitions discovery by all nine Bundeslaender. Current state-level result counts fit below the page ceiling and can therefore be reconciled independently.
+
+WohnWerk treats IMMMO as a discovery index rather than republishing it: it stores normalized metadata and the original third-party URL, not a local copy of IMMMO descriptions. Its current Nutzungsbedingungen prohibit abusive, commercial and republication uses but do not state a general prohibition on automated access. The WohnWerk adapter remains low-rate and private/self-hosted; source terms must be re-reviewed if the deployment model changes.
+
+Operational safeguards specific to this adapter:
+
+- all nine Bundesland shards must complete for authoritative reconciliation;
+- off-domain redirects are failures rather than empty successful scans;
+- a missing result count or zero parsed cards on a non-empty result page is a failure;
+- a lower-bound/capped result count is `DEGRADED` and cannot reconcile;
+- reconciliation checks parsed unique-listing count against the source-reported count;
+- only minimal discovery metadata is retained.
+
+### Retired / unsuitable discovery sources
+
+`immoads.at` was evaluated and an adapter prototype was tested on 2026-08-26. A live smoke run returned zero listings because the former property routes now redirect to `oe24.at`; older ImmoAds property/search pages visible in search-engine caches are stale. The adapter was removed rather than kept as misleading dead code. The failed/partial crawl run may remain in the production crawl history as an audit record, but the `immoads.at` source should be disabled.
+
+IMMOunited is useful as a market-size/coverage benchmark, but its current terms explicitly prohibit automated bot/script access and automated crawling/scraping/caching, so it is not a direct WohnWerk crawler backend without separate authorization.
 
 ### Large portals
 
@@ -56,7 +80,7 @@ AMS describes `alle jobs` as a search engine covering free positions throughout 
 - AMS eJob-Room vacancies;
 - vacancies discovered on websites of employers/institutions active in Austria;
 - federal/state public administration vacancies;
-- selected German Bundesagentur für Arbeit listings.
+- selected German Bundesagentur fuer Arbeit listings.
 
 That makes AMS a high-recall anchor, but it is not assumed to be an unrestricted public bulk-download API. The adapter must use a suitable supported/public acquisition path.
 
