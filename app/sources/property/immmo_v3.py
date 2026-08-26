@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from decimal import Decimal
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,13 +20,13 @@ from app.sources.property.immmo import (
 from app.sources.property.immmo_v2 import (
     RESULT_HEADING_RE,
     ImmmoPage,
-    ImmmoPropertySource as _ImmmoPropertySourceV2,
     _AnchorOccurrence,
-    _VisibleStreamParser,
     _is_title_text,
     _pagination_state,
     _plot_area,
+    _VisibleStreamParser,
 )
+from app.sources.property.immmo_v2 import ImmmoPropertySource as _ImmmoPropertySourceV2
 
 
 def _choose_card_anchor(
@@ -75,10 +75,6 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
     parser = _VisibleStreamParser()
     parser.feed(html)
     page_text = parser.text
-
-    # Reuse v2's live-count parsing through its public page parser only for count
-    # semantics would repeat all card work, so parse the compact pattern locally.
-    import re
 
     count_match = re.search(
         r"\d+\s+bis\s+\d+\s+von\s+(?P<lower>mehr\s+als\s+)?(?P<count>[\d.]+)",
