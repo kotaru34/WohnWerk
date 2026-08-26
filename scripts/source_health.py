@@ -101,10 +101,15 @@ def main() -> None:
                 for shard_key, row in shard_rows:
                     cursor = row.next_cursor or {}
                     cards = cursor.get("discovery_cards_seen")
-                    card_text = f" cards={cards}" if cards is not None else ""
+                    parsed = cursor.get("discovery_cards_parsed")
+                    coverage_bits = ""
+                    if cards is not None:
+                        coverage_bits += f" cards={cards}"
+                    if parsed is not None:
+                        coverage_bits += f" parsed={parsed}"
                     print(
                         f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
-                        f"seen={row.items_seen}{card_text} reported={row.source_reported_count} "
+                        f"seen={row.items_seen}{coverage_bits} reported={row.source_reported_count} "
                         f"complete={'yes' if row.coverage_complete else 'no'} "
                         f"cap={'yes' if row.result_cap_hit else 'no'}"
                     )
