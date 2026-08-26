@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 
 @dataclass(slots=True)
@@ -40,14 +40,45 @@ class RawJob:
     raw_payload: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class SourceShardSpec:
+    key: str
+    params: dict[str, Any] = field(default_factory=dict)
+    result_cap: int | None = None
+    priority: int = 100
+
+
+T = TypeVar("T")
+
+
+@dataclass(slots=True)
+class SourceBatch(Generic[T]):
+    items: list[T]
+    next_cursor: dict[str, Any] = field(default_factory=dict)
+    source_reported_count: int | None = None
+    coverage_complete: bool = False
+    result_cap_hit: bool = False
+    pages_fetched: int = 1
+
+
 class PropertySource(ABC):
     """Contract implemented by every Austrian property source adapter."""
 
     name: str
 
     @abstractmethod
-    async def fetch_recent(self) -> list[RawProperty]:
-        """Return newly discoverable/recent listings according to source policy."""
+    def default_shards(self) -> list[SourceShardSpec]:
+        """Return a deterministic initial partition of the source search space."""
+
+    @abstractmethod
+    async def fetch_shard(
+        self,
+        shard: SourceShardSpec,
+        *,
+        cursor: dict[str, Any] | None = None,
+        reconciliation: bool = False,
+    ) -> SourceBatch[RawProperty]:
+        """Fetch one shard and report whether coverage is actually complete."""
 
     async def check_active(self, source_listing_id: str) -> bool | None:
         """Return True/False when status can be checked safely, otherwise None."""
@@ -60,8 +91,18 @@ class JobSource(ABC):
     name: str
 
     @abstractmethod
-    async def fetch_recent(self) -> list[RawJob]:
-        """Return newly discoverable/recent vacancies according to source policy."""
+    def default_shards(self) -> list[SourceShardSpec]:
+        """Return a deterministic initial partition of the source search space."""
+
+    @abstractmethod
+    async def fetch_shard(
+        self,
+        shard: SourceShardSpec,
+        *,
+        cursor: dict[str, Any] | None = None,
+        reconciliation: bool = False,
+    ) -> SourceBatch[RawJob]:
+        """Fetch one shard and report whether coverage is actually complete."""
 
     async def check_active(self, source_listing_id: str) -> bool | None:
         """Return True/False when status can be checked safely, otherwise None."""
