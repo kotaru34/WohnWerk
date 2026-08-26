@@ -52,7 +52,10 @@ def main() -> None:
                 .limit(1)
             )
 
-            print(f"{source.name} [{source.category}] coverage={source.coverage_status}")
+            state = "enabled" if source.enabled else "disabled"
+            print(
+                f"{source.name} [{source.category}] {state} coverage={source.coverage_status}"
+            )
             print(
                 f"  shards={shard_total} unhealthy_shards={shard_failures} "
                 f"incremental={_age(source.last_incremental_at)} "
@@ -63,18 +66,17 @@ def main() -> None:
                 print("  latest_run=never")
                 continue
 
-            incomplete = session.scalar(
-                select(func.count()).select_from(CrawlShardRun).where(
-                    CrawlShardRun.crawl_run_id == latest_run.id,
-                    CrawlShardRun.status != RunStatus.SUCCESS,
+            shard_rows = list(
+                session.execute(
+                    select(SourceShard.key, CrawlShardRun)
+                    .join(CrawlShardRun, CrawlShardRun.shard_id == SourceShard.id)
+                    .where(CrawlShardRun.crawl_run_id == latest_run.id)
+                    .order_by(SourceShard.key)
                 )
-            ) or 0
-            cap_hits = session.scalar(
-                select(func.count()).select_from(CrawlShardRun).where(
-                    CrawlShardRun.crawl_run_id == latest_run.id,
-                    CrawlShardRun.result_cap_hit.is_(True),
-                )
-            ) or 0
+            )
+            incomplete = sum(row.status != RunStatus.SUCCESS for _, row in shard_rows)
+            cap_hits = sum(row.result_cap_hit for _, row in shard_rows)
+
             print(
                 f"  latest_run={latest_run.id} mode={latest_run.mode} status={latest_run.status} "
                 f"coverage={latest_run.coverage_status} seen={latest_run.items_seen} "
@@ -86,25 +88,26 @@ def main() -> None:
                 f"{latest_run.shards_total} incomplete={incomplete} cap_hits={cap_hits}"
             )
 
-            failures = list(
-                session.execute(
-                    select(SourceShard.key, CrawlShardRun.error)
-                    .join(CrawlShardRun, CrawlShardRun.shard_id == SourceShard.id)
-                    .where(
-                        CrawlShardRun.crawl_run_id == latest_run.id,
-                        CrawlShardRun.status == RunStatus.FAILED,
-                    )
-                    .order_by(SourceShard.key)
-                    .limit(5)
-                )
-            )
-            for shard_key, error in failures:
+            failures = [(key, row.error) for key, row in shard_rows if row.status == RunStatus.FAILED]
+            for shard_key, error in failures[:5]:
                 compact = " ".join((error or "unknown error").split())
                 if len(compact) > 220:
                     compact = compact[:217] + "..."
                 print(f"  error[{shard_key}]={compact}")
-            if incomplete > len(failures):
-                print(f"  ... {incomplete - len(failures)} more incomplete shard(s)")
+            if len(failures) > 5:
+                print(f"  ... {len(failures) - 5} more incomplete shard(s)")
+
+            if source.enabled:
+                for shard_key, row in shard_rows:
+                    cursor = row.next_cursor or {}
+                    cards = cursor.get("discovery_cards_seen")
+                    card_text = f" cards={cards}" if cards is not None else ""
+                    print(
+                        f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
+                        f"seen={row.items_seen}{card_text} reported={row.source_reported_count} "
+                        f"complete={'yes' if row.coverage_complete else 'no'} "
+                        f"cap={'yes' if row.result_cap_hit else 'no'}"
+                    )
 
 
 if __name__ == "__main__":
