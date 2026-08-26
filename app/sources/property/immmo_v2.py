@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 import math
 import random
+import re
+from dataclasses import dataclass, field
+from decimal import Decimal
+from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
 
@@ -21,13 +25,100 @@ from app.sources.property.immmo import (
     _canonical_external_url,
     _clean_text,
     _decimal,
-    _DOMParser,
-    _Node,
     _source_id,
 )
 
+HEADING_BEFORE_RE = re.compile(
+    r"Haus\s+kaufen\s+in\s+(?P<plz>\d{4})\s+(?P<city>[^€]{1,100}?)\s*$",
+    re.IGNORECASE,
+)
+NEXT_HEADING_RE = re.compile(r"\bHaus\s+kaufen\s+in\s+\d{4}\s+", re.IGNORECASE)
 
-def _plot_area(text: str):
+
+@dataclass(frozen=True, slots=True)
+class _AnchorOccurrence:
+    href: str
+    text: str
+    start: int
+    end: int
+
+
+@dataclass(slots=True)
+class _AnchorFrame:
+    href: str
+    start: int
+    parts: list[str] = field(default_factory=list)
+
+
+class _VisibleStreamParser(HTMLParser):
+    """Keep visible text order plus anchor offsets without trusting DOM nesting.
+
+    IMMMO result markup is not consistent enough across result pages for an
+    ancestor-based card parser. The user-visible order, however, is stable:
+    heading -> original listing link -> price -> PLZ/area facts -> description.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._chunks: list[str] = []
+        self._length = 0
+        self._hidden_depth = 0
+        self._anchors: list[_AnchorOccurrence] = []
+        self._anchor_stack: list[_AnchorFrame] = []
+
+    @property
+    def text(self) -> str:
+        return "".join(self._chunks)
+
+    @property
+    def anchors(self) -> list[_AnchorOccurrence]:
+        return self._anchors
+
+    def _append(self, value: str) -> None:
+        cleaned = _clean_text(value)
+        if not cleaned:
+            return
+        prefix = " " if self._length else ""
+        self._chunks.append(prefix + cleaned)
+        self._length += len(prefix) + len(cleaned)
+        if self._anchor_stack:
+            self._anchor_stack[-1].parts.append(cleaned)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.casefold()
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden_depth += 1
+            return
+        if self._hidden_depth or tag != "a":
+            return
+        attributes = {key.casefold(): value or "" for key, value in attrs}
+        href = attributes.get("href")
+        if href:
+            self._anchor_stack.append(_AnchorFrame(href=href, start=self._length))
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.casefold()
+        if tag in {"script", "style", "noscript", "template"}:
+            self._hidden_depth = max(0, self._hidden_depth - 1)
+            return
+        if self._hidden_depth or tag != "a" or not self._anchor_stack:
+            return
+        frame = self._anchor_stack.pop()
+        self._anchors.append(
+            _AnchorOccurrence(
+                href=frame.href,
+                text=_clean_text(" ".join(frame.parts)),
+                start=frame.start,
+                end=self._length,
+            )
+        )
+
+    def handle_data(self, data: str) -> None:
+        if not self._hidden_depth:
+            self._append(data)
+
+
+def _plot_area(text: str) -> Decimal | None:
     for pattern in PLOT_PATTERNS:
         match = pattern.search(text)
         if match:
@@ -47,69 +138,24 @@ def _is_title_text(text: str) -> bool:
     return not any(hostish == host.removeprefix("www.") for host in IGNORED_EXTERNAL_HOSTS)
 
 
-def _card_for_external_anchor(anchor: _Node) -> tuple[_Node, Any] | None:
-    """Find the smallest ancestor containing exactly one IMMMO facts row.
-
-    The live IMMMO layout nests the original-link anchor separately from the
-    PLZ/area facts row, so stopping at an arbitrary short parent loses metadata.
-    A single facts row is a more stable card boundary than CSS classes or heading tags.
-    """
-    node = anchor.parent
-    fallback: tuple[_Node, Any] | None = None
-    for _ in range(16):
-        if node is None or node.tag == "document":
-            break
-        text = node.text()
-        matches = list(LOCATION_AREA_RE.finditer(text))
-        if len(matches) == 1:
-            fallback = (node, matches[0])
-            if PRICE_RE.search(text):
-                return fallback
-        elif len(matches) > 1:
-            break
-        node = node.parent
-    return fallback
-
-
-def _best_title(card: _Node, *, page_url: str, original_url: str) -> str:
-    candidates: list[str] = []
-    for node in card.walk():
-        if node.tag != "a":
-            continue
-        href = node.attrs.get("href")
-        if not href:
-            continue
-        url = _canonical_external_url(href, page_url=page_url)
-        if url != original_url:
-            continue
-        text = _clean_text(node.text())
-        if _is_title_text(text):
-            candidates.append(text)
-    if candidates:
-        return max(candidates, key=len)[:500]
-
-    text = card.text()
-    price = PRICE_RE.search(text)
-    if price:
-        prefix = text[: price.start()].strip()
-        if len(prefix) >= 8:
-            return prefix[-500:]
-    return "Haus zum Kauf"
-
-
 class ImmmoPage:
     __slots__ = ("count_is_lower_bound", "items", "reported_count")
 
-    def __init__(self, items: list[RawProperty], reported_count: int | None, count_is_lower_bound: bool):
+    def __init__(
+        self,
+        items: list[RawProperty],
+        reported_count: int | None,
+        count_is_lower_bound: bool,
+    ) -> None:
         self.items = items
         self.reported_count = reported_count
         self.count_is_lower_bound = count_is_lower_bound
 
 
 def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
-    parser = _DOMParser()
+    parser = _VisibleStreamParser()
     parser.feed(html)
-    page_text = parser.root.text()
+    page_text = parser.text
 
     count_match = COUNT_RE.search(page_text)
     reported_count = None
@@ -119,62 +165,81 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         count_is_lower_bound = bool(count_match.group("lower"))
 
     items_by_url: dict[str, RawProperty] = {}
-    for anchor in parser.root.walk():
-        if anchor.tag != "a":
-            continue
-        href = anchor.attrs.get("href")
-        if not href:
-            continue
-        original_url = _canonical_external_url(href, page_url=page_url)
-        if not original_url:
+
+    for anchor in parser.anchors:
+        original_url = _canonical_external_url(anchor.href, page_url=page_url)
+        if not original_url or not _is_title_text(anchor.text):
             continue
 
-        card_info = _card_for_external_anchor(anchor)
-        if card_info is None:
+        before_start = max(0, anchor.start - 240)
+        before = page_text[before_start : anchor.start]
+        heading = HEADING_BEFORE_RE.search(before)
+        if heading is None:
+            # Repeated tag/description links point to the same original URL too,
+            # but only the title link immediately follows "Haus kaufen in ...".
             continue
-        card, facts = card_info
-        text = card.text()
 
-        postal_code = facts.group("plz")
-        city = _clean_text(facts.group("city")).strip(" ,")
-        living_area = _decimal(facts.group("area"))
-        price_match = PRICE_RE.search(text)
+        card_start = before_start + heading.start()
+        next_heading = NEXT_HEADING_RE.search(page_text, anchor.end)
+        card_end = next_heading.start() if next_heading else min(len(page_text), anchor.end + 12000)
+        card_text = page_text[card_start:card_end]
+
+        facts = LOCATION_AREA_RE.search(card_text)
+        if facts is not None:
+            postal_code = facts.group("plz")
+            city = _clean_text(facts.group("city")).strip(" ,")
+            living_area = _decimal(facts.group("area"))
+        else:
+            postal_code = heading.group("plz")
+            city = _clean_text(heading.group("city")).strip(" ,")
+            living_area = None
+
+        price_match = PRICE_RE.search(card_text)
         host = (urlparse(original_url).hostname or "").casefold()
 
         items_by_url[original_url] = RawProperty(
             source_listing_id=_source_id(original_url),
             url=original_url,
-            title=_best_title(card, page_url=page_url, original_url=original_url),
+            title=_clean_text(anchor.text)[:500],
             description=None,
             price_eur=_decimal(price_match.group(1)) if price_match else None,
             living_area_m2=living_area,
-            plot_area_m2=_plot_area(text),
+            plot_area_m2=_plot_area(card_text),
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v2",
+                "format": "immmo-search-discovery-v3",
                 "original_host": host,
                 "discovery_url": page_url,
+                "source_postal_code": postal_code,
             },
         )
 
     return ImmmoPage(list(items_by_url.values()), reported_count, count_is_lower_bound)
 
 
-def _validate_page_quality(page: ImmmoPage, *, shard_key: str, page_number: int) -> None:
-    if page.reported_count is not None and page.reported_count > 0 and not page.items:
-        raise RuntimeError(
-            f"IMMMO returned zero parseable listings for shard {shard_key!r} page {page_number}"
-        )
-    if len(page.items) < 6:
+def _validate_page_quality(
+    page: ImmmoPage,
+    *,
+    shard_key: str,
+    page_number: int,
+    expected_items: int,
+) -> None:
+    if expected_items <= 0:
         return
 
-    with_plz = sum(item.postal_code is not None for item in page.items)
-    with_area = sum(item.living_area_m2 is not None for item in page.items)
-    if with_plz / len(page.items) < 0.80 or with_area / len(page.items) < 0.60:
+    minimum_items = max(1, math.ceil(expected_items * 0.75))
+    if len(page.items) < minimum_items:
         raise RuntimeError(
-            f"IMMMO metadata quality too low for shard {shard_key!r} page {page_number}: "
-            f"PLZ {with_plz}/{len(page.items)}, living_area {with_area}/{len(page.items)}"
+            f"IMMMO discovery coverage too low for shard {shard_key!r} page {page_number}: "
+            f"parsed {len(page.items)}/{expected_items} expected listings"
+        )
+
+    with_plz = sum(item.postal_code is not None for item in page.items)
+    if with_plz / len(page.items) < 0.90:
+        raise RuntimeError(
+            f"IMMMO location quality too low for shard {shard_key!r} page {page_number}: "
+            f"PLZ {with_plz}/{len(page.items)}"
         )
 
 
@@ -265,10 +330,17 @@ class ImmmoPropertySource(PropertySource):
             parsed = parse_immmo_search_page(first.text, page_url=str(first.url))
             if parsed.reported_count is None:
                 raise RuntimeError(f"IMMMO result count missing for shard {shard.key!r}")
-            _validate_page_quality(parsed, shard_key=shard.key, page_number=1)
 
             reported_count = parsed.reported_count
             count_is_lower_bound = parsed.count_is_lower_bound
+            expected_first = min(PAGE_SIZE, reported_count)
+            _validate_page_quality(
+                parsed,
+                shard_key=shard.key,
+                page_number=1,
+                expected_items=expected_first,
+            )
+
             items_by_id.update({item.source_listing_id: item for item in parsed.items})
             pages_fetched = 1
 
@@ -283,7 +355,14 @@ class ImmmoPropertySource(PropertySource):
                 await self._sleep()
                 response = await self._get(client, self._page_url(base_url, page_number))
                 page_data = parse_immmo_search_page(response.text, page_url=str(response.url))
-                _validate_page_quality(page_data, shard_key=shard.key, page_number=page_number)
+                remaining = max(0, reported_count - ((page_number - 1) * PAGE_SIZE))
+                expected_items = min(PAGE_SIZE, remaining)
+                _validate_page_quality(
+                    page_data,
+                    shard_key=shard.key,
+                    page_number=page_number,
+                    expected_items=expected_items,
+                )
                 items_by_id.update({item.source_listing_id: item for item in page_data.items})
                 pages_fetched += 1
 
