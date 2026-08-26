@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import ListingStatus, PostalCode, PropertyListing, Source
@@ -76,7 +77,7 @@ def _as_raw(listing: PropertyListing) -> RawProperty:
     )
 
 
-def _apply_enrichment(listing: PropertyListing, enriched: RawProperty) -> None:
+def _apply_enrichment(session: Session, listing: PropertyListing, enriched: RawProperty) -> None:
     property_row = listing.property
     if enriched.title:
         property_row.title = enriched.title
@@ -92,7 +93,7 @@ def _apply_enrichment(listing: PropertyListing, enriched: RawProperty) -> None:
         property_row.city = enriched.city
 
     if enriched.postal_code:
-        postal = listing._sa_instance_state.session.get(PostalCode, enriched.postal_code)
+        postal = session.get(PostalCode, enriched.postal_code)
         if postal is not None:
             property_row.postal_code = postal.postal_code
             property_row.location = postal.location
@@ -138,7 +139,7 @@ async def async_main() -> int:
                     response = await _get(client, listing.url)
                     detail = parse_sreal_detail_page(response.text, page_url=str(response.url))
                     enriched = enrich_sreal_property(_as_raw(listing), detail)
-                    _apply_enrichment(listing, enriched)
+                    _apply_enrichment(session, listing, enriched)
                     succeeded += 1
                 except (httpx.HTTPError, RuntimeError, ValueError) as exc:
                     payload = dict(listing.raw_payload or {})
