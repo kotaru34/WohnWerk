@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from app.sources.property.immmo import parse_immmo_search_page
 
-
 SEARCH_FIXTURE = """
 <html><body>
 <h1>Häuser zu kaufen in Niederösterreich</h1>
