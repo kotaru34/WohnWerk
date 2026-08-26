@@ -16,13 +16,13 @@ from app.sources.property.immmo import _clean_text, _decimal
 BASE_URL = "https://www.sreal.at"
 SEARCH_URL = f"{BASE_URL}/de/haeuser-kauf/angebot/10"
 DETAIL_PATH_RE = re.compile(r"^/de/immobilie/(?P<listing_id>[^/]+)/", re.IGNORECASE)
-FACTS_RE = re.compile(
-    r"\b(?P<plz>\d{4})\s+(?P<city>.+?)\s+"
+AREA_RE = re.compile(
     r"(?:(?:ab|ca\.)\s+)?(?P<area>[\d.]+(?:,\d+)?)\s*m(?:²|2)\s+"
     r"(?P<area_kind>Wohnfläche|Grundfläche|Nutzfläche)"
     r"(?:\s+(?:ab\s+)?(?P<price>[\d.]+(?:,\d+)?)\s*€\s*(?:Kaufpreis|Preis))?\s*$",
     re.IGNORECASE,
 )
+PLZ_RE = re.compile(r"\b(?P<plz>\d{4})\s+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +75,16 @@ class _AnchorParser(HTMLParser):
 
 
 @dataclass(frozen=True, slots=True)
+class _CardFacts:
+    title: str
+    postal_code: str
+    city: str
+    area: str
+    area_kind: str
+    price: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class SRealPage:
     items: list[RawProperty]
     max_page: int
@@ -109,6 +119,32 @@ def _max_page(anchors: list[_Anchor]) -> int:
     return max(pages)
 
 
+def _parse_card_facts(text: str) -> _CardFacts | None:
+    area_match = AREA_RE.search(text)
+    if area_match is None:
+        return None
+
+    prefix = _clean_text(text[: area_match.start()])
+    plz_matches = list(PLZ_RE.finditer(prefix))
+    if not plz_matches:
+        return None
+    location = plz_matches[-1]
+
+    title = _clean_text(prefix[: location.start()]).rstrip(" -–") or "Haus zum Kauf"
+    city = _clean_text(prefix[location.end() :]).strip(" ,")
+    if not city:
+        return None
+
+    return _CardFacts(
+        title=title,
+        postal_code=location.group("plz"),
+        city=city,
+        area=area_match.group("area"),
+        area_kind=area_match.group("area_kind"),
+        price=area_match.group("price"),
+    )
+
+
 def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
     parser = _AnchorParser()
     parser.feed(html)
@@ -123,31 +159,30 @@ def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
             continue
         cards_seen += 1
         url, listing_id = detail
-        facts = FACTS_RE.search(anchor.text)
+        facts = _parse_card_facts(anchor.text)
         if facts is None:
             continue
 
         cards_parsed += 1
-        title = _clean_text(anchor.text[: facts.start()]).rstrip(" -–") or "Haus zum Kauf"
-        area = _decimal(facts.group("area"))
-        area_kind = facts.group("area_kind").casefold()
-        price = _decimal(facts.group("price"))
+        area = _decimal(facts.area)
+        area_kind = facts.area_kind.casefold()
+        price = _decimal(facts.price)
 
         items_by_id[listing_id] = RawProperty(
             source_listing_id=listing_id,
             url=url,
-            title=title[:500],
+            title=facts.title[:500],
             description=None,
             price_eur=price,
             living_area_m2=area if area_kind == "wohnfläche" else None,
             plot_area_m2=area if area_kind == "grundfläche" else None,
-            postal_code=facts.group("plz"),
-            city=_clean_text(facts.group("city")).strip(" ,"),
+            postal_code=facts.postal_code,
+            city=facts.city,
             raw_payload={
                 "format": "sreal-search-discovery-v1",
                 "discovery_url": page_url,
-                "source_postal_code": facts.group("plz"),
-                "listed_area_kind": facts.group("area_kind"),
+                "source_postal_code": facts.postal_code,
+                "listed_area_kind": facts.area_kind,
                 "listed_area_m2": str(area) if area is not None else None,
             },
         )
