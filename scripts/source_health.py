@@ -102,6 +102,8 @@ def main() -> None:
                     cursor = row.next_cursor or {}
                     cards = cursor.get("discovery_cards_seen")
                     parsed = cursor.get("discovery_cards_parsed")
+                    synthetic = cursor.get("discovery_synthetic_cards")
+                    synthetic_tolerance = cursor.get("discovery_synthetic_tolerance")
                     latest_reported = cursor.get("discovery_latest_reported")
                     max_reported = cursor.get("discovery_max_reported")
                     target_pages = cursor.get("discovery_target_pages")
@@ -119,6 +121,10 @@ def main() -> None:
                         coverage_bits += f" cards={cards}"
                     if parsed is not None:
                         coverage_bits += f" parsed={parsed}"
+                    if synthetic is not None:
+                        coverage_bits += f" synthetic={synthetic}"
+                    if synthetic_tolerance is not None:
+                        coverage_bits += f" synthetic_tol={synthetic_tolerance}"
                     if latest_reported is not None:
                         coverage_bits += f" latest_reported={latest_reported}"
                     if max_reported is not None:
