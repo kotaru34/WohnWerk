@@ -44,28 +44,34 @@ def main() -> None:
         print(f"sreal_listings={sreal_total} detail_enriched={sreal_enriched}")
         print(f"immmo_sreal_exact_url_overlap={overlap_count}")
 
-        rows = list(
-            session.execute(
-                select(
-                    Property.id,
-                    Property.title,
-                    Property.postal_code,
-                    Property.city,
-                    func.array_agg(Source.name.order_by(Source.name)),
-                    func.array_agg(PropertyListing.url.order_by(Source.name)),
-                )
-                .join(PropertyListing, PropertyListing.property_id == Property.id)
-                .join(Source, Source.id == PropertyListing.source_id)
+        properties = list(
+            session.scalars(
+                select(Property)
                 .where(Property.id.in_(select(overlap_ids.c.property_id)))
-                .group_by(Property.id)
                 .order_by(Property.id)
                 .limit(20)
             )
         )
-        for property_id, title, postal_code, city, source_names, urls in rows:
-            location = " ".join(part for part in (postal_code, city) if part) or "unknown"
-            print(f"  property[{property_id}] {location} | {title}")
-            for source_name, url in zip(source_names, urls, strict=True):
+        for property_row in properties:
+            location = (
+                " ".join(
+                    part
+                    for part in (property_row.postal_code, property_row.city)
+                    if part
+                )
+                or "unknown"
+            )
+            print(f"  property[{property_row.id}] {location} | {property_row.title}")
+            listings = session.execute(
+                select(Source.name, PropertyListing.url)
+                .join(Source, Source.id == PropertyListing.source_id)
+                .where(
+                    PropertyListing.property_id == property_row.id,
+                    PropertyListing.source_id.in_([immmo.id, sreal.id]),
+                )
+                .order_by(Source.name)
+            )
+            for source_name, url in listings:
                 print(f"    {source_name}: {url}")
 
 
