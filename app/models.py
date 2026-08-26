@@ -34,6 +34,25 @@ class ListingStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CrawlMode(StrEnum):
+    INCREMENTAL = "incremental"
+    RECONCILIATION = "reconciliation"
+
+
+class RunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCESS = "success"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
+class CoverageStatus(StrEnum):
+    UNKNOWN = "unknown"
+    OK = "ok"
+    DEGRADED = "degraded"
+    FAILED = "failed"
+
+
 class Source(Base):
     __tablename__ = "sources"
 
@@ -45,6 +64,11 @@ class Source(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     poll_interval_minutes: Mapped[int] = mapped_column(Integer, default=360, nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    coverage_status: Mapped[str] = mapped_column(
+        String(20), default=CoverageStatus.UNKNOWN, nullable=False
+    )
+    last_incremental_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_reconciliation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
@@ -54,6 +78,95 @@ class Source(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class SourceShard(Base):
+    __tablename__ = "source_shards"
+    __table_args__ = (
+        UniqueConstraint("source_id", "key", name="uq_source_shards_source_key"),
+        Index("ix_source_shards_scheduler", "source_id", "enabled", "priority"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    params: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    cursor: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    result_cap: Mapped[int | None] = mapped_column(Integer)
+    last_item_count: Mapped[int | None] = mapped_column(Integer)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_full_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class CrawlRun(Base):
+    __tablename__ = "crawl_runs"
+    __table_args__ = (Index("ix_crawl_runs_source_started", "source_id", "started_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default=RunStatus.RUNNING, nullable=False)
+    coverage_status: Mapped[str] = mapped_column(
+        String(20), default=CoverageStatus.UNKNOWN, nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    shards_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    shards_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    shards_failed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    pages_fetched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_new: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_disappeared: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source_reported_count: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+    run_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+
+class CrawlShardRun(Base):
+    __tablename__ = "crawl_shard_runs"
+    __table_args__ = (
+        UniqueConstraint("crawl_run_id", "shard_id", name="uq_crawl_shard_runs_run_shard"),
+        Index("ix_crawl_shard_runs_status", "crawl_run_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    crawl_run_id: Mapped[int] = mapped_column(
+        ForeignKey("crawl_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    shard_id: Mapped[int] = mapped_column(
+        ForeignKey("source_shards.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), default=RunStatus.RUNNING, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pages_fetched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_new: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    items_updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    source_reported_count: Mapped[int | None] = mapped_column(Integer)
+    result_cap_hit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    coverage_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    next_cursor: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
 
 
 class PostalCode(Base):
@@ -124,6 +237,9 @@ class PropertyListing(Base):
     url: Mapped[str] = mapped_column(String(1200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=ListingStatus.ACTIVE, nullable=False)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB)
+    last_seen_crawl_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crawl_runs.id", ondelete="SET NULL"), index=True
+    )
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -143,7 +259,6 @@ class Job(Base):
     company: Mapped[str | None] = mapped_column(String(300), index=True)
     description: Mapped[str | None] = mapped_column(Text)
 
-    # Normalized gross annual figures when the source data allows normalization.
     salary_min_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     salary_max_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     salary_text: Mapped[str | None] = mapped_column(String(500))
@@ -185,6 +300,9 @@ class JobListing(Base):
     url: Mapped[str] = mapped_column(String(1200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=ListingStatus.ACTIVE, nullable=False)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB)
+    last_seen_crawl_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("crawl_runs.id", ondelete="SET NULL"), index=True
+    )
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
