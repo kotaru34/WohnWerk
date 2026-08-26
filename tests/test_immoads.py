@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from app.sources.property.immoads import parse_immoads_detail, parse_immoads_search_page
 
-
 SEARCH_FIXTURE = """
 <html><body>
 <h1>Haus kaufen in Österreich</h1>
