@@ -1,0 +1,1 @@
+"""Austrian property source adapters."""
