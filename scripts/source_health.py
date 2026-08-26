@@ -103,6 +103,12 @@ def main() -> None:
                     cards = cursor.get("discovery_cards_seen")
                     parsed = cursor.get("discovery_cards_parsed")
                     latest_reported = cursor.get("discovery_latest_reported")
+                    max_reported = cursor.get("discovery_max_reported")
+                    target_pages = cursor.get("discovery_target_pages")
+                    traversal = cursor.get("discovery_traversal_complete")
+                    failed_page = cursor.get("discovery_failed_page")
+                    failed_cards = cursor.get("discovery_failed_page_cards_seen")
+                    failed_parsed = cursor.get("discovery_failed_page_cards_parsed")
                     max_page = cursor.get("discovery_observed_max_page")
                     terminal = cursor.get("discovery_terminal_reached")
                     count_delta = cursor.get("discovery_count_delta")
@@ -115,6 +121,16 @@ def main() -> None:
                         coverage_bits += f" parsed={parsed}"
                     if latest_reported is not None:
                         coverage_bits += f" latest_reported={latest_reported}"
+                    if max_reported is not None:
+                        coverage_bits += f" max_reported={max_reported}"
+                    if target_pages is not None:
+                        coverage_bits += f" target_pages={target_pages}"
+                    if traversal is not None:
+                        coverage_bits += f" traversal={'yes' if traversal else 'no'}"
+                    if failed_page is not None:
+                        coverage_bits += f" failed_page={failed_page}"
+                    if failed_cards is not None or failed_parsed is not None:
+                        coverage_bits += f" failed_cards={failed_parsed}/{failed_cards}"
                     if max_page is not None:
                         coverage_bits += f" max_page={max_page}"
                     if terminal is not None:
