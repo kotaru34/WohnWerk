@@ -1,5 +1,6 @@
-from app.sources.property.immmo_v3 import parse_immmo_search_page
+from decimal import Decimal
 
+from app.sources.property.immmo_v3 import parse_immmo_search_page
 
 WRAPPED_CARD_FIXTURE = """
 <html><body>
@@ -45,14 +46,14 @@ def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
     wrapped = next(item for item in page.items if item.url.endswith("/wrapped-object"))
     assert wrapped.postal_code == "3100"
     assert wrapped.city == "St. Pölten"
-    assert wrapped.living_area_m2 == 145
-    assert wrapped.price_eur == 449000
+    assert wrapped.living_area_m2 == Decimal(145)
+    assert wrapped.price_eur == Decimal(449000)
     assert wrapped.raw_payload["original_url_missing"] is False
 
     synthetic = next(item for item in page.items if item.postal_code == "7000")
     assert "/wohnwerk-fallback/" in synthetic.url
     assert synthetic.title == "Linkloses Haus mit Innenhof"
-    assert synthetic.living_area_m2 == 110
+    assert synthetic.living_area_m2 == Decimal(110)
     assert synthetic.raw_payload["original_url_missing"] is True
 
 
