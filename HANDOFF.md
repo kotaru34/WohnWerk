@@ -43,181 +43,155 @@ Calibration remains run #22:
 - all relevant locations resolved.
 - disappeared=0.
 
-Expand Lever after the current Personio scaling step; do not micro-calibrate bootstrap tenants.
+Expand Lever after Personio scale; do not micro-calibrate bootstrap tenants.
 
 ## SmartRecruiters — correctness phase closed
 
-### Liveness
+Production liveness audit previously checked 43 relevant-active rows: 43/43 live-confirmed, zero dead/unknown and zero missing apply URLs. Age alone never means closure.
 
-Production liveness audit checked 43 relevant-active rows:
-
-- live_confirmed: 43/43
-- dead: 0
-- unknown: 0
-- missing apply URL: 0
-
-Keep liveness independent; age alone never means closure.
-
-### Stable republish identity
-
-Canonical source-backed identity:
+Canonical republish identity is source-backed as:
 
 `smartrecruiters:{tenant}:jobad:{jobAdId}`
 
-Public posting IDs remain separate lifecycle rows.
+Production repair backfilled 56 identities, merged two clear Anton Paar republish canonical duplicates and reassigned two source listings. Post-apply audit reported zero missing identities and zero duplicate identity groups.
 
-Production repair:
-
-- 56/56 legacy rows had derivable identity
-- 2 duplicate canonical groups, both clear Anton Paar republishes
-- identity_backfilled=56
-- merged_jobs=2
-- reassigned_listings=2
-- post-apply audit: needs_identity_backfill=0, duplicate_identity_groups=0
-
-No schema migration required.
-
-### Reconciliation #33
+Latest production reconciliation #33:
 
 - success / coverage OK / 15 of 15 shards
 - source_reported=411
 - seen relevant=42, new=1, updated=41
 - disappeared source listings=4
 - listings_total=57, source_active=53
-- relevant_active_listings=42, relevant_active_canonical_jobs=42
+- relevant_active_listings=42 / canonical jobs=42
 - relevant locations=42, geo_resolved=41
 
-Remaining regional scope:
+Remaining regional scope `Standort: Tirol (Außendienst & Homeoffice), Tirol, Austria` intentionally remains non-point.
 
-`Standort: Tirol (Außendienst & Homeoffice), Tirol, Austria`
+## Discovery gate v14
 
-Do not invent a city/PLZ for it.
+Current version: `profile-seed-2026-08-28-v14`.
 
-## Discovery gate v13 — production confirmed
+### v13 — production-confirmed generic parity
 
-Current version: `profile-seed-2026-08-28-v13`.
+v13 added/fixed:
 
-Generic v13 changes:
+- Gebäudetechnik / HKLS / TGA / HVAC support;
+- adjacent Field Service Manager;
+- adjacent Produktionsleiter/Fertigungsleiter/production/manufacturing manager with technical evidence;
+- compound German `*fertigung*` support;
+- HR/recruiting body boilerplate no longer blocks an otherwise technical job unless HR semantics are in the title;
+- hard KFZ-Mechatroniker/KFZ-Techniker workshop-trade exclusion;
+- Intern/Internship remains structural exclusion while `internal` / `international` are unaffected.
 
-- building-services support: Gebäudetechnik / HKLS / TGA / HVAC / building services/systems
-- adjacent Field Service Manager
-- adjacent Produktionsleiter/Fertigungsleiter/production/manufacturing manager with technical evidence
-- compound German `*fertigung*` support
-- HR/recruiting body boilerplate stays visible in audit evidence but does not block a technical match unless HR semantics are in the title
-- hard workshop-trade exclusion for KFZ-Mechatroniker/KFZ-Techniker/automotive mechanic/technician
-- prior Intern/Internship boundary fix remains; `internal` / `international` are not student-stage
+Production Personio #35 validated the intended behavior: Axess Field Service Manager and Produktionsleiter, IAKW HKLS and four Toyota Servicetechniker variants were retained; Denzel KFZ workshop roles were rejected.
 
-### Personio reconciliation #35 validates v13
+### v14 — narrow evidence correctness only
 
-Run #35 after ENPULSION import:
+Personio multilingual run #36 exposed `fem_fea` on unrelated Cloud/Business/Software/Product roles. Root cause was the old pattern `\b(?:fem|fea|finite element)\w*`, which could match EEO words such as `female`.
 
-- status=success, coverage=ok
-- shards=14/14
-- source_reported=215
-- current relevant seen=15
-- new=7, updated=8
-- disappeared=1
-- listings_total=21, source_active_listings=20
-- relevant_active_listings=15 / canonical jobs=15
-- relevant locations=15, geo_resolved=13, unresolved=2
+v14 changes only this generic evidence boundary:
 
-The intended v13 corrections happened in production:
+- standalone `FEM` / `FEA` still match;
+- `finite element` / `finite elements` still match;
+- `female` does not match FEM evidence.
 
-- Axess: `Field Service Manager` retained
-- Axess: `Produktionsleiter Gerätefertigung` retained
-- IAKW: `Ingenieur:in Gebäudetechnik / HKLS-Technik` retained
-- Toyota: four Servicetechniker regional/nationwide variants retained
-- Denzel: KFZ-Mechatroniker/KFZ-Techniker workshop roles structurally rejected
+Regression tests cover both sides. Do not interpret v14 as a candidate-personalization change.
 
-Therefore stop gate micro-calibration here unless a later corpus audit exposes a genuinely generic correctness bug.
+Stop gate micro-calibration unless a later broad-corpus audit exposes another genuinely generic correctness bug.
 
-## Personio — registry and acquisition
+## Personio — multilingual acquisition production-confirmed
 
 ### Registry / domains
 
 14 enabled tenants after ENPULSION import; legacy `isoplus-fwt-aut` remains disabled.
 
-Adapter tries current `*.jobs.personio.com` first and legacy `*.jobs.personio.de` fallback. Do not permanently pin a tenant to the old domain.
+Adapter tries current `*.jobs.personio.com` first and legacy `*.jobs.personio.de` fallback. Austria filtering requires a known Austrian locality or explicit Austria/Österreich evidence; four-digit PLZ alone is insufficient.
 
-Austria filtering requires a known Austrian locality or explicit Austria/Österreich evidence. Four-digit PLZ alone is insufficient (`8000 Zürich` regression).
+Initial candidate expansion registered 9/10 verified feeds; `optimuse` remained out after 404 on both domains. ENPULSION was subsequently verified and registered.
 
-### Candidate verification
+### DE + EN XML merge
 
-Initial expansion:
+Personio XML descriptions are language-specific. WohnWerk now fetches German and English XML for each healthy tenant domain and merges rows by stable Personio position ID:
 
-- first batch: 9/10 verified and registered
-- `optimuse`: 404 on both `.com` and `.de`, not inserted
-- ENPULSION: verified 8 source positions / 8 Austrian positions and registered
-- failed verification never auto-disables/removes a tenant
+- source listings/counts are not doubled;
+- German description is canonical primary when present;
+- English is primary only when German description is absent;
+- distinct translated description is supplemental `wohnwerk_discovery_extra_text` for discovery evidence;
+- raw payload records XML/description languages and primary description language;
+- verifier records both language capabilities and per-language source counts;
+- one language can fail without inventing source disappearance when another healthy feed still exposes the position IDs.
 
-### Multilingual XML correctness — implemented after run #35
+### Production reconciliation #36
 
-Run #35 exposed a source-data issue, not a gate issue. ENPULSION `Electrical Engineer` and `Test Engineer` appeared with zero technical support evidence even though their live public job pages contain rich engineering descriptions.
+Multilingual production proof:
 
-Root cause: WohnWerk fetched Personio XML only with `language=de`. Personio XML job-description fields are language-specific; English-default/English-only jobs can therefore lose their descriptions in the German feed.
+- status=success, coverage=ok
+- shards=14/14
+- pages=28 (DE + EN requests)
+- source_reported=215, unchanged rather than doubling
+- seen relevant=17
+- new=2, updated=15
+- disappeared=0
+- listings_total=23, source_active=22
+- relevant_active_listings/canonical_jobs=17
 
-Implemented fix:
+ENPULSION now has 3 relevant source jobs: Maintenance Engineer, Electrical Engineer and Test Engineer. Electrical/Test recovered only because their actual English descriptions were acquired; no generic Engineer promotion was added.
 
-- `PERSONIO_LANGUAGES = ("de", "en")`
-- every healthy Personio domain is fetched in German and English
-- rows are merged by stable Personio position/source-listing ID; source counts are not doubled
-- German description remains canonical primary when present
-- English description becomes primary only when German description is absent
-- additional translated descriptions are stored only as `wohnwerk_discovery_extra_text` and participate in discovery matching without forcing mixed-language canonical display text
-- `personio_xml_languages`, `personio_description_languages` and primary description language are recorded in raw payload
-- verifier also checks/records both DE and EN feeds
-- if one language transiently fails but the other feed remains healthy, source lifecycle coverage can still be complete because position IDs are present across the feed; language evidence remains observable
+This confirms the multilingual acquisition fix. Personio correctness/calibration is considered closed except for generic bugs.
 
-Official Personio documentation confirms that XML defaults to German and uses `?language=en` for English descriptions.
+## Location normalization cleanup after #36
 
-ENPULSION public pages independently confirm the missing-English-data issue:
+Run #36 proved the new Personio parser recognizes `Vienna` inside `Austria Center Vienna`, but an older canonical JobLocation row with city guess `Center Vienna` remained alongside the new resolved `wien` row because job-location enrichment treated the changed parser output as a second location.
 
-- Electrical Engineer: design/development/integration of high-reliability electronics, supplier coordination, verification/testing, series production, automotive/rail experience
-- Test Engineer: functional/environmental testing, test setups, qualification, mechanical/electrical systems
+Generic ingestion repair implemented:
 
-Do not solve these with generic-title promotion; recover the source descriptions instead.
+- identical human-readable source `location_text` + remote flag forms a conservative source-location identity for enrichment only;
+- when a newer parser interpretation resolves that same source label, an older unresolved city guess is upgraded in place;
+- if both resolved and stale-unresolved rows already exist, the stale unresolved duplicate is removed through the `delete-orphan` relationship;
+- no fuzzy city matching is used and locations with different source labels are never merged.
 
-### Location cleanup
+Regression tests cover both upgrade-in-place and cleanup of an already accumulated stale duplicate.
 
-`Vienna` was already an exact alias for `Wien`; Personio locality extraction now also detects the English locality token inside longer source labels such as `Austria Center Vienna`, preserving the original location text while resolving city geography to Wien.
-
-`österreichweit` is a legitimate nationwide scope and should remain non-point geography; do not invent a centroid/city merely to make unresolved counts zero.
-
-### CI
-
-Multilingual Personio adapter + supplemental discovery evidence + venue locality regression passed CI #290:
-
-- Ruff: success
-- Compile: success
-- Tests: 136 passed
+`österreichweit` remains deliberately non-point geography.
 
 ## Candidate personalization / future fit
 
-Candidate seed profile:
+Candidate seed CV:
 
 > Erfahrener Maschinenbauingenieur und technischer Projektleiter mit nahezu 30 Jahren Berufserfahrung in Produktentwicklung, mechanischer Konstruktion und technischer Projektsteuerung. Umfangreiche Erfahrung von der Konzept- und Anforderungsphase über Konstruktion, Berechnung und Validierung bis zur Serienreife - insbesondere in Maschinenbau, Fahrzeug- und Sonderfahrzeugbau, Schienenfahrzeugtechnik und Vorrichtungsbau. Erfahrung sowohl in klassischen als auch in agilen Entwicklungsprojekten, unter anderem mit zweiwöchigen Sprints und regelmäßigen Team- und Abstimmungsmeetings. Langjährige Praxis in fachlicher Teamführung, Lieferantenkoordination, Lasten-/Pflichtenheften, Terminsteuerung, FEM, FMEA sowie Versuch, Montage und Inbetriebnahme.
 
-Broad discovery is intentionally wider than personal preference. User feedback already confirmed professionally adjacent but personally undesirable roles (e.g. Kunststoffteile construction). Never narrow acquisition from that feedback.
+### Explicit candidate-fit clarification from user
+
+The candidate is fundamentally a **mechanical / Maschinenbau engineer**, not an electrical engineer. High-value fit concepts include mechanical construction/design, CAD, machine components/assemblies, control/mechanical elements, automotive parts/chassis/suspension-like components, vehicle/special-vehicle/rail work, product development, technical project work, suppliers, testing/validation and commissioning where mechanically relevant.
+
+Electrical engineering is explicitly outside his competence/interest. For future profile initialization treat `electrical_engineering` as an explicit strong negative (`cannot + not want`) unless the user later changes it. The same principle should strongly downrank electricity/electronics-centric roles such as pure Electrical Engineer; do **not** use that personal fact to narrow acquisition/discovery.
+
+Broad discovery can therefore legitimately keep an Electrical Engineer in the corpus while future candidate-fit ranks it near the bottom. This separation is intentional.
+
+Other previously stated examples such as Kunststoffteile construction may be professionally adjacent but personally undesirable; those likewise belong in candidate fit/preferences, not discovery taxonomy.
 
 Future design after corpus reaches hundreds→thousands relevant jobs:
 
-- normalized concepts by role/domain/task/method/tool/work condition
-- CV-seeded profile
-- German UI with independent `Können` and `Wollen`
-- explicit answers override CV inference
-- likely ordinal Wollen: Nein / Eher nein / Neutral / Eher ja / Ja
-- vacancy feedback: Interessant / Nicht interessant, optionally Warum nicht?
-- feedback adjusts candidate fit only, never discovery taxonomy
+- normalized concepts by role/domain/task/method/tool/work condition;
+- CV-seeded profile plus explicit known constraints;
+- German UI with independent `Können` and `Wollen`;
+- explicit answers override inference;
+- likely ordinal `Wollen`: Nein / Eher nein / Neutral / Eher ja / Ja;
+- vacancy feedback: Interessant / Nicht interessant, optionally Warum nicht?;
+- feedback adjusts candidate fit only, never discovery taxonomy.
+
+## CI checkpoint
+
+Runtime changes for multilingual Personio, stale location normalization repair and FEM/`female` boundary passed GitHub Actions CI #297 completely (Ruff, Compile, Tests).
 
 ## Immediate work order
 
-1. Pull current branch containing the multilingual Personio fix and run tests.
-2. Refresh ENPULSION verification evidence so registry records DE+EN capability.
-3. Reconcile Personio again.
-4. Run location backfill, Personio stats and rejection audit.
-5. Confirm whether ENPULSION Electrical Engineer and Test Engineer now receive their actual English technical evidence rather than zero-evidence rejection.
-6. Confirm `Austria Center Vienna` resolves to Wien; nationwide `österreichweit` may remain deliberately non-point.
-7. If this behaves as expected, treat Personio calibration/correctness as closed and continue tenant expansion without further gate tuning.
-8. Expand Lever after Personio scale.
-9. Add independent layers such as Greenhouse, Ashby, Workable and suitable employer/board sources.
-10. At corpus scale, implement concept normalization, German profile review, intrinsic fit and house/job recommendations.
+1. Pull current branch and run tests.
+2. Reconcile Personio once under gate v14; this reclassifies evidence with the FEM boundary fix and triggers stale source-location cleanup.
+3. Run location backfill and Personio stats/rejection audit.
+4. Confirm `Austria Center Vienna` has only the resolved Wien location and that `female`-boilerplate jobs no longer show `fem_fea` evidence.
+5. `österreichweit` and the SmartRecruiters Tirol regional scope may remain intentionally non-point.
+6. If confirmed, continue Personio tenant expansion prioritizing mechanical/CAD/product-development/technical-project employers rather than spending time on electrical-only employers.
+7. Expand Lever after Personio scale.
+8. Add independent Greenhouse/Ashby/Workable/employer-board layers.
+9. At corpus scale implement concept normalization, German profile review, intrinsic candidate fit and house/job recommendations.
