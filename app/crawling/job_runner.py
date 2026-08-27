@@ -15,6 +15,7 @@ from app.crawling.coverage import (
 from app.crawling.shards import sync_source_shards
 from app.ingestion.jobs import ingest_jobs, record_rejected_job_sightings
 from app.jobs.discovery import partition_job_candidates
+from app.jobs.tenant_registry import mark_tenant_verified
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import JobSource, RawJob, SourceFetchError
 
@@ -105,6 +106,12 @@ async def run_job_source(
             shard.last_item_count = len(candidate_items)
             shard.last_success_at = now
             shard.consecutive_failures = 0
+            mark_tenant_verified(
+                session,
+                source_id=source_id,
+                tenant_key=shard.key,
+                verified_at=now,
+            )
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
         except Exception as exc:
