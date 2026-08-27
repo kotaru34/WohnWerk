@@ -116,6 +116,9 @@ def main() -> None:
                     terminal = cursor.get("discovery_terminal_reached")
                     count_delta = cursor.get("discovery_count_delta")
                     count_tolerance = cursor.get("discovery_count_tolerance")
+                    candidates_fetched = cursor.get("job_candidates_fetched")
+                    candidates_accepted = cursor.get("job_candidates_accepted")
+                    candidates_rejected = cursor.get("job_candidates_rejected")
 
                     coverage_bits = ""
                     if cards is not None:
@@ -148,6 +151,12 @@ def main() -> None:
                         coverage_bits += f" delta={count_delta}"
                     if count_tolerance is not None:
                         coverage_bits += f" tolerance={count_tolerance}"
+                    if candidates_fetched is not None:
+                        coverage_bits += f" candidates={candidates_fetched}"
+                    if candidates_accepted is not None:
+                        coverage_bits += f" accepted={candidates_accepted}"
+                    if candidates_rejected is not None:
+                        coverage_bits += f" rejected={candidates_rejected}"
 
                     print(
                         f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
