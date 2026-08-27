@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Job, JobListing, JobLocation, ListingStatus, PostalCode, Source, CrawlRun
+from app.models import CrawlRun, Job, JobListing, JobLocation, ListingStatus, PostalCode, Source
 from app.sources.base import RawJob, RawJobLocation
 
 
