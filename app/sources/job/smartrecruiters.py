@@ -291,12 +291,12 @@ class SmartRecruitersJobSource(JobSource):
         ) as client:
             page_number = 0
             while True:
-                if page_number >= self.hard_max_pages:
-                    result_cap_hit = True
+                if page_number >= max_pages:
                     break
                 if not reconciliation and page_number >= self.incremental_pages:
                     break
-                if page_number >= max_pages:
+                if page_number >= self.hard_max_pages:
+                    result_cap_hit = True
                     break
 
                 try:
@@ -357,8 +357,6 @@ class SmartRecruitersJobSource(JobSource):
                     detail_succeeded += 1
 
                 page_number += 1
-                if page_number >= max_pages:
-                    break
 
         coverage_complete = (
             reconciliation
