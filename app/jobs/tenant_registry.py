@@ -23,7 +23,12 @@ def seed_tenants(
     source: Source,
     seeds: list[TenantSeed],
 ) -> list[JobSourceTenant]:
-    """Insert missing bootstrap tenants without overwriting later operator edits."""
+    """Insert bootstrap tenants and add only missing config defaults.
+
+    Existing operator values are never overwritten. This lets adapters introduce a
+    new source-specific default for an already discovered tenant without resetting
+    manual enable/disable state or explicit configuration.
+    """
     if not seeds:
         return []
 
@@ -35,11 +40,21 @@ def seed_tenants(
     }
     now = datetime.now(UTC)
     created: list[JobSourceTenant] = []
+    changed = False
 
     for seed in seeds:
         key = (seed.namespace, seed.tenant_key)
-        if key in existing:
+        row = existing.get(key)
+        if row is not None:
+            merged_config = dict(row.config or {})
+            before = dict(merged_config)
+            for config_key, value in seed.config.items():
+                merged_config.setdefault(config_key, value)
+            if merged_config != before:
+                row.config = merged_config
+                changed = True
             continue
+
         row = JobSourceTenant(
             source_id=source.id,
             namespace=seed.namespace,
@@ -52,8 +67,10 @@ def seed_tenants(
         session.add(row)
         created.append(row)
         existing[key] = row
+        changed = True
 
-    session.commit()
+    if changed:
+        session.commit()
     return created
 
 
