@@ -35,34 +35,40 @@ def main() -> None:
         active = [listing for listing in listings if listing.status == ListingStatus.ACTIVE]
         active_jobs = {listing.job_id: listing.job for listing in active}
         jobs = list(active_jobs.values())
-        latest_seen = [
-            listing
-            for listing in active
-            if latest_run is not None and listing.last_seen_crawl_run_id == latest_run.id
-        ]
+        current_run = (
+            [listing for listing in listings if listing.last_seen_crawl_run_id == latest_run.id]
+            if latest_run is not None
+            else []
+        )
 
         tenant_counts: Counter[str] = Counter()
-        current_run_titles: dict[str, list[str]] = defaultdict(list)
         for listing in active:
             payload = listing.raw_payload or {}
             region = payload.get("wohnwerk_lever_region") or "unknown"
             site = payload.get("wohnwerk_lever_site") or "unknown"
             tenant_counts[f"{region}:{site}"] += 1
 
-        for listing in latest_seen:
+        current_titles: dict[str, list[str]] = defaultdict(list)
+        for listing in current_run:
             payload = listing.raw_payload or {}
             region = payload.get("wohnwerk_lever_region") or "unknown"
             site = payload.get("wohnwerk_lever_site") or "unknown"
             tenant = f"{region}:{site}"
-            if listing.job.title and listing.job.title not in current_run_titles[tenant]:
-                current_run_titles[tenant].append(listing.job.title)
+            if listing.job.title and listing.job.title not in current_titles[tenant]:
+                current_titles[tenant].append(listing.job.title)
 
         locations = [location for job in jobs for location in job.locations]
         postal_resolved = [location for location in locations if location.postal_code]
+        geo_resolved = [location for location in locations if location.location is not None]
+        city_approx = [
+            location
+            for location in geo_resolved
+            if location.postal_code is None and location.city is not None
+        ]
         unresolved = [
             location.location_text
             for location in locations
-            if location.postal_code is None and location.location_text
+            if location.location is None and location.location_text
         ]
         unresolved_counts = Counter(unresolved)
 
@@ -87,11 +93,13 @@ def main() -> None:
         )
         if latest_run is not None:
             print(
-                f"latest_run={latest_run.id} current_run_accepted_listings={len(latest_seen)}"
+                f"latest_run={latest_run.id} "
+                f"current_run_accepted_listings={len(current_run)}"
             )
         print(
-            f"locations={len(locations)} postal_resolved={len(postal_resolved)} "
-            f"unresolved={len(locations) - len(postal_resolved)}"
+            f"locations={len(locations)} geo_resolved={len(geo_resolved)} "
+            f"postal_resolved={len(postal_resolved)} city_approx={len(city_approx)} "
+            f"unresolved={len(locations) - len(geo_resolved)}"
         )
         print(
             f"salary_structured={len(structured_salary)} salary_text={len(raw_salary_text)} "
@@ -102,13 +110,13 @@ def main() -> None:
         for tenant, count in sorted(tenant_counts.items()):
             print(f"  {tenant}: {count}")
 
-        if current_run_titles:
+        if current_titles:
             print("current_run_accepted_title_samples:")
-            for tenant in sorted(current_run_titles):
+            for tenant in sorted(current_titles):
                 print(f"  [{tenant}]")
-                for title in current_run_titles[tenant][:15]:
+                for title in current_titles[tenant][:15]:
                     print(f"    - {title}")
-                remaining = len(current_run_titles[tenant]) - 15
+                remaining = len(current_titles[tenant]) - 15
                 if remaining > 0:
                     print(f"    ... {remaining} more")
 
