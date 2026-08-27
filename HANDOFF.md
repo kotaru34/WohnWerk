@@ -107,37 +107,23 @@ This is now the dominant architecture priority.
 
 The project had over-focused on ATS tenant feeds (Personio/Lever/SmartRecruiters). Those are useful because they are structured and clean, but they are not sufficient for market-wide Austrian coverage. The primary corpus should come from large Austria-wide job search platforms that already aggregate thousands of employers and often expose location/PLZ detail.
 
-Current public-web validation on 2026-08-28:
+Operating model requested by the user:
 
-1. **AMS `alle jobs` / eJob-Room**
-   - official Austrian public employment search;
-   - supports `Ort, PLZ, Bundesland`;
-   - `alle jobs` combines AMS-managed vacancies, eJob-Room self-service postings and jobs gathered from the internet, plus public administration and selected neighbouring-country sources;
-   - potentially the broadest single Austria discovery layer;
-   - because it is itself an aggregator, source provenance and duplicate handling require special care.
+- behave like a human quickly scanning job titles;
+- use a handful of focused search queries rather than crawling the whole site;
+- only open a detail page after the title looks worth inspecting;
+- run sequentially with a deliberate request delay;
+- deduplicate listing IDs before opening details;
+- keep online-service load low;
+- only later add deeper traversal/detail enrichment when there is a concrete need.
 
-2. **karriere.at**
-   - broad Austrian marketplace with very high engineering density;
-   - current search shows >1,000 `Mechanical Engineer` results;
-   - `Mechanischer Konstrukteur` results contain many directly relevant roles;
-   - current example: PEISCHL Fahrzeugbau `Konstrukteur / Entwicklungsingenieur Fahrzeugbau / Mechanical Engineer` with 3D CAD, Bauteile/Baugruppen, Fertigungszeichnungen, Stücklisten and Serienreife — very close to the target profile;
-   - location often includes city/district and sometimes postal-code-formatted Wien locations.
+Current board priority:
 
-3. **jobs.at**
-   - currently exposes >1,100 `Metall & Maschinenbau` jobs overall;
-   - current Wien Maschinenbau search shows ~150 jobs;
-   - public result pages expose location, employment form, salary and sometimes PLZ (`1100 Wien`, `1030 Wien`, etc.);
-   - current example: Plasser & Theurer `Konstrukteur:in Senior Maschinenbau` with Getriebe, Antriebsstränge, mechanische Baugruppen, 3D/detail drawings.
-
-4. **willhaben Jobs**
-   - currently around 15.7k jobs across Austria;
-   - broad consumer-facing job marketplace with filters by title, location/region, Bundesland/Bezirk, employment type and position level;
-   - strong candidate for large coverage once public pagination/detail semantics are mapped conservatively.
-
-5. **StepStone Austria**
-   - current `Konstrukteur Maschinenbau` search shows roughly 340 jobs;
-   - result pages expose city and sometimes explicit PLZ such as `1030 Wien`;
-   - useful independent layer with likely overlap that can help canonical dedupe and freshness confirmation.
+1. karriere.at
+2. jobs.at
+3. AMS `alle jobs` / eJob-Room
+4. willhaben Jobs
+5. StepStone Austria
 
 ### Broad-board adapter requirements
 
@@ -159,32 +145,23 @@ Files:
 - `scripts/run_karriere_at_jobs.py`
 - `tests/test_karriere_at_job_source.py`
 
-Implementation intentionally mirrors a human quick scan rather than a full-site crawl:
+Behavior:
 
 - five focused first-page searches: `Konstrukteur Maschinenbau`, `Mechanischer Konstrukteur`, `Konstrukteur Sondermaschinenbau`, `Mechanical Design Engineer`, `Entwicklungsingenieur`;
 - no pagination yet;
 - numeric `/jobs/<id>` is the stable source listing identity;
-- job IDs are deduplicated across the five search shards during a run;
-- a cheap title-only request-budget prefilter decides whether a detail page is worth opening;
+- job IDs are deduplicated across search shards during a run;
+- cheap title-only request-budget prefilter decides whether a detail page is worth opening;
 - obvious electrical/software/sales/training/workshop titles are skipped before detail requests;
 - maximum 8 detail pages per search shard by default;
-- a global 0.65-second minimum interval serializes all search/detail requests;
-- 429 is treated as a failure, not retried aggressively;
+- global 0.65-second minimum interval serializes all search/detail requests;
+- 429 is a failure and is not retried aggressively;
 - detail parsing prefers public `schema.org/JobPosting` JSON-LD for employer, description, salary, location and PLZ;
 - visible `Dienstort` is only a conservative fallback when structured location is absent;
-- the adapter always reports `coverage_complete=False`, so it is discovery-only and cannot deactivate missing listings;
-- real relevance still goes through the normal v14 discovery gate after detail acquisition; the title prefilter exists only to save HTTP requests.
+- adapter always reports `coverage_complete=False`, so it is discovery-only and cannot deactivate missing listings;
+- actual professional relevance still goes through the normal v14 discovery gate after detail acquisition; title prefilter exists only to save HTTP requests.
 
-CI #310 passed Ruff, Compile and the full test suite for this implementation.
-
-### Next board order
-
-1. Production-prove this karriere.at frontier with one low-impact run.
-2. Implement `jobs.at` using the same first-page/title-gated pattern.
-3. Then AMS `alle jobs` / eJob-Room.
-4. Add willhaben Jobs and StepStone after the first two broad sources are stable.
-
-Do not return to manual ATS tenant collection as the main path.
+CI #310 passed Ruff, Compile and the full test suite for the implementation. A later HANDOFF-only commit does not change runtime semantics.
 
 ## Candidate personalization / future fit
 
@@ -211,10 +188,13 @@ Future fit architecture after corpus reaches hundreds→thousands relevant activ
 
 ## Immediate work order
 
-1. Pull current branch; expected checkpoint includes karriere.at frontier and CI #310 green.
+1. Pull current branch.
 2. Run `pytest -q`.
 3. Run `python scripts/run_karriere_at_jobs.py` with defaults only; do NOT use reconciliation.
-4. Resolve job locations and inspect `job_source_stats.py karriere.at --all-titles`, `job_rejection_audit.py karriere.at`, and `source_health.py`.
-5. Confirm request count remains low, at least some live titles parse, JSON-LD/detail fields are populated where available, and any PLZ is source-provided rather than inferred.
-6. Fix only generic parser/runtime issues exposed by the live run; do not tune discovery to one board.
-7. Then implement `jobs.at` using the same low-impact search-frontier pattern.
+4. Run `python scripts/resolve_job_locations.py`.
+5. Inspect `python scripts/job_source_stats.py karriere.at --all-titles`.
+6. Inspect `python scripts/job_rejection_audit.py karriere.at`.
+7. Inspect `python scripts/source_health.py`.
+8. Confirm request count remains low, live titles parse, detail fields populate where available, and PLZ is source-provided rather than inferred.
+9. Fix only generic parser/runtime issues exposed by the live run; do not tune discovery to one board.
+10. Then implement `jobs.at` using the same low-impact first-page/title-gated pattern.
