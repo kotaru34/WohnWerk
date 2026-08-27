@@ -1,10 +1,25 @@
+import importlib.util
 import json
 from pathlib import Path
 
 import httpx
 import pytest
 
-from scripts.verify_lever_candidates import _api_base, _load_candidates, _verify_feed
+
+def _load_verifier_module():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "verify_lever_candidates.py"
+    spec = importlib.util.spec_from_file_location("verify_lever_candidates", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_verifier = _load_verifier_module()
+_api_base = _verifier._api_base
+_load_candidates = _verifier._load_candidates
+_verify_feed = _verifier._verify_feed
 
 
 def _posting(posting_id: str, *, country: str, location: str) -> dict:
