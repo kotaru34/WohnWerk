@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import ListingStatus, PostalCode, PropertyListing, Source
 from app.sources.base import RawProperty
-from app.sources.property.sreal_detail import enrich_sreal_property, parse_sreal_detail_page
+from app.sources.property.sreal_detail import (
+    enrich_sreal_property,
+    parse_sreal_detail_page,
+)
 
 
 HEADERS = {
