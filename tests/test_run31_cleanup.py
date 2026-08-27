@@ -93,6 +93,39 @@ def test_working_student_engineering_title_is_structurally_rejected() -> None:
     assert "student_training_stage" in decision.low_relevance_title_matches
 
 
+def test_real_engineering_intern_is_still_structurally_rejected() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Mechanical Engineering Intern",
+            "Mechanical engineering, CAD and testing.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
+    assert "student_training_stage" in decision.low_relevance_title_matches
+
+
+def test_international_is_not_mistaken_for_internship_stage() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Supervisor Mechanik - international",
+            "Mechanical assembly and commissioning of machinery.",
+        )
+    )
+
+    assert "student_training_stage" not in decision.low_relevance_title_matches
+    assert decision.accepted is True
+
+
+def test_internal_is_not_mistaken_for_internship_stage() -> None:
+    decision = classify_job_candidate(_job("Internal Auditor", "Financial audit and controls."))
+
+    assert "student_training_stage" not in decision.low_relevance_title_matches
+    assert decision.accepted is False
+    assert decision.reason == "insufficient_base_relevance"
+
+
 def test_grossraum_label_extracts_only_explicit_named_localities() -> None:
     assert canonicalize_area_localities(
         "Großraum Linz, Steyr,Wels, Austria"
