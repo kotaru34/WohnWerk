@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v8"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v9"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -42,7 +42,34 @@ _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "manual_metal_trade",
-        re.compile(r"\b(?:metallfacharbeiter|facharbeiter|schlosser|mechaniker)\w*"),
+        re.compile(
+            r"\b(?:metallfacharbeiter|facharbeiter|schlosser|mechaniker|"
+            r"schweißer|schweisser|welder)\w*"
+        ),
+    ),
+)
+
+_BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "procurement_commercial",
+        re.compile(
+            r"\b(?:procurement|purchas(?:er|ing)|buyer|einkäufer\w*|einkauf\w*)\b"
+        ),
+    ),
+    (
+        "logistics_operations",
+        re.compile(r"\b(?:logistics?|logistik)\w*"),
+    ),
+    (
+        "expansion_management",
+        re.compile(r"\bexpansion\s+(?:project\s+)?manager\w*"),
+    ),
+    (
+        "production_operator",
+        re.compile(
+            r"\b(?:cutting\s+machine|machining|cnc)\s+operator\w*"
+            r"|\b(?:maschinen|anlagen)bediener\w*"
+        ),
     ),
 )
 
@@ -124,6 +151,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
                 *_matches(_OPERATIONAL_TEST_TITLE_PATTERNS, title),
                 *_matches(_STRUCTURAL_STAGE_TITLE_PATTERNS, title),
                 *_matches(_MANUAL_TRADE_TITLE_PATTERNS, title),
+                *_matches(_BUSINESS_OPERATION_TITLE_PATTERNS, title),
             )
         )
     )
