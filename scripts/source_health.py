@@ -124,6 +124,10 @@ def main() -> None:
                     detail_attempted = cursor.get("detail_attempted")
                     detail_succeeded = cursor.get("detail_succeeded")
                     detail_failed = cursor.get("detail_failed")
+                    detail_non_austrian = cursor.get("detail_non_austrian")
+                    sr_fallback = cursor.get("unfiltered_austria_fallback")
+                    sr_unfiltered_reported = cursor.get("fallback_unfiltered_reported")
+                    sr_austrian_postings = cursor.get("fallback_austrian_postings")
 
                     coverage_bits = ""
                     if cards is not None:
@@ -170,6 +174,14 @@ def main() -> None:
                         coverage_bits += f" detail={detail_succeeded or 0}/{detail_attempted or 0}"
                     if detail_failed is not None:
                         coverage_bits += f" detail_failed={detail_failed}"
+                    if detail_non_austrian is not None:
+                        coverage_bits += f" detail_non_at={detail_non_austrian}"
+                    if sr_fallback:
+                        coverage_bits += " fallback=unfiltered"
+                    if sr_unfiltered_reported is not None:
+                        coverage_bits += f" unfiltered_reported={sr_unfiltered_reported}"
+                    if sr_austrian_postings is not None:
+                        coverage_bits += f" fallback_at={sr_austrian_postings}"
 
                     print(
                         f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
