@@ -14,7 +14,13 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.jobs.location_resolution import canonicalize_locality
 from app.models import JobSourceTenant, PostalCode, Source
-from app.sources.job.personio import PersonioSite, parse_personio_feed, personio_feed_urls
+from app.sources.job.personio import (
+    PERSONIO_LANGUAGES,
+    PersonioSite,
+    merge_personio_language_items,
+    parse_personio_feed,
+    personio_feed_urls,
+)
 
 _SOURCE_NAME = "personio-public-xml"
 _DEFAULT_PATH = Path("data/job_tenants/personio_austria_candidates.json")
@@ -96,12 +102,15 @@ def _verification_record(
     feed_url: str,
     source_positions: int,
     austrian_positions: int,
+    languages: list[str],
+    language_source_positions: dict[str, int],
 ) -> dict:
     return {
         "status": "verified",
         "checked_at": checked_at.isoformat(),
         "feed_url": feed_url,
-        "language": "de",
+        "languages": languages,
+        "language_source_positions": language_source_positions,
         "source_positions": source_positions,
         "austrian_positions": austrian_positions,
     }
@@ -114,36 +123,65 @@ def _verify_feed(
     company: str,
     localities: set[str],
     delay: float,
-) -> tuple[str, int, int] | None:
+) -> tuple[str, int, int, list[str], dict[str, int]] | None:
     site = PersonioSite(tenant=tenant, company=company)
     for feed_url in personio_feed_urls(site):
-        if delay > 0:
-            time.sleep(delay)
-        try:
-            response = client.get(feed_url, params={"language": "de"})
-            response.raise_for_status()
-            resolved_site = PersonioSite(
-                tenant=tenant,
-                company=company,
-                base_url=feed_url.removesuffix("/xml"),
-            )
-            items, source_positions = parse_personio_feed(
-                response.content,
-                site=resolved_site,
-                austrian_localities=localities,
-            )
-        except httpx.HTTPStatusError as exc:
-            print(
-                f"  endpoint_failed={feed_url} http_status={exc.response.status_code}"
-            )
+        resolved_site = PersonioSite(
+            tenant=tenant,
+            company=company,
+            base_url=feed_url.removesuffix("/xml"),
+        )
+        language_items: dict[str, list] = {}
+        language_counts: dict[str, int] = {}
+
+        for language in PERSONIO_LANGUAGES:
+            if delay > 0:
+                time.sleep(delay)
+            try:
+                response = client.get(feed_url, params={"language": language})
+                response.raise_for_status()
+                items, source_positions = parse_personio_feed(
+                    response.content,
+                    site=resolved_site,
+                    austrian_localities=localities,
+                    language=language,
+                )
+            except httpx.HTTPStatusError as exc:
+                print(
+                    f"  endpoint_failed={feed_url}?language={language} "
+                    f"http_status={exc.response.status_code}"
+                )
+                continue
+            except httpx.HTTPError as exc:
+                print(
+                    f"  endpoint_failed={feed_url}?language={language} "
+                    f"request_error={type(exc).__name__}"
+                )
+                continue
+            except (ET.ParseError, TypeError, ValueError) as exc:
+                print(
+                    f"  endpoint_failed={feed_url}?language={language} "
+                    f"invalid_feed={type(exc).__name__}: {exc}"
+                )
+                continue
+            language_items[language] = items
+            language_counts[language] = source_positions
+
+        if not language_items:
             continue
-        except httpx.HTTPError as exc:
-            print(f"  endpoint_failed={feed_url} request_error={type(exc).__name__}")
-            continue
-        except (ET.ParseError, TypeError, ValueError) as exc:
-            print(f"  endpoint_failed={feed_url} invalid_feed={type(exc).__name__}: {exc}")
-            continue
-        return feed_url, source_positions, len(items)
+
+        merged_items = merge_personio_language_items(language_items)
+        languages = [
+            language for language in PERSONIO_LANGUAGES if language in language_items
+        ]
+        source_positions = max(language_counts.values())
+        return (
+            feed_url,
+            source_positions,
+            len(merged_items),
+            languages,
+            language_counts,
+        )
     return None
 
 
@@ -197,12 +235,19 @@ def main() -> None:
                     print(f"[unverified] {tenant}")
                     continue
 
-                feed_url, source_positions, austrian_positions = verified
+                (
+                    feed_url,
+                    source_positions,
+                    austrian_positions,
+                    languages,
+                    language_source_positions,
+                ) = verified
                 checked_at = datetime.now(UTC)
                 counts["verified"] += 1
                 print(
                     f"[verified] {tenant} source_positions={source_positions} "
-                    f"austrian_positions={austrian_positions} feed={feed_url}"
+                    f"austrian_positions={austrian_positions} languages={','.join(languages)} "
+                    f"feed={feed_url}"
                 )
 
                 if not args.apply:
@@ -213,6 +258,8 @@ def main() -> None:
                     feed_url=feed_url,
                     source_positions=source_positions,
                     austrian_positions=austrian_positions,
+                    languages=languages,
+                    language_source_positions=language_source_positions,
                 )
                 row = existing.get(tenant)
                 if row is None:
