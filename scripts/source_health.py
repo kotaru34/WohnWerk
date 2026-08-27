@@ -119,6 +119,8 @@ def main() -> None:
                     candidates_fetched = cursor.get("job_candidates_fetched")
                     candidates_accepted = cursor.get("job_candidates_accepted")
                     candidates_rejected = cursor.get("job_candidates_rejected")
+                    rejected_existing_seen = cursor.get("job_rejected_existing_seen")
+                    rejected_reactivated = cursor.get("job_rejected_reactivated")
 
                     coverage_bits = ""
                     if cards is not None:
@@ -157,6 +159,10 @@ def main() -> None:
                         coverage_bits += f" accepted={candidates_accepted}"
                     if candidates_rejected is not None:
                         coverage_bits += f" rejected={candidates_rejected}"
+                    if rejected_existing_seen is not None:
+                        coverage_bits += f" rejected_existing_seen={rejected_existing_seen}"
+                    if rejected_reactivated is not None:
+                        coverage_bits += f" reactivated={rejected_reactivated}"
 
                     print(
                         f"  shard[{shard_key}] status={row.status} pages={row.pages_fetched} "
