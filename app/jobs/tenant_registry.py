@@ -85,3 +85,25 @@ def enabled_tenants(session: Session, *, source: Source) -> list[JobSourceTenant
             .order_by(JobSourceTenant.namespace, JobSourceTenant.tenant_key)
         )
     )
+
+
+def mark_tenant_verified(
+    session: Session,
+    *,
+    source_id: int,
+    tenant_key: str,
+    verified_at: datetime,
+) -> int:
+    """Record a successful source-level tenant check without committing the session."""
+    rows = list(
+        session.scalars(
+            select(JobSourceTenant).where(
+                JobSourceTenant.source_id == source_id,
+                JobSourceTenant.tenant_key == tenant_key,
+                JobSourceTenant.enabled.is_(True),
+            )
+        )
+    )
+    for row in rows:
+        row.last_verified_at = verified_at
+    return len(rows)
