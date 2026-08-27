@@ -1,4 +1,8 @@
-from app.jobs.discovery import classify_job_candidate, filter_job_candidates
+from app.jobs.discovery import (
+    classify_job_candidate,
+    filter_job_candidates,
+    partition_job_candidates,
+)
 from app.sources.base import RawJob, RawJobLocation
 
 
@@ -228,7 +232,24 @@ def test_filter_persists_discovery_evidence_only_for_accepted_jobs() -> None:
     assert result == [relevant]
     evidence = relevant.raw_payload["wohnwerk_discovery_gate"]
     assert evidence["accepted"] is True
+    assert evidence["version"]
     assert evidence["reason"] == "strong_mechanical_title"
     assert "mechanical_design_engineer" in evidence["strong_title_matches"]
     assert "fem_fea" in evidence["method_tool_matches"]
     assert unrelated.raw_payload == {}
+
+
+def test_partition_persists_rejected_evidence_for_lifecycle_refresh() -> None:
+    relevant = _job("Mechanical Design Engineer", "Creo CAD and FEM")
+    rejected = _job("DevSecOps Engineer", "Kubernetes, Terraform and cloud security tooling")
+
+    accepted_items, rejected_items = partition_job_candidates([relevant, rejected])
+
+    assert accepted_items == [relevant]
+    assert rejected_items == [rejected]
+    accepted_gate = relevant.raw_payload["wohnwerk_discovery_gate"]
+    rejected_gate = rejected.raw_payload["wohnwerk_discovery_gate"]
+    assert accepted_gate["accepted"] is True
+    assert rejected_gate["accepted"] is False
+    assert rejected_gate["version"] == accepted_gate["version"]
+    assert rejected_gate["reason"] == "insufficient_base_relevance"
