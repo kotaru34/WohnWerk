@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.jobs.location_resolution import canonicalize_locality
 from app.models import JobSourceTenant, PostalCode, Source
-from app.sources.job.personio import PERSONIO_BASE_SUFFIX, PersonioSite, parse_personio_feed
+from app.sources.job.personio import PersonioSite, parse_personio_feed, personio_feed_urls
 
 _SOURCE_NAME = "personio-public-xml"
 _DEFAULT_PATH = Path("data/job_tenants/personio_austria_candidates.json")
@@ -90,10 +90,6 @@ def _austrian_localities(session) -> set[str]:
     return result
 
 
-def _feed_url(tenant: str) -> str:
-    return f"https://{tenant}{PERSONIO_BASE_SUFFIX}/xml"
-
-
 def _verification_record(
     *,
     checked_at: datetime,
@@ -109,6 +105,46 @@ def _verification_record(
         "source_positions": source_positions,
         "austrian_positions": austrian_positions,
     }
+
+
+def _verify_feed(
+    client: httpx.Client,
+    *,
+    tenant: str,
+    company: str,
+    localities: set[str],
+    delay: float,
+) -> tuple[str, int, int] | None:
+    site = PersonioSite(tenant=tenant, company=company)
+    for feed_url in personio_feed_urls(site):
+        if delay > 0:
+            time.sleep(delay)
+        try:
+            response = client.get(feed_url, params={"language": "de"})
+            response.raise_for_status()
+            resolved_site = PersonioSite(
+                tenant=tenant,
+                company=company,
+                base_url=feed_url.removesuffix("/xml"),
+            )
+            items, source_positions = parse_personio_feed(
+                response.content,
+                site=resolved_site,
+                austrian_localities=localities,
+            )
+        except httpx.HTTPStatusError as exc:
+            print(
+                f"  endpoint_failed={feed_url} http_status={exc.response.status_code}"
+            )
+            continue
+        except httpx.HTTPError as exc:
+            print(f"  endpoint_failed={feed_url} request_error={type(exc).__name__}")
+            continue
+        except (ET.ParseError, TypeError, ValueError) as exc:
+            print(f"  endpoint_failed={feed_url} invalid_feed={type(exc).__name__}: {exc}")
+            continue
+        return feed_url, source_positions, len(items)
+    return None
 
 
 def main() -> None:
@@ -148,35 +184,21 @@ def main() -> None:
             for candidate in candidates:
                 tenant = candidate["tenant"]
                 company = candidate["company"]
-                feed_url = _feed_url(tenant)
-                if args.delay > 0:
-                    time.sleep(args.delay)
-
-                try:
-                    response = client.get(feed_url, params={"language": "de"})
-                    response.raise_for_status()
-                    site = PersonioSite(tenant=tenant, company=company)
-                    items, source_positions = parse_personio_feed(
-                        response.content,
-                        site=site,
-                        austrian_localities=localities,
-                    )
-                except httpx.HTTPStatusError as exc:
-                    status = exc.response.status_code
-                    counts["http_failed"] += 1
-                    print(f"[http_failed] {tenant} status={status} feed={feed_url}")
-                    continue
-                except httpx.HTTPError as exc:
-                    counts["request_failed"] += 1
-                    print(f"[request_failed] {tenant} error={type(exc).__name__} feed={feed_url}")
-                    continue
-                except (ET.ParseError, TypeError, ValueError) as exc:
-                    counts["invalid_feed"] += 1
-                    print(f"[invalid_feed] {tenant} error={type(exc).__name__}: {exc}")
+                print(f"[checking] {tenant} company={company}")
+                verified = _verify_feed(
+                    client,
+                    tenant=tenant,
+                    company=company,
+                    localities=localities,
+                    delay=max(0.0, args.delay),
+                )
+                if verified is None:
+                    counts["unverified"] += 1
+                    print(f"[unverified] {tenant}")
                     continue
 
+                feed_url, source_positions, austrian_positions = verified
                 checked_at = datetime.now(UTC)
-                austrian_positions = len(items)
                 counts["verified"] += 1
                 print(
                     f"[verified] {tenant} source_positions={source_positions} "
