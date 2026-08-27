@@ -211,6 +211,13 @@ METHOD_TOOL_PATTERNS: PatternSet = (
     ("siemens_nx", re.compile(r"\b(?:siemens\s+)?nx(?:\s+cad)?\b")),
     ("fem_fea", re.compile(r"\b(?:fem|fea|finite\s+element)\w*")),
     (
+        "emc_emv",
+        re.compile(
+            r"\b(?:emc|emv)\b|\belectromagnetic\s+compatibility\b|"
+            r"\belektromagnetisch\w*\s+verträglichkeit\w*"
+        ),
+    ),
+    (
         "strength_analysis",
         re.compile(
             r"\b(?:festigkeitsberechnung|festigkeitsbewertung|"
