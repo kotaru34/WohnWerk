@@ -146,6 +146,16 @@ The UI should therefore be able to present:
 - globally strong house/job combinations;
 - filters/radii/settings that can change the recommendation set without re-ingestion.
 
+### Job location precision
+
+A source-supplied Austrian postal code is preferred and resolves directly to the existing RTR/BEV postal centroid.
+
+When a vacancy supplies only a city/locality such as `Wien`, `Vienna`, or `Graz`, WohnWerk may derive an **approximate locality point** from the local RTR postal-name table and BEV postal centroids. This is sufficient for coarse 25/50/100 km matching but must not invent a postal code. For multi-PLZ cities, combine matching postal centroids conservatively, weighted by the BEV address samples already stored for each postal code.
+
+Aliases such as `Vienna -> Wien` may be normalized. Matching must remain conservative (`Wien` must not match `Wiener Neustadt`). Country-wide remote labels such as `Home Office (Austria)` do not receive an arbitrary point.
+
+The original source location text and resolution evidence must remain available for inspection.
+
 ## 6. Acquisition breadth is required, but irrelevant storage is not
 
 Many independent job sources are a first-class product requirement because the relevant target corpus should be large enough to expose uncommon adjacent roles and meaningful geographic alternatives.
