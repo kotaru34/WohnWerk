@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.models import JobListing, ListingStatus, Source
+from app.models import Job, JobListing, ListingStatus, Source
 
 
 def main() -> None:
@@ -20,7 +20,7 @@ def main() -> None:
             session.scalars(
                 select(JobListing)
                 .where(JobListing.source_id == source.id)
-                .options(selectinload(JobListing.job).selectinload("locations"))
+                .options(selectinload(JobListing.job).selectinload(Job.locations))
                 .order_by(JobListing.id)
             )
         )
