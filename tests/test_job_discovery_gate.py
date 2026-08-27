@@ -58,6 +58,20 @@ def test_adjacent_application_engineer_with_cad_method_is_accepted() -> None:
     assert rejected.accepted is False
 
 
+def test_emc_engineer_is_kept_as_concrete_adjacent_engineering() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "EMC Engineer (w/m/d)",
+            "EMV-gerechte Entwicklung, Planung und Bewertung von EMV-Tests, "
+            "Schirmungs- und Filterkonzepte sowie Abstimmung mit Prüflaboren.",
+        )
+    )
+
+    assert decision.accepted is True
+    assert "engineer" in decision.adjacent_title_matches
+    assert "emc_emv" in decision.method_tool_matches
+
+
 def test_rail_vehicle_fixture_role_is_kept() -> None:
     decision = classify_job_candidate(
         _job(
