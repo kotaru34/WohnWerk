@@ -259,6 +259,15 @@ class Job(Base):
     company: Mapped[str | None] = mapped_column(String(300), index=True)
     description: Mapped[str | None] = mapped_column(Text)
 
+    # Preserve source salary dimensions. Annual EUR values are derived/normalized fields
+    # and must only be populated when the source semantics make that conversion defensible.
+    salary_min: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    salary_max: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    salary_currency: Mapped[str | None] = mapped_column(String(3))
+    salary_period: Mapped[str | None] = mapped_column(String(20))
+    salary_payment_count: Mapped[int | None] = mapped_column(Integer)
+    salary_provenance: Mapped[str | None] = mapped_column(String(20))
+    salary_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     salary_min_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     salary_max_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     salary_text: Mapped[str | None] = mapped_column(String(500))
