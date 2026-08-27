@@ -183,6 +183,59 @@ def test_automotive_software_engineer_needs_real_mechanical_evidence() -> None:
     assert "vehicle_engineering" in decision.domain_matches
 
 
+def test_explicit_software_project_manager_is_rejected_despite_mechanical_company_context() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Software Projektmanager (w/m/d)",
+            "Projektmanagement für Software in einem Elektromobilitätsunternehmen mit "
+            "mechanischer Produktentwicklung, Systemintegration, Validierung und OEM-Projekten.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "software_role" in decision.low_relevance_title_matches
+
+
+def test_ai_lead_is_rejected_despite_engineering_employer_boilerplate() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Digital Engineering & AI Lead (f/m/d)",
+            "Lead AI and software initiatives in an automotive charging company. The company "
+            "also develops mechanical products, validates systems and works with OEMs.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "ai_data_role" in decision.low_relevance_title_matches
+
+
+def test_student_engineering_role_is_rejected_by_career_stage() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Studentische:r Mitarbeiter:in Antriebstechnik & Motorenentwicklung",
+            "Entwicklung elektrischer Antriebssysteme mit FEM, CAD, Simulation, Prototypen und Tests.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "student_training_stage" in decision.low_relevance_title_matches
+
+
+def test_strong_mechanical_engineer_title_wins_over_incidental_ai_word() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Mechanical Engineer - AI-assisted design tools",
+            "Mechanical design, CAD, FEM and product development using AI-assisted tooling.",
+        )
+    )
+
+    assert decision.accepted is True
+    assert decision.reason == "strong_mechanical_title"
+
+
 def test_sales_engineer_is_not_kept_from_automotive_context_alone() -> None:
     decision = classify_job_candidate(
         _job(
