@@ -361,7 +361,7 @@ class PersonioJobSource(JobSource):
                         site=resolved_site,
                         austrian_localities=self.austrian_localities,
                     )
-                except Exception as exc:
+                except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
                     errors.append(f"{url}: {type(exc).__name__}: {exc}")
                     continue
                 successful_feed = url
