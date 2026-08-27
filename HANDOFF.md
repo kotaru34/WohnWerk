@@ -139,31 +139,52 @@ Current public-web validation on 2026-08-28:
    - result pages expose city and sometimes explicit PLZ such as `1030 Wien`;
    - useful independent layer with likely overlap that can help canonical dedupe and freshness confirmation.
 
-Other boards can be evaluated after these core sources (e.g. hokify and niche/industry boards), but do not expand the source list merely for count.
-
 ### Broad-board adapter requirements
 
-For each board, before production crawling:
+For each board:
 
-- identify a stable public listing ID or conservative stable identity;
-- map complete pagination/search traversal and any result caps;
-- preserve raw source location/PLZ exactly and resolve with the existing Austrian postal/locality layer;
-- retain source URL, employer, title, description, salary text/structured salary where defensible, publication/update date when present, employment type and workplace model;
-- never invent PLZ from city if the source gives only city;
+- use a stable public listing ID or conservative stable identity;
+- preserve raw source location/PLZ exactly;
+- never invent PLZ from city;
+- retain source URL, employer, title, description, salary where defensible and publication metadata where present;
 - reconcile only when coverage is provably complete;
-- if the board redirects to the original employer/ATS, preserve both board listing identity and outbound apply/source URL where possible;
-- expect heavy cross-board duplication and dedupe at canonical Job level while retaining separate JobListings per source;
-- respect public access rules/robots/ToS and never bypass anti-bot controls.
+- retain separate source listings across boards even when they map to the same canonical Job;
+- keep request volume low and never bypass access controls.
 
-### Recommended implementation order
+### Implemented first broad-board source: karriere.at low-impact frontier
 
-1. **karriere.at adapter first** — excellent mechanical relevance, useful detail fields and straightforward examples for parser calibration.
-2. **jobs.at adapter second** — very high Maschinenbau volume and explicit PLZ examples.
-3. **AMS alle jobs / eJob-Room** — potentially the broadest source, but treat aggregator provenance/duplicates carefully.
-4. **willhaben Jobs** — broad volume; map pagination/detail semantics before production.
-5. **StepStone Austria** — independent coverage and useful PLZ/location information.
+Files:
 
-ATS tenant discovery becomes secondary after at least two broad boards are production-stable.
+- `app/sources/job/karriere_at.py`
+- `scripts/run_karriere_at_jobs.py`
+- `tests/test_karriere_at_job_source.py`
+
+Implementation intentionally mirrors a human quick scan rather than a full-site crawl:
+
+- five focused first-page searches: `Konstrukteur Maschinenbau`, `Mechanischer Konstrukteur`, `Konstrukteur Sondermaschinenbau`, `Mechanical Design Engineer`, `Entwicklungsingenieur`;
+- no pagination yet;
+- numeric `/jobs/<id>` is the stable source listing identity;
+- job IDs are deduplicated across the five search shards during a run;
+- a cheap title-only request-budget prefilter decides whether a detail page is worth opening;
+- obvious electrical/software/sales/training/workshop titles are skipped before detail requests;
+- maximum 8 detail pages per search shard by default;
+- a global 0.65-second minimum interval serializes all search/detail requests;
+- 429 is treated as a failure, not retried aggressively;
+- detail parsing prefers public `schema.org/JobPosting` JSON-LD for employer, description, salary, location and PLZ;
+- visible `Dienstort` is only a conservative fallback when structured location is absent;
+- the adapter always reports `coverage_complete=False`, so it is discovery-only and cannot deactivate missing listings;
+- real relevance still goes through the normal v14 discovery gate after detail acquisition; the title prefilter exists only to save HTTP requests.
+
+CI #310 passed Ruff, Compile and the full test suite for this implementation.
+
+### Next board order
+
+1. Production-prove this karriere.at frontier with one low-impact run.
+2. Implement `jobs.at` using the same first-page/title-gated pattern.
+3. Then AMS `alle jobs` / eJob-Room.
+4. Add willhaben Jobs and StepStone after the first two broad sources are stable.
+
+Do not return to manual ATS tenant collection as the main path.
 
 ## Candidate personalization / future fit
 
@@ -190,12 +211,10 @@ Future fit architecture after corpus reaches hundreds→thousands relevant activ
 
 ## Immediate work order
 
-1. **Cancel the previously proposed Team Styria / Lever-first production batch as the next priority.** Existing ATS sources remain healthy; there is no need to expand them manually now.
-2. Research/map `karriere.at` public search pagination, listing identity, detail fields, location/PLZ semantics, publication date and reconciliation completeness.
-3. Implement `karriere.at` as the first broad-board source with tests and conservative lifecycle coverage.
-4. Production dry-run/reconciliation and rejection audit; do not tune gate to one board.
-5. Implement `jobs.at` next with the same invariants, especially explicit PLZ preservation.
-6. Then implement AMS `alle jobs` / eJob-Room with explicit aggregator provenance and duplicate handling.
-7. Add willhaben Jobs and StepStone after the first broad sources are stable.
-8. Keep Personio/Lever/SmartRecruiters running as supplementary sources and dedupe their canonical Jobs against broad-board listings.
-9. At corpus scale implement normalized concept extraction, German profile review, intrinsic candidate fit and house/job recommendations.
+1. Pull current branch; expected checkpoint includes karriere.at frontier and CI #310 green.
+2. Run `pytest -q`.
+3. Run `python scripts/run_karriere_at_jobs.py` with defaults only; do NOT use reconciliation.
+4. Resolve job locations and inspect `job_source_stats.py karriere.at --all-titles`, `job_rejection_audit.py karriere.at`, and `source_health.py`.
+5. Confirm request count remains low, at least some live titles parse, JSON-LD/detail fields are populated where available, and any PLZ is source-provided rather than inferred.
+6. Fix only generic parser/runtime issues exposed by the live run; do not tune discovery to one board.
+7. Then implement `jobs.at` using the same low-impact search-frontier pattern.
