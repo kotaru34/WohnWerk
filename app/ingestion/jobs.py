@@ -160,7 +160,13 @@ def _enrich_locations(
     known_postal: dict[str, PostalCode],
     locality_resolutions: dict[str, LocalityResolution],
 ) -> None:
-    """Add/enrich locations without erasing richer locations from another source."""
+    """Add/enrich locations without erasing richer locations from another source.
+
+    A remote/hybrid flag does not erase a source-provided physical city. If a vacancy
+    says it is remote-capable *and* anchored in Vienna, keep both the city centroid and
+    `remote=True`. Countrywide remote scopes without a concrete city still remain
+    ungeocoded rather than receiving an invented point.
+    """
     existing_by_key = {
         _location_key(
             postal_code=location.postal_code,
@@ -174,7 +180,7 @@ def _enrich_locations(
     for item in locations:
         postal = known_postal.get(item.postal_code or "")
         postal_code = postal.postal_code if postal is not None else None
-        locality = locality_resolutions.get(item.city or "") if not item.remote else None
+        locality = locality_resolutions.get(item.city or "")
         key = _location_key(
             postal_code=postal_code,
             city=item.city,
@@ -342,7 +348,7 @@ def ingest_jobs(
         location.city
         for item in items
         for location in item.locations
-        if location.city and not location.remote
+        if location.city
     }
     locality_resolutions = resolve_localities(session, city_labels)
 
