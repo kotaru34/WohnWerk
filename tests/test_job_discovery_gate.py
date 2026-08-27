@@ -82,6 +82,36 @@ def test_autonomous_vehicle_technician_is_kept_as_adjacent_candidate() -> None:
     assert "vehicle_engineering" in decision.domain_matches
 
 
+def test_self_driving_systems_specialist_is_kept_for_diagnostics_and_calibration() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Self-Driving Systems Specialist (SDS Specialist) - Autonomous Vehicle Diagnostics & Calibration",
+            "Automotive electronics, sensors, diagnostics, calibration, validation, CAN bus and "
+            "autonomous driving hardware.",
+        )
+    )
+
+    assert decision.accepted is True
+    assert "systems_specialist" in decision.adjacent_title_matches
+    assert "autonomous_vehicle_systems" in decision.domain_matches
+    assert "diagnostics" in decision.method_tool_matches
+    assert "calibration" in decision.method_tool_matches
+
+
+def test_depot_specialist_is_rejected_despite_vehicle_words() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Depot Specialist (Robotaxi Fleet Operations)",
+            "Prepare vehicles, clean, charge, inspect and stage them for daily fleet operations. "
+            "Basic mechanical knowledge is preferred.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "depot_operations" in decision.low_relevance_title_matches
+
+
 def test_autonomous_vehicle_driver_is_not_kept_on_vehicle_word_alone() -> None:
     decision = classify_job_candidate(
         _job(
@@ -91,6 +121,20 @@ def test_autonomous_vehicle_driver_is_not_kept_on_vehicle_word_alone() -> None:
     )
 
     assert decision.accepted is False
+
+
+def test_devsecops_security_tooling_is_not_mechanical_tooling() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "DevSecOps Engineer - Deployment Team",
+            "Kubernetes security, cloud infrastructure, security tooling, CI/CD testing, "
+            "Terraform and Python.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert "software" in decision.negative_context_matches
+    assert "fixture_tooling" not in decision.domain_matches
 
 
 def test_automotive_software_engineer_needs_real_mechanical_evidence() -> None:
