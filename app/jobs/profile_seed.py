@@ -51,7 +51,7 @@ DOMAIN_PATTERNS: PatternSet = (
     ("vehicle_engineering", re.compile(r"\b(?:vehicle|automotive|fahrzeug)\w*")),
     ("special_vehicle", re.compile(r"\b(?:sonderfahrzeug|special\s+vehicle)\w*")),
     ("rail_vehicle", re.compile(r"\b(?:schienenfahrzeug|rolling\s+stock|rail\s+vehicle|railway\s+vehicle)\w*")),
-    ("fixture_tooling", re.compile(r"\b(?:vorrichtung|fixture|jig|tooling)\w*")),
+    ("fixture_tooling", re.compile(r"\b(?:\w*vorrichtung\w*|fixture\w*|jig\w*|tooling\w*)")),
     ("plant_engineering", re.compile(r"\b(?:anlagenbau|plant\s+engineering|plant\s+design)\w*")),
     ("special_machinery", re.compile(r"\b(?:sondermaschinenbau|special\s+machinery|special\s+machine)\w*")),
     ("metal_engineering", re.compile(r"\b(?:metallbau|metal\s+engineering|metal\s+construction)\w*")),
