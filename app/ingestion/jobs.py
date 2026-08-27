@@ -154,6 +154,18 @@ def _location_key(
     )
 
 
+def _source_location_key(
+    *,
+    location_text: str | None,
+    remote: bool,
+) -> tuple[str, bool] | None:
+    """Identify a source location label independently of our parsed city guess."""
+    normalized = _normalized_location_text(location_text)
+    if normalized is None:
+        return None
+    return normalized, remote
+
+
 def _enrich_locations(
     job_row: Job,
     *,
@@ -167,6 +179,11 @@ def _enrich_locations(
     says it is remote-capable *and* anchored in Vienna, keep both the city centroid and
     `remote=True`. Countrywide remote scopes without a concrete city still remain
     ungeocoded rather than receiving an invented point.
+
+    If parsing improves over time for the *same source location text*, replace an old
+    unresolved city guess with the newly resolved interpretation instead of accumulating
+    duplicate JobLocation rows. This is deliberately keyed by the unchanged human-readable
+    source label, never by fuzzy city similarity.
     """
     existing_by_key = {
         _location_key(
@@ -177,25 +194,89 @@ def _enrich_locations(
         ): location
         for location in job_row.locations
     }
+    existing_by_source_key: dict[tuple[str, bool], list[JobLocation]] = {}
+    for location in job_row.locations:
+        source_key = _source_location_key(
+            location_text=location.location_text,
+            remote=location.remote,
+        )
+        if source_key is not None:
+            existing_by_source_key.setdefault(source_key, []).append(location)
 
     for item in locations:
         postal = known_postal.get(item.postal_code or "")
         postal_code = postal.postal_code if postal is not None else None
         locality = locality_resolutions.get(item.city or "")
+        resolved_location = (
+            postal.location
+            if postal is not None
+            else locality.as_wkt()
+            if locality is not None
+            else None
+        )
         key = _location_key(
             postal_code=postal_code,
             city=item.city,
             location_text=item.location_text,
             remote=item.remote,
         )
+        source_key = _source_location_key(
+            location_text=item.location_text,
+            remote=item.remote,
+        )
+        source_rows = existing_by_source_key.get(source_key, []) if source_key else []
+
         existing = existing_by_key.get(key)
         if existing is not None:
-            if existing.location is None:
-                if postal is not None:
-                    existing.location = postal.location
-                elif locality is not None:
-                    existing.location = locality.as_wkt()
+            if existing.location is None and resolved_location is not None:
+                existing.location = resolved_location
+
+            # A previous parser version may have stored the same source label with a
+            # weaker unresolved city guess. Once the exact resolved row exists, delete
+            # only those stale unresolved duplicates with the identical source label.
+            stale_rows = [
+                row
+                for row in list(source_rows)
+                if row is not existing and row.location is None and row.postal_code is None
+            ]
+            for stale in stale_rows:
+                stale_key = _location_key(
+                    postal_code=stale.postal_code,
+                    city=stale.city,
+                    location_text=stale.location_text,
+                    remote=stale.remote,
+                )
+                if stale in job_row.locations:
+                    job_row.locations.remove(stale)
+                existing_by_key.pop(stale_key, None)
+                source_rows.remove(stale)
             continue
+
+        # If the source label is unchanged and we can now resolve it more precisely,
+        # upgrade the old unresolved row in place even when our parsed city changed.
+        if resolved_location is not None:
+            stale = next(
+                (
+                    row
+                    for row in source_rows
+                    if row.location is None and row.postal_code is None
+                ),
+                None,
+            )
+            if stale is not None:
+                stale_key = _location_key(
+                    postal_code=stale.postal_code,
+                    city=stale.city,
+                    location_text=stale.location_text,
+                    remote=stale.remote,
+                )
+                stale.postal_code = postal_code
+                stale.city = item.city
+                stale.location_text = item.location_text
+                stale.location = resolved_location
+                existing_by_key.pop(stale_key, None)
+                existing_by_key[key] = stale
+                continue
 
         # If an earlier sparse source could only preserve the human-readable location,
         # enrich that row with the PLZ centroid rather than creating a duplicate.
@@ -217,17 +298,13 @@ def _enrich_locations(
             postal_code=postal_code,
             city=item.city,
             location_text=item.location_text,
-            location=(
-                postal.location
-                if postal is not None
-                else locality.as_wkt()
-                if locality is not None
-                else None
-            ),
+            location=resolved_location,
             remote=item.remote,
         )
         job_row.locations.append(location_row)
         existing_by_key[key] = location_row
+        if source_key is not None:
+            existing_by_source_key.setdefault(source_key, []).append(location_row)
 
 
 def _enrich_job(
