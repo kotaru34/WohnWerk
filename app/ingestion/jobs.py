@@ -252,6 +252,68 @@ def _enrich_job(
     job_row.inactive_at = None
 
 
+def record_rejected_job_sightings(
+    session: Session,
+    *,
+    source: Source,
+    run: CrawlRun,
+    items: list[RawJob],
+) -> tuple[int, int]:
+    """Refresh source lifecycle for previously persisted jobs rejected by today's gate.
+
+    New rejected candidates remain unpersisted. Existing listings, however, must be
+    recorded as seen so a taxonomy change cannot masquerade as a source disappearance.
+    Their latest `wohnwerk_discovery_gate` payload stores `accepted=false`, which is the
+    separate local relevance state used by corpus/UI queries.
+
+    Returns `(existing_seen, reactivated)`.
+    """
+    if not items:
+        return 0, 0
+
+    source_ids = [item.source_listing_id for item in items]
+    existing = {
+        listing.source_listing_id: listing
+        for listing in session.scalars(
+            select(JobListing).where(
+                JobListing.source_id == source.id,
+                JobListing.source_listing_id.in_(source_ids),
+            )
+        )
+    }
+    if not existing:
+        return 0, 0
+
+    now = datetime.now(UTC)
+    seen = 0
+    reactivated = 0
+
+    for item in items:
+        listing = existing.get(item.source_listing_id)
+        if listing is None:
+            continue
+
+        if listing.status != ListingStatus.ACTIVE:
+            reactivated += 1
+
+        listing.url = item.url
+        listing.status = ListingStatus.ACTIVE
+        listing.raw_payload = _merge_listing_payload(listing.raw_payload, dict(item.raw_payload))
+        listing.last_seen_crawl_run_id = run.id
+        listing.last_seen_at = now
+        listing.inactive_at = None
+
+        # Canonical lifecycle describes whether at least one source listing exists,
+        # not whether WohnWerk currently considers the job professionally relevant.
+        listing.job.status = ListingStatus.ACTIVE
+        listing.job.last_seen_at = now
+        listing.job.inactive_at = None
+        seen += 1
+
+    session.commit()
+    return seen, reactivated
+
+
 def ingest_jobs(
     session: Session,
     *,
@@ -259,7 +321,7 @@ def ingest_jobs(
     run: CrawlRun,
     items: list[RawJob],
 ) -> tuple[int, int]:
-    """Persist job discovery with enrichment-only updates and exact-URL deduplication."""
+    """Persist relevant job discovery with enrichment-only updates and exact-URL dedupe."""
     if not items:
         return 0, 0
 
