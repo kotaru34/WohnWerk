@@ -270,7 +270,7 @@ class Job(Base):
     salary_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     salary_min_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     salary_max_eur_year: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    salary_text: Mapped[str | None] = mapped_column(String(500))
+    salary_text: Mapped[str | None] = mapped_column(Text)
     salary_is_minimum_only: Mapped[bool | None] = mapped_column(Boolean)
 
     job_fit_score: Mapped[int | None] = mapped_column(Integer, index=True)
