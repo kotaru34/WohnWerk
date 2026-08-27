@@ -8,6 +8,25 @@ def _position(xml: str):
     return personio.ET.fromstring(xml)
 
 
+def test_personio_unverified_site_tries_current_then_legacy_domain() -> None:
+    assert personio.personio_feed_urls(SITE) == (
+        "https://example-at.jobs.personio.com/xml",
+        "https://example-at.jobs.personio.de/xml",
+    )
+
+
+def test_personio_verified_base_url_is_pinned() -> None:
+    site = personio.PersonioSite(
+        tenant="example-at",
+        company="Example Engineering GmbH",
+        base_url="https://example-at.jobs.personio.de",
+    )
+
+    assert personio.personio_feed_urls(site) == (
+        "https://example-at.jobs.personio.de/xml",
+    )
+
+
 def test_personio_city_only_austrian_office_is_kept() -> None:
     item = personio.parse_personio_position(
         _position(
@@ -37,6 +56,7 @@ def test_personio_city_only_austrian_office_is_kept() -> None:
     assert item.title == "Senior Mechanical Engineer (w/m/d)"
     assert item.company == "Example Engineering GmbH"
     assert item.locations[0].city == "graz"
+    assert item.url == "https://example-at.jobs.personio.com/job/123?language=de"
     assert "Mechanische Konstruktion" in (item.description or "")
     assert item.raw_payload["personio_department"] == "Mechanics"
 
@@ -78,6 +98,25 @@ def test_personio_explicit_austria_office_is_kept() -> None:
     assert item is not None
     assert item.locations[0].city == "hohenberg"
     assert item.locations[0].location_text == "Hohenberg, Österreich"
+
+
+def test_personio_parenthesized_austria_office_is_kept() -> None:
+    item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>457</id>
+              <office>Linz (Österreich)</office>
+              <name>Techniker Maschinenbau</name>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+    )
+
+    assert item is not None
+    assert item.locations[0].city == "linz"
 
 
 def test_personio_non_austrian_office_is_rejected() -> None:
