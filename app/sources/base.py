@@ -36,6 +36,14 @@ class RawJob:
     company: str | None = None
     description: str | None = None
     salary_text: str | None = None
+    salary_min: Decimal | None = None
+    salary_max: Decimal | None = None
+    salary_currency: str | None = None
+    salary_period: str | None = None
+    salary_payment_count: int | None = None
+    salary_provenance: str | None = None
+    salary_confidence: Decimal | None = None
+    salary_is_minimum_only: bool | None = None
     locations: list[RawJobLocation] = field(default_factory=list)
     raw_payload: dict[str, Any] = field(default_factory=dict)
 
