@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.jobs.identity import stable_identity_from_payload
 from app.jobs.location_resolution import LocalityResolution, resolve_localities
 from app.models import CrawlRun, Job, JobListing, JobLocation, ListingStatus, PostalCode, Source
 from app.sources.base import RawJob, RawJobLocation
@@ -258,6 +259,35 @@ def _enrich_job(
     job_row.inactive_at = None
 
 
+def _stable_identity_jobs(
+    session: Session,
+    *,
+    source: Source,
+    identities: set[str],
+) -> dict[str, Job]:
+    """Map source-backed stable identities to canonical jobs.
+
+    Legacy SmartRecruiters rows may not yet have the explicit identity field, so this
+    intentionally reads the source's existing listings and lets the identity helper
+    derive tenant + jobAdId when necessary. Sources without stable identities skip the
+    scan entirely.
+    """
+    if not identities:
+        return {}
+
+    result: dict[str, Job] = {}
+    listings = session.scalars(
+        select(JobListing)
+        .where(JobListing.source_id == source.id)
+        .order_by(JobListing.id)
+    )
+    for listing in listings:
+        identity = stable_identity_from_payload(listing.raw_payload)
+        if identity in identities:
+            result.setdefault(identity, listing.job)
+    return result
+
+
 def record_rejected_job_sightings(
     session: Session,
     *,
@@ -327,7 +357,7 @@ def ingest_jobs(
     run: CrawlRun,
     items: list[RawJob],
 ) -> tuple[int, int]:
-    """Persist relevant job discovery with enrichment-only updates and exact-URL dedupe."""
+    """Persist relevant discovery with source identity first, exact URL second."""
     if not items:
         return 0, 0
 
@@ -363,6 +393,17 @@ def ingest_jobs(
         )
     }
 
+    identities = {
+        identity
+        for item in items
+        if (identity := stable_identity_from_payload(item.raw_payload)) is not None
+    }
+    stable_identity_jobs = _stable_identity_jobs(
+        session,
+        source=source,
+        identities=identities,
+    )
+
     urls = {item.url for item in items}
     exact_url_jobs: dict[str, Job] = {}
     if urls:
@@ -381,9 +422,17 @@ def ingest_jobs(
             known_postal=known_postal,
             locality_resolutions=locality_resolutions,
         )
+        stable_identity = stable_identity_from_payload(payload)
 
         if listing is None:
-            job_row = exact_url_jobs.get(item.url)
+            job_row = (
+                stable_identity_jobs.get(stable_identity)
+                if stable_identity is not None
+                else None
+            )
+            if job_row is None:
+                job_row = exact_url_jobs.get(item.url)
+
             if job_row is None:
                 job_row = Job(
                     title=item.title,
@@ -413,6 +462,8 @@ def ingest_jobs(
                 )
 
             exact_url_jobs[item.url] = job_row
+            if stable_identity is not None:
+                stable_identity_jobs.setdefault(stable_identity, job_row)
             listing = JobListing(
                 job_id=job_row.id,
                 source_id=source.id,
@@ -444,6 +495,8 @@ def ingest_jobs(
         listing.last_seen_at = now
         listing.inactive_at = None
         exact_url_jobs[item.url] = job_row
+        if stable_identity is not None:
+            stable_identity_jobs.setdefault(stable_identity, job_row)
         updated_count += 1
 
     session.commit()
