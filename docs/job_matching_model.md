@@ -15,6 +15,8 @@ The desired scale is not a small hand-picked shortlist. The target is a large co
 
 The pre-ingestion gate is intentionally **not** the final suitability algorithm. It should err toward retaining plausible adjacent technical roles.
 
+Clearly incompatible employment stages may still be rejected before persistence even when the technical content is relevant. For the current experienced-professional target, explicit apprenticeship, internship, trainee and student/working-student vacancies are outside the durable corpus. This is a structural career-stage rule, not a negative judgment about the engineering concepts contained in those vacancies.
+
 Initial seed vocabulary includes concepts such as:
 
 - Maschinenbau / Maschinenbauingenieur
