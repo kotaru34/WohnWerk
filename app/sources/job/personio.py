@@ -22,8 +22,10 @@ from app.sources.base import (
 
 PERSONIO_BASE_SUFFIX = ".jobs.personio.com"
 PERSONIO_LEGACY_BASE_SUFFIX = ".jobs.personio.de"
+PERSONIO_LANGUAGES = ("de", "en")
 _SPACE_RE = re.compile(r"\s+")
 _POSTAL_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
+_LOCALITY_WORD_ALIASES = {"vienna": "wien"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +111,12 @@ def _known_localities_in_office(
         return [exact_canonical]
 
     matches: list[str] = []
+    for alias, canonical in _LOCALITY_WORD_ALIASES.items():
+        if canonical not in austrian_localities:
+            continue
+        if re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", normalized):
+            matches.append(canonical)
+
     for locality in sorted(austrian_localities, key=len, reverse=True):
         if not locality:
             continue
@@ -214,6 +222,7 @@ def parse_personio_position(
     *,
     site: PersonioSite,
     austrian_localities: set[str],
+    language: str = "de",
 ) -> RawJob | None:
     position_id = _child_text(position, "id")
     title = _child_text(position, "name")
@@ -241,11 +250,12 @@ def parse_personio_position(
         "personio_schedule": _child_text(position, "schedule"),
         "personio_years_of_experience": _child_text(position, "yearsOfExperience"),
         "personio_career_base_url": site.career_base_url,
+        "personio_xml_language": language,
     }
 
     return RawJob(
         source_listing_id=f"{site.tenant}:{position_id}",
-        url=f"{site.career_base_url}/job/{position_id}?language=de",
+        url=f"{site.career_base_url}/job/{position_id}?language={language}",
         title=title,
         company=site.company,
         description=_description(position),
@@ -259,6 +269,7 @@ def parse_personio_feed(
     *,
     site: PersonioSite,
     austrian_localities: set[str],
+    language: str = "de",
 ) -> tuple[list[RawJob], int]:
     root = ET.fromstring(payload)
     positions = root.findall("position")
@@ -268,10 +279,64 @@ def parse_personio_feed(
             position,
             site=site,
             austrian_localities=austrian_localities,
+            language=language,
         )
         if parsed is not None:
             items.append(parsed)
     return items, len(positions)
+
+
+def merge_personio_language_items(
+    language_items: dict[str, list[RawJob]],
+) -> list[RawJob]:
+    """Merge language-specific XML rows without losing translated discovery evidence."""
+    by_listing: dict[str, dict[str, RawJob]] = {}
+    order: list[str] = []
+    for language in PERSONIO_LANGUAGES:
+        for item in language_items.get(language, []):
+            if item.source_listing_id not in by_listing:
+                by_listing[item.source_listing_id] = {}
+                order.append(item.source_listing_id)
+            by_listing[item.source_listing_id][language] = item
+
+    merged: list[RawJob] = []
+    for source_listing_id in order:
+        variants = by_listing[source_listing_id]
+        described_languages = [
+            language
+            for language in PERSONIO_LANGUAGES
+            if language in variants and variants[language].description
+        ]
+        primary_language = (
+            "de"
+            if "de" in described_languages
+            else described_languages[0]
+            if described_languages
+            else "de"
+            if "de" in variants
+            else next(iter(variants))
+        )
+        primary = variants[primary_language]
+        payload = dict(primary.raw_payload)
+        payload["personio_xml_languages"] = [
+            language for language in PERSONIO_LANGUAGES if language in variants
+        ]
+        payload["personio_description_languages"] = described_languages
+        payload["personio_primary_description_language"] = primary_language
+
+        extra_descriptions: list[str] = []
+        for language in described_languages:
+            description = variants[language].description
+            if not description or description == primary.description:
+                continue
+            if description not in extra_descriptions:
+                extra_descriptions.append(description)
+        if extra_descriptions:
+            payload["wohnwerk_discovery_extra_text"] = extra_descriptions
+
+        primary.raw_payload = payload
+        merged.append(primary)
+    return merged
 
 
 class PersonioJobSource(JobSource):
@@ -335,8 +400,10 @@ class PersonioJobSource(JobSource):
         }
 
         successful_feed: str | None = None
+        successful_languages: list[str] = []
         items: list[RawJob] = []
         total_positions = 0
+        language_source_positions: dict[str, int] = {}
         errors: list[str] = []
 
         async with httpx.AsyncClient(
@@ -345,26 +412,45 @@ class PersonioJobSource(JobSource):
             follow_redirects=True,
         ) as client:
             for url in personio_feed_urls(site):
-                if self.request_delay_seconds > 0:
-                    await asyncio.sleep(self.request_delay_seconds)
-                try:
-                    response = await client.get(url, params={"language": "de"})
-                    response.raise_for_status()
-                    resolved_base = url.removesuffix("/xml")
-                    resolved_site = PersonioSite(
-                        tenant=site.tenant,
-                        company=site.company,
-                        base_url=resolved_base,
-                    )
-                    items, total_positions = parse_personio_feed(
-                        response.content,
-                        site=resolved_site,
-                        austrian_localities=self.austrian_localities,
-                    )
-                except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
-                    errors.append(f"{url}: {type(exc).__name__}: {exc}")
+                resolved_base = url.removesuffix("/xml")
+                resolved_site = PersonioSite(
+                    tenant=site.tenant,
+                    company=site.company,
+                    base_url=resolved_base,
+                )
+                language_items: dict[str, list[RawJob]] = {}
+                language_counts: dict[str, int] = {}
+
+                for language in PERSONIO_LANGUAGES:
+                    if self.request_delay_seconds > 0:
+                        await asyncio.sleep(self.request_delay_seconds)
+                    try:
+                        response = await client.get(url, params={"language": language})
+                        response.raise_for_status()
+                        parsed_items, source_positions = parse_personio_feed(
+                            response.content,
+                            site=resolved_site,
+                            austrian_localities=self.austrian_localities,
+                            language=language,
+                        )
+                    except (httpx.HTTPError, ET.ParseError, TypeError, ValueError) as exc:
+                        errors.append(
+                            f"{url}?language={language}: {type(exc).__name__}: {exc}"
+                        )
+                        continue
+                    language_items[language] = parsed_items
+                    language_counts[language] = source_positions
+
+                if not language_items:
                     continue
+
                 successful_feed = url
+                successful_languages = [
+                    language for language in PERSONIO_LANGUAGES if language in language_items
+                ]
+                language_source_positions = language_counts
+                total_positions = max(language_counts.values())
+                items = merge_personio_language_items(language_items)
                 break
 
         if successful_feed is None:
@@ -382,11 +468,13 @@ class PersonioJobSource(JobSource):
             items=items,
             next_cursor={
                 "source_positions": total_positions,
+                "language_source_positions": language_source_positions,
                 "feed_url": successful_feed,
+                "languages": successful_languages,
                 "legacy_domain_fallback": PERSONIO_LEGACY_BASE_SUFFIX in successful_feed,
             },
             source_reported_count=total_positions,
             coverage_complete=True,
             result_cap_hit=False,
-            pages_fetched=1,
+            pages_fetched=len(successful_languages),
         )
