@@ -112,6 +112,20 @@ def test_depot_specialist_is_rejected_despite_vehicle_words() -> None:
     assert "depot_operations" in decision.low_relevance_title_matches
 
 
+def test_vehicle_test_operator_is_rejected_despite_testing_words() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Autonomous vehicle Test Operator",
+            "Drive and monitor autonomous vehicles, test vehicle behavior, log rides and "
+            "provide reports to operations and engineering teams.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "vehicle_test_operator" in decision.low_relevance_title_matches
+
+
 def test_autonomous_vehicle_driver_is_not_kept_on_vehicle_word_alone() -> None:
     decision = classify_job_candidate(
         _job(
