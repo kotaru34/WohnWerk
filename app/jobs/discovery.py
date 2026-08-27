@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from app.jobs.profile_seed import (
     ADJACENT_ROLE_PATTERNS,
     DOMAIN_PATTERNS,
+    LOW_RELEVANCE_TITLE_PATTERNS,
     METHOD_TOOL_PATTERNS,
     NEGATIVE_CONTEXT_PATTERNS,
     STRONG_TITLE_PATTERNS,
@@ -29,6 +30,7 @@ class JobDiscoveryDecision:
     domain_matches: tuple[str, ...] = ()
     method_tool_matches: tuple[str, ...] = ()
     negative_context_matches: tuple[str, ...] = ()
+    low_relevance_title_matches: tuple[str, ...] = ()
 
 
 def _matches(
@@ -47,6 +49,7 @@ def _decision(
     domain: tuple[str, ...],
     method_tool: tuple[str, ...],
     negative: tuple[str, ...],
+    low_relevance_title: tuple[str, ...],
 ) -> JobDiscoveryDecision:
     return JobDiscoveryDecision(
         accepted=accepted,
@@ -57,6 +60,7 @@ def _decision(
         domain_matches=domain,
         method_tool_matches=method_tool,
         negative_context_matches=negative,
+        low_relevance_title_matches=low_relevance_title,
     )
 
 
@@ -66,7 +70,8 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     The gate is deliberately broader than a CV title list. It recognizes strong
     mechanical titles directly and otherwise combines role-family, engineering-
     domain, and method/tool evidence. Obvious IT/commercial context only dampens
-    weak matches; it is not a hard blacklist.
+    weak matches; clearly operational title families can be rejected before weak
+    body-text signals accidentally promote them.
     """
     title = _normalize(job.title)
     body = _normalize(job.description)
@@ -74,6 +79,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
 
     strong_title = _matches(STRONG_TITLE_PATTERNS, title)
     adjacent_role = _matches(ADJACENT_ROLE_PATTERNS, title)
+    low_relevance_title = _matches(LOW_RELEVANCE_TITLE_PATTERNS, title)
     domain = _matches(DOMAIN_PATTERNS, combined)
     method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
     negative = _matches(NEGATIVE_CONTEXT_PATTERNS, combined)
@@ -87,6 +93,19 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             domain=domain,
             method_tool=method_tool,
             negative=negative,
+            low_relevance_title=low_relevance_title,
+        )
+
+    if low_relevance_title:
+        return _decision(
+            accepted=False,
+            reason="low_relevance_operational_title",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=low_relevance_title,
         )
 
     domain_count = len(set(domain))
@@ -107,6 +126,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             domain=domain,
             method_tool=method_tool,
             negative=negative,
+            low_relevance_title=low_relevance_title,
         )
 
     # CAD/FEM/FMEA/PLM/etc. can reveal a relevant adjacent role even when the
@@ -122,6 +142,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             domain=domain,
             method_tool=method_tool,
             negative=negative,
+            low_relevance_title=low_relevance_title,
         )
 
     # Generic or novel titles remain discoverable when the body contains multiple
@@ -135,6 +156,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             domain=domain,
             method_tool=method_tool,
             negative=negative,
+            low_relevance_title=low_relevance_title,
         )
 
     # A method-heavy vacancy can still be relevant despite a weak title. This is
@@ -148,6 +170,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             domain=domain,
             method_tool=method_tool,
             negative=negative,
+            low_relevance_title=low_relevance_title,
         )
 
     return _decision(
@@ -158,6 +181,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
         domain=domain,
         method_tool=method_tool,
         negative=negative,
+        low_relevance_title=low_relevance_title,
     )
 
 
@@ -178,6 +202,7 @@ def filter_job_candidates(items: list[RawJob]) -> list[RawJob]:
             "domain_matches": list(decision.domain_matches),
             "method_tool_matches": list(decision.method_tool_matches),
             "negative_context_matches": list(decision.negative_context_matches),
+            "low_relevance_title_matches": list(decision.low_relevance_title_matches),
         }
         item.raw_payload = payload
         accepted.append(item)
