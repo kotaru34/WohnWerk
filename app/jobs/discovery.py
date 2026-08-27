@@ -25,10 +25,15 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+_STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "student_training_stage",
+        re.compile(r"\b(?:lehre|lehrstelle|lehrausbildung)\w*"),
+    ),
+)
+
 # These title semantics are structural exclusions for this working-professional
 # corpus and therefore win even over an otherwise strong mechanical title.
-# Examples: "Werkstudent Mechanical Engineer" or
-# "Lehrausbildung Konstrukteur - Maschinenbautechnik".
 _HARD_TITLE_EXCLUSIONS = frozenset(
     {
         "student_training_stage",
@@ -101,6 +106,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             (
                 *_matches(LOW_RELEVANCE_TITLE_PATTERNS, title),
                 *_matches(_OPERATIONAL_TEST_TITLE_PATTERNS, title),
+                *_matches(_STRUCTURAL_STAGE_TITLE_PATTERNS, title),
             )
         )
     )
