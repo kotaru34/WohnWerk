@@ -13,6 +13,11 @@ from app.models import CrawlRun, Job, JobListing, ListingStatus, Source
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Show job-source lifecycle/relevance diagnostics.")
     parser.add_argument("source", help="Source name, e.g. personio-public-xml")
+    parser.add_argument(
+        "--all-titles",
+        action="store_true",
+        help="Print every unique current-run relevant title instead of compact samples.",
+    )
     return parser.parse_args()
 
 
@@ -147,14 +152,22 @@ def main() -> None:
             print(f"  {tenant}: {count}")
 
         if current_titles:
-            print("current_run_relevant_title_samples:")
+            heading = (
+                "current_run_relevant_titles:"
+                if args.all_titles
+                else "current_run_relevant_title_samples:"
+            )
+            print(heading)
             for tenant in sorted(current_titles):
                 print(f"  [{tenant}]")
-                for title in current_titles[tenant][:20]:
+                titles = current_titles[tenant]
+                shown = titles if args.all_titles else titles[:20]
+                for title in shown:
                     print(f"    - {title}")
-                remaining = len(current_titles[tenant]) - 20
-                if remaining > 0:
-                    print(f"    ... {remaining} more")
+                if not args.all_titles:
+                    remaining = len(titles) - len(shown)
+                    if remaining > 0:
+                        print(f"    ... {remaining} more")
 
         if unresolved_counts:
             print("unresolved_location_texts:")
