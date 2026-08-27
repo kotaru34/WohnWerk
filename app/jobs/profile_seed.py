@@ -80,9 +80,10 @@ ADJACENT_ROLE_PATTERNS: PatternSet = (
 )
 
 
-# Titles that are operational/manual-support roles rather than the target
-# engineering neighbourhood. Strong mechanical titles are checked before this
-# list, so a genuinely engineering-specific title can still win.
+# Titles that are structurally outside the target working-professional corpus.
+# Strong mechanical titles are checked before this list so an engineering title
+# with an incidental keyword can still win. These rules deliberately use title
+# semantics rather than employer/body boilerplate.
 LOW_RELEVANCE_TITLE_PATTERNS: PatternSet = (
     (
         "depot_operations",
@@ -99,6 +100,28 @@ LOW_RELEVANCE_TITLE_PATTERNS: PatternSet = (
         re.compile(r"\b(?:autonomous\s+vehicle\s+)?test\s+operator\w*"),
     ),
     ("field_survey", re.compile(r"\b(?:field\s+surveyor|field\s+data\s+collection)\w*")),
+    (
+        "software_role",
+        re.compile(
+            r"\bsoftware\s+(?:engineer|entwickler|developer|projektmanager|"
+            r"project\s+manager|lead|manager)\w*"
+        ),
+    ),
+    (
+        "ai_data_role",
+        re.compile(
+            r"\b(?:ai\s+(?:lead|manager|engineer|specialist)|"
+            r"data\s+(?:lead|manager|engineer|scientist)|"
+            r"machine\s+learning\s+(?:lead|manager|engineer|specialist))\w*"
+        ),
+    ),
+    (
+        "student_training_stage",
+        re.compile(
+            r"\b(?:studentisch\w*|werkstudent\w*|praktik(?:ant|um)\w*|"
+            r"intern(?:ship)?\w*|lehrling\w*|ausbildung\w*|trainee\w*)"
+        ),
+    ),
 )
 
 
