@@ -1,0 +1,83 @@
+[
+  {
+    "tenant": "AntonPaar1",
+    "company": "Anton Paar",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/AntonPaar1/744000136808976-field-service-engineer-pharma-life-sciences-m-f-x-gro-raum-linz-salzburg-vocklabruck"
+    }
+  },
+  {
+    "tenant": "IMSNanofabricationGmbH",
+    "company": "IMS Nanofabrication GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/IMSNanofabricationGmbH/744000138632489-test-engineer-semiconductor-equipment-all-genders-"
+    }
+  },
+  {
+    "tenant": "UmdaschGroup",
+    "company": "Umdasch Group / Doka",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/UmdaschGroup/744000058772436-senior-project-engineer-for-special-scaffolding-applications-m-f-d-"
+    }
+  },
+  {
+    "tenant": "SegulaTechnologies",
+    "company": "SEGULA Technologies",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/SegulaTechnologies/744000105787375-projektingenieur-uva-m-w-d-"
+    }
+  },
+  {
+    "tenant": "Aumovio",
+    "company": "AUMOVIO",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/Aumovio/744000103455108-technische-r-mitarbeiter-in-m-w-d-"
+    }
+  },
+  {
+    "tenant": "SalesianerMiettex",
+    "company": "Salesianer Miettex",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/SalesianerMiettex/744000108920548-instandhalter-m-w-d-"
+    }
+  },
+  {
+    "tenant": "Kronospan",
+    "company": "Kronospan / Kaindl",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/Kronospan/744000134284590-maschinenbautechniker-in-standort-lungotz-"
+    }
+  },
+  {
+    "tenant": "RedBull",
+    "company": "Red Bull",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/RedBull/744000129118488-avionics-engineer"
+    }
+  },
+  {
+    "tenant": "RenesasElectronics",
+    "company": "Renesas Electronics",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.smartrecruiters.com/RenesasElectronics/744000094371456-staff-hardware-engineer-f-m-d-"
+    }
+  }
+]
