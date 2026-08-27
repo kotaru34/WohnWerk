@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v7"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v8"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -28,15 +28,31 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "student_training_stage",
-        re.compile(r"\b(?:lehre|lehrstelle|lehrausbildung)\w*"),
+        re.compile(r"\b(?:(?:doppel)?lehre|lehrstelle|lehrausbildung)\w*"),
+    ),
+    (
+        "graduate_entry_stage",
+        re.compile(
+            r"\b(?:absolvent\w*|graduate\w*|berufseinsteiger\w*|"
+            r"career\s+starter\w*|entry[-\s]*level\w*)"
+        ),
     ),
 )
 
-# These title semantics are structural exclusions for this working-professional
-# corpus and therefore win even over an otherwise strong mechanical title.
+_MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "manual_metal_trade",
+        re.compile(r"\b(?:metallfacharbeiter|facharbeiter|schlosser|mechaniker)\w*"),
+    ),
+)
+
+# These title semantics are structural exclusions for this experienced
+# working-professional corpus and therefore win even over an otherwise strong
+# mechanical title.
 _HARD_TITLE_EXCLUSIONS = frozenset(
     {
         "student_training_stage",
+        "graduate_entry_stage",
         "software_role",
         "ai_data_role",
     }
@@ -107,6 +123,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
                 *_matches(LOW_RELEVANCE_TITLE_PATTERNS, title),
                 *_matches(_OPERATIONAL_TEST_TITLE_PATTERNS, title),
                 *_matches(_STRUCTURAL_STAGE_TITLE_PATTERNS, title),
+                *_matches(_MANUAL_TRADE_TITLE_PATTERNS, title),
             )
         )
     )
