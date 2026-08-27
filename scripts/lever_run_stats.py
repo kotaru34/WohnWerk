@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.models import Job, JobListing, ListingStatus, Source
+from app.models import CrawlRun, Job, JobListing, ListingStatus, Source
 
 
 def main() -> None:
@@ -15,6 +15,13 @@ def main() -> None:
         if source is None:
             print("lever-public-postings source not configured")
             return
+
+        latest_run = session.scalar(
+            select(CrawlRun)
+            .where(CrawlRun.source_id == source.id)
+            .order_by(CrawlRun.started_at.desc())
+            .limit(1)
+        )
 
         listings = list(
             session.scalars(
@@ -28,17 +35,27 @@ def main() -> None:
         active = [listing for listing in listings if listing.status == ListingStatus.ACTIVE]
         active_jobs = {listing.job_id: listing.job for listing in active}
         jobs = list(active_jobs.values())
+        latest_seen = [
+            listing
+            for listing in active
+            if latest_run is not None and listing.last_seen_crawl_run_id == latest_run.id
+        ]
 
         tenant_counts: Counter[str] = Counter()
-        tenant_titles: dict[str, list[str]] = defaultdict(list)
+        current_run_titles: dict[str, list[str]] = defaultdict(list)
         for listing in active:
             payload = listing.raw_payload or {}
             region = payload.get("wohnwerk_lever_region") or "unknown"
             site = payload.get("wohnwerk_lever_site") or "unknown"
+            tenant_counts[f"{region}:{site}"] += 1
+
+        for listing in latest_seen:
+            payload = listing.raw_payload or {}
+            region = payload.get("wohnwerk_lever_region") or "unknown"
+            site = payload.get("wohnwerk_lever_site") or "unknown"
             tenant = f"{region}:{site}"
-            tenant_counts[tenant] += 1
-            if listing.job.title and listing.job.title not in tenant_titles[tenant]:
-                tenant_titles[tenant].append(listing.job.title)
+            if listing.job.title and listing.job.title not in current_run_titles[tenant]:
+                current_run_titles[tenant].append(listing.job.title)
 
         locations = [location for job in jobs for location in job.locations]
         postal_resolved = [location for location in locations if location.postal_code]
@@ -68,6 +85,10 @@ def main() -> None:
             f"listings_total={len(listings)} active_listings={len(active)} "
             f"active_canonical_jobs={len(jobs)}"
         )
+        if latest_run is not None:
+            print(
+                f"latest_run={latest_run.id} current_run_accepted_listings={len(latest_seen)}"
+            )
         print(
             f"locations={len(locations)} postal_resolved={len(postal_resolved)} "
             f"unresolved={len(locations) - len(postal_resolved)}"
@@ -77,17 +98,17 @@ def main() -> None:
             f"salary_annualized={len(annualized_salary)}"
         )
 
-        print("tenants:")
+        print("tenants_active_source_history:")
         for tenant, count in sorted(tenant_counts.items()):
             print(f"  {tenant}: {count}")
 
-        if tenant_titles:
-            print("accepted_title_samples:")
-            for tenant in sorted(tenant_titles):
+        if current_run_titles:
+            print("current_run_accepted_title_samples:")
+            for tenant in sorted(current_run_titles):
                 print(f"  [{tenant}]")
-                for title in tenant_titles[tenant][:15]:
+                for title in current_run_titles[tenant][:15]:
                     print(f"    - {title}")
-                remaining = len(tenant_titles[tenant]) - 15
+                remaining = len(current_run_titles[tenant]) - 15
                 if remaining > 0:
                     print(f"    ... {remaining} more")
 
