@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v10"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v11"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -25,10 +25,30 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+# Narrow run-31 parity fixes that still require the normal domain/method evidence
+# below. They intentionally do not make arbitrary *techniker or management titles
+# relevant by themselves.
+_ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "service_technician",
+        re.compile(
+            r"\b(?:field[-\s]+service[-\s]+technician|service\s+technician|"
+            r"servicetechniker|service\s+techniker)\w*"
+        ),
+    ),
+    (
+        "team_lead",
+        re.compile(r"\bteamleitung\w*"),
+    ),
+)
+
 _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "student_training_stage",
-        re.compile(r"\b(?:(?:doppel)?lehre|lehrstelle|lehrausbildung)\w*"),
+        re.compile(
+            r"\b(?:(?:doppel)?lehre|lehrstelle|lehrausbildung)\w*"
+            r"|\b(?:working\s+student|student\s+(?:employee|worker))\w*"
+        ),
     ),
     (
         "graduate_entry_stage",
@@ -150,7 +170,14 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     combined = f"{title}\n{body}"
 
     strong_title = _matches(STRONG_TITLE_PATTERNS, title)
-    adjacent_role = _matches(ADJACENT_ROLE_PATTERNS, title)
+    adjacent_role = tuple(
+        dict.fromkeys(
+            (
+                *_matches(ADJACENT_ROLE_PATTERNS, title),
+                *_matches(_ADJACENT_TITLE_AUGMENT_PATTERNS, title),
+            )
+        )
+    )
     low_relevance_title = tuple(
         dict.fromkeys(
             (

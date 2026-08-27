@@ -12,6 +12,7 @@ from app.models import PostalCode
 
 LOCALITY_LOCATION_SOURCE = "RTR postal names + BEV postal centroids"
 LOCALITY_LOCATION_METHOD = "locality_weighted_postal_centroid"
+MULTI_LOCALITY_LOCATION_METHOD = "multi_locality_equal_centroid"
 
 _LOCALITY_ALIASES = {
     "vienna": "wien",
@@ -35,6 +36,12 @@ _REMOTE_ONLY = {
 }
 
 _NON_WORD_RE = re.compile(r"[^\wäöüß]+", flags=re.UNICODE)
+_AREA_PREFIX_RE = re.compile(r"^\s*(?:großraum|grossraum)\s+", flags=re.IGNORECASE)
+_COUNTRY_SUFFIX_RE = re.compile(
+    r"(?:\s*,\s*|\s+)(?:austria|österreich)\s*$",
+    flags=re.IGNORECASE,
+)
+_AREA_SEPARATOR_RE = re.compile(r"\s*[,;/]\s*")
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +81,35 @@ def canonicalize_locality(value: str | None) -> str | None:
     if not normalized or normalized in _REMOTE_ONLY:
         return None
     return _LOCALITY_ALIASES.get(normalized, normalized)
+
+
+def canonicalize_area_localities(value: str | None) -> tuple[str, ...]:
+    """Extract explicit localities from conservative `Großraum ...` source labels."""
+    if not value:
+        return ()
+
+    raw = value.strip()
+    if _AREA_PREFIX_RE.match(raw) is None:
+        return ()
+
+    body = _AREA_PREFIX_RE.sub("", raw, count=1)
+    body = _COUNTRY_SUFFIX_RE.sub("", body).strip()
+    if not body:
+        return ()
+
+    canonical: list[str] = []
+    for part in _AREA_SEPARATOR_RE.split(body):
+        locality = canonicalize_locality(part)
+        if locality is None:
+            return ()
+        if locality not in canonical:
+            canonical.append(locality)
+
+    # A one-place label is not a multi-locality area and should stay on the normal
+    # locality path rather than acquiring an area-resolution provenance label.
+    if len(canonical) < 2:
+        return ()
+    return tuple(canonical)
 
 
 def locality_name_matches(postal_name: str, canonical_locality: str) -> bool:
@@ -117,9 +153,50 @@ def combine_postal_centroids(
     )
 
 
+def combine_locality_resolutions(
+    requested_city: str,
+    resolutions: list[LocalityResolution],
+) -> LocalityResolution | None:
+    """Represent an explicit multi-locality area by the mean of locality centroids."""
+    if len(resolutions) < 2:
+        return None
+
+    count = len(resolutions)
+    longitude = sum(item.longitude for item in resolutions) / count
+    latitude = sum(item.latitude for item in resolutions) / count
+    canonical_locality = " | ".join(item.canonical_locality for item in resolutions)
+
+    return LocalityResolution(
+        requested_city=requested_city,
+        canonical_locality=canonical_locality,
+        longitude=longitude,
+        latitude=latitude,
+        postal_codes=tuple(
+            sorted({postal for item in resolutions for postal in item.postal_codes})
+        ),
+        address_sample_count=sum(item.address_sample_count for item in resolutions),
+        method=MULTI_LOCALITY_LOCATION_METHOD,
+    )
+
+
 def resolve_locality(session: Session, city: str | None) -> LocalityResolution | None:
+    if city is None:
+        return None
+
+    area_localities = canonicalize_area_localities(city)
+    if area_localities:
+        component_resolutions: list[LocalityResolution] = []
+        for locality in area_localities:
+            component = resolve_locality(session, locality)
+            if component is None:
+                # Do not silently approximate an area while dropping one of the
+                # explicitly named source localities.
+                return None
+            component_resolutions.append(component)
+        return combine_locality_resolutions(city, component_resolutions)
+
     canonical = canonicalize_locality(city)
-    if canonical is None or city is None:
+    if canonical is None:
         return None
 
     geometry = cast(PostalCode.location, Geometry(geometry_type="POINT", srid=4326))
