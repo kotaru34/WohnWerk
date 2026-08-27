@@ -5,10 +5,11 @@ import html
 import json
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
