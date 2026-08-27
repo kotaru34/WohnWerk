@@ -104,7 +104,12 @@ def _extract_city(text: str) -> str | None:
         return None
 
     candidate = _POSTAL_CODE_RE.sub("", candidate).strip(" ,-–—")
-    candidate = re.sub(r"\([^)]*(?:austria|österreich|remote|home office)[^)]*\)", "", candidate, flags=re.I)
+    candidate = re.sub(
+        r"\([^)]*(?:austria|österreich|remote|home office)[^)]*\)",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
     candidate = candidate.split("/")[0].strip()
     candidate = candidate.split(",")[0].strip()
     if candidate.casefold() in {"austria", "österreich", "remote", "home office"}:
@@ -325,7 +330,7 @@ class LeverJobSource(JobSource):
         company = shard.params.get("company")
         region = shard.params.get("region", "eu")
         if not isinstance(site, str) or not isinstance(company, str) or not isinstance(region, str):
-            raise ValueError(f"Invalid Lever shard parameters for {shard.key!r}")
+            raise TypeError(f"Invalid Lever shard parameters for {shard.key!r}")
         return LeverSite(site=site, company=company, region=region)
 
     @staticmethod
@@ -356,13 +361,13 @@ class LeverJobSource(JobSource):
                 response.raise_for_status()
                 payload = response.json()
                 if not isinstance(payload, list):
-                    raise ValueError(
+                    raise TypeError(
                         f"Lever {site.site!r} returned {type(payload).__name__}, expected list"
                     )
                 if not all(isinstance(item, dict) for item in payload):
-                    raise ValueError(f"Lever {site.site!r} returned a malformed postings list")
+                    raise TypeError(f"Lever {site.site!r} returned a malformed postings list")
                 return payload
-            except (httpx.HTTPError, ValueError) as exc:
+            except (httpx.HTTPError, TypeError, ValueError) as exc:
                 last_error = exc
                 if attempt == 2:
                     raise
@@ -384,7 +389,6 @@ class LeverJobSource(JobSource):
         items: list[RawJob] = []
         seen_ids: set[str] = set()
         pages_fetched = 0
-        raw_postings_seen = 0
 
         headers = {
             "Accept": "application/json",
@@ -402,7 +406,6 @@ class LeverJobSource(JobSource):
                         skip=page_index * self.page_size,
                     )
                     pages_fetched += 1
-                    raw_postings_seen += len(page)
 
                     for payload in page:
                         posting_id = payload.get("id")
