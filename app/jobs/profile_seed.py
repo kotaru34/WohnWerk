@@ -119,7 +119,7 @@ LOW_RELEVANCE_TITLE_PATTERNS: PatternSet = (
         "student_training_stage",
         re.compile(
             r"\b(?:studentisch\w*|werkstudent\w*|praktik(?:ant|um)\w*|"
-            r"intern(?:ship)?\w*|lehrling\w*|ausbildung\w*|trainee\w*)"
+            r"intern(?:ships?)?\b|lehrling\w*|ausbildung\w*|trainee\w*)"
         ),
     ),
 )
