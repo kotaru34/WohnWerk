@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -30,11 +30,15 @@ def main() -> None:
         jobs = list(active_jobs.values())
 
         tenant_counts: Counter[str] = Counter()
+        tenant_titles: dict[str, list[str]] = defaultdict(list)
         for listing in active:
             payload = listing.raw_payload or {}
             region = payload.get("wohnwerk_lever_region") or "unknown"
             site = payload.get("wohnwerk_lever_site") or "unknown"
-            tenant_counts[f"{region}:{site}"] += 1
+            tenant = f"{region}:{site}"
+            tenant_counts[tenant] += 1
+            if listing.job.title and listing.job.title not in tenant_titles[tenant]:
+                tenant_titles[tenant].append(listing.job.title)
 
         locations = [location for job in jobs for location in job.locations]
         postal_resolved = [location for location in locations if location.postal_code]
@@ -76,6 +80,16 @@ def main() -> None:
         print("tenants:")
         for tenant, count in sorted(tenant_counts.items()):
             print(f"  {tenant}: {count}")
+
+        if tenant_titles:
+            print("accepted_title_samples:")
+            for tenant in sorted(tenant_titles):
+                print(f"  [{tenant}]")
+                for title in tenant_titles[tenant][:15]:
+                    print(f"    - {title}")
+                remaining = len(tenant_titles[tenant]) - 15
+                if remaining > 0:
+                    print(f"    ... {remaining} more")
 
         if unresolved_counts:
             print("unresolved_location_texts:")
