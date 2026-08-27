@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-28-v13"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-28-v14"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
