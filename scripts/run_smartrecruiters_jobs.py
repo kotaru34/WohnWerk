@@ -20,7 +20,10 @@ DEFAULT_TENANTS = [
     TenantSeed(tenant_key="ALTEN", company="ALTEN"),
     TenantSeed(tenant_key="AustroHolding", company="Austro Holding"),
     TenantSeed(tenant_key="BoschGroup", company="Bosch Group"),
-    TenantSeed(tenant_key="Brainlab", company="Brainlab / medPhoton"),
+    # SmartRecruiters companyIdentifier must match the canonical default career-site
+    # identifier. Brainlab's canonical careers URL uses lowercase `brainlab` even though
+    # individual posting URLs are often rendered with `Brainlab`.
+    TenantSeed(tenant_key="brainlab", company="Brainlab / medPhoton"),
 ]
 
 
