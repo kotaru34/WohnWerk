@@ -18,7 +18,6 @@ def _job(title: str, description: str | None = None) -> RawJob:
 
 def test_strong_mechanical_title_is_accepted_without_description() -> None:
     decision = classify_job_candidate(_job("Konstruktionsingenieur"))
-
     assert decision.accepted is True
     assert decision.reason == "strong_mechanical_title"
     assert "konstruktionsingenieur" in decision.strong_title_matches
@@ -32,7 +31,6 @@ def test_technical_project_lead_in_product_development_is_accepted() -> None:
             "Lastenhefte, Terminplanung und Serienreife.",
         )
     )
-
     assert decision.accepted is True
     assert decision.reason == "engineering_role_with_domain"
     assert "technical_project_lead" in decision.adjacent_title_matches
@@ -52,7 +50,6 @@ def test_adjacent_application_engineer_with_cad_method_is_accepted() -> None:
             "Support enterprise SaaS customers and configure CRM workflows.",
         )
     )
-
     assert accepted.accepted is True
     assert accepted.reason in {"engineering_role_with_domain", "engineering_role_with_method"}
     assert rejected.accepted is False
@@ -66,7 +63,6 @@ def test_emc_engineer_is_kept_as_concrete_adjacent_engineering() -> None:
             "Schirmungs- und Filterkonzepte sowie Abstimmung mit Prüflaboren.",
         )
     )
-
     assert decision.accepted is True
     assert "engineer" in decision.adjacent_title_matches
     assert "emc_emv" in decision.method_tool_matches
@@ -80,7 +76,6 @@ def test_rail_vehicle_fixture_role_is_kept() -> None:
             "technische Zeichnungen und Inbetriebnahme beim Lieferanten.",
         )
     )
-
     assert decision.accepted is True
     assert "rail_vehicle" in decision.domain_matches
     assert "fixture_tooling" in decision.domain_matches
@@ -94,7 +89,6 @@ def test_autonomous_vehicle_technician_is_kept_as_adjacent_candidate() -> None:
             "Diagnostics, calibration, vehicle maintenance, validation and technical operations.",
         )
     )
-
     assert decision.accepted is True
     assert "technician" in decision.adjacent_title_matches
     assert "vehicle_engineering" in decision.domain_matches
@@ -108,7 +102,6 @@ def test_self_driving_systems_specialist_is_kept_for_diagnostics_and_calibration
             "autonomous driving hardware.",
         )
     )
-
     assert decision.accepted is True
     assert "systems_specialist" in decision.adjacent_title_matches
     assert "autonomous_vehicle_systems" in decision.domain_matches
@@ -124,7 +117,6 @@ def test_depot_specialist_is_rejected_despite_vehicle_words() -> None:
             "Basic mechanical knowledge is preferred.",
         )
     )
-
     assert decision.accepted is False
     assert decision.reason == "low_relevance_operational_title"
     assert "depot_operations" in decision.low_relevance_title_matches
@@ -137,7 +129,6 @@ def test_autonomous_vehicle_test_operator_is_rejected() -> None:
             "Operate and monitor autonomous vehicles, document rides and submit shift reports.",
         )
     )
-
     assert decision.accepted is False
     assert decision.reason == "low_relevance_operational_title"
     assert "vehicle_test_operator" in decision.low_relevance_title_matches
@@ -150,7 +141,6 @@ def test_autonomous_vehicle_driver_is_not_kept_on_vehicle_word_alone() -> None:
             "Drive autonomous vehicles on predefined routes and report incidents.",
         )
     )
-
     assert decision.accepted is False
 
 
@@ -162,7 +152,6 @@ def test_devsecops_security_tooling_is_not_mechanical_tooling() -> None:
             "Terraform and Python.",
         )
     )
-
     assert decision.accepted is False
     assert "software" in decision.negative_context_matches
     assert "fixture_tooling" not in decision.domain_matches
@@ -177,7 +166,6 @@ def test_generic_it_project_manager_is_not_promoted_by_system_integration() -> N
             "in der Beratungs- und IT-Branche erforderlich.",
         )
     )
-
     assert decision.accepted is False
     assert "project_manager" in decision.adjacent_title_matches
     assert "system_integration" in decision.method_tool_matches
@@ -191,7 +179,6 @@ def test_automotive_software_engineer_needs_real_mechanical_evidence() -> None:
             "Develop cloud backend services in Java and Kubernetes for automotive customers.",
         )
     )
-
     assert decision.accepted is False
     assert "software" in decision.negative_context_matches
     assert "vehicle_engineering" in decision.domain_matches
@@ -205,9 +192,8 @@ def test_explicit_software_project_manager_is_rejected_despite_mechanical_compan
             "mechanischer Produktentwicklung, Systemintegration, Validierung und OEM-Projekten.",
         )
     )
-
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "software_role" in decision.low_relevance_title_matches
 
 
@@ -219,9 +205,8 @@ def test_ai_lead_is_rejected_despite_engineering_employer_boilerplate() -> None:
             "also develops mechanical products, validates systems and works with OEMs.",
         )
     )
-
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "ai_data_role" in decision.low_relevance_title_matches
 
 
@@ -232,9 +217,33 @@ def test_student_engineering_role_is_rejected_by_career_stage() -> None:
             "Entwicklung elektrischer Antriebssysteme mit FEM, CAD, Simulation, Prototypen und Tests.",
         )
     )
-
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
+    assert "student_training_stage" in decision.low_relevance_title_matches
+
+
+def test_working_student_strong_mechanical_title_is_still_rejected() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Werkstudent Mechanical Engineer",
+            "Mechanical design, CAD, FEM and prototype validation.",
+        )
+    )
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
+    assert "mechanical_engineer" in decision.strong_title_matches
+    assert "student_training_stage" in decision.low_relevance_title_matches
+
+
+def test_apprenticeship_constructor_is_rejected_before_strong_title_acceptance() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Lehrausbildung Konstrukteur - Maschinenbautechnik",
+            "Konstruktion von Maschinenbaukomponenten und technische Zeichnungen.",
+        )
+    )
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
     assert "student_training_stage" in decision.low_relevance_title_matches
 
 
@@ -245,7 +254,6 @@ def test_strong_mechanical_engineer_title_wins_over_incidental_ai_word() -> None
             "Mechanical design, CAD, FEM and product development using AI-assisted tooling.",
         )
     )
-
     assert decision.accepted is True
     assert decision.reason == "strong_mechanical_title"
 
@@ -257,7 +265,6 @@ def test_sales_engineer_is_not_kept_from_automotive_context_alone() -> None:
             "Business development, account management and sales for automotive customers.",
         )
     )
-
     assert decision.accepted is False
     assert "sales" in decision.negative_context_matches
 
@@ -269,7 +276,6 @@ def test_generic_title_with_multiple_profile_methods_is_kept_for_recall() -> Non
             "CATIA V5, FEM, FMEA, PLM and validation of mechanical components.",
         )
     )
-
     assert decision.accepted is True
     assert decision.reason in {
         "engineering_role_with_domain",
@@ -285,7 +291,6 @@ def test_unrelated_finance_job_is_rejected() -> None:
             "Prepare monthly reports, tax filings and financial statements.",
         )
     )
-
     assert decision.accepted is False
     assert decision.reason == "insufficient_base_relevance"
 
@@ -293,9 +298,7 @@ def test_unrelated_finance_job_is_rejected() -> None:
 def test_filter_persists_discovery_evidence_only_for_accepted_jobs() -> None:
     relevant = _job("Mechanical Design Engineer", "Creo CAD and FEM")
     unrelated = _job("HR Business Partner", "Recruiting and people operations")
-
     result = filter_job_candidates([relevant, unrelated])
-
     assert result == [relevant]
     evidence = relevant.raw_payload["wohnwerk_discovery_gate"]
     assert evidence["accepted"] is True
@@ -309,9 +312,7 @@ def test_filter_persists_discovery_evidence_only_for_accepted_jobs() -> None:
 def test_partition_persists_rejected_evidence_for_lifecycle_refresh() -> None:
     relevant = _job("Mechanical Design Engineer", "Creo CAD and FEM")
     rejected = _job("DevSecOps Engineer", "Kubernetes, Terraform and cloud security tooling")
-
     accepted_items, rejected_items = partition_job_candidates([relevant, rejected])
-
     assert accepted_items == [relevant]
     assert rejected_items == [rejected]
     accepted_gate = relevant.raw_payload["wohnwerk_discovery_gate"]
