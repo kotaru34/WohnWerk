@@ -30,6 +30,9 @@ def _tenant_label(payload: dict) -> str:
     personio = payload.get("wohnwerk_personio_tenant")
     if personio:
         return str(personio)
+    smartrecruiters = payload.get("wohnwerk_smartrecruiters_tenant")
+    if smartrecruiters:
+        return str(smartrecruiters)
     return "unknown"
 
 
