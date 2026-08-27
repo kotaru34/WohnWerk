@@ -69,10 +69,8 @@ def _merge_missing_job_fields(survivor: Job, duplicate: Job) -> None:
         if getattr(survivor, field) is None and getattr(duplicate, field) is not None:
             setattr(survivor, field, getattr(duplicate, field))
 
-    if duplicate.first_seen_at < survivor.first_seen_at:
-        survivor.first_seen_at = duplicate.first_seen_at
-    if duplicate.last_seen_at > survivor.last_seen_at:
-        survivor.last_seen_at = duplicate.last_seen_at
+    survivor.first_seen_at = min(survivor.first_seen_at, duplicate.first_seen_at)
+    survivor.last_seen_at = max(survivor.last_seen_at, duplicate.last_seen_at)
     if duplicate.status == ListingStatus.ACTIVE:
         survivor.status = ListingStatus.ACTIVE
         survivor.inactive_at = None
