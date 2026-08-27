@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from app.jobs.identity import smartrecruiters_job_ad_identity, with_stable_identity
 from app.sources.base import (
     JobSource,
     RawJob,
@@ -137,23 +138,28 @@ def parse_smartrecruiters_detail(
     if posting_url is None:
         posting_url = f"{_SMARTRECRUITERS_JOBS_BASE}/{site.tenant}/{posting_id}"
 
-    raw_payload = {
-        "wohnwerk_smartrecruiters_tenant": site.tenant,
-        "wohnwerk_company": company,
-        "smartrecruiters_uuid": _text(payload.get("uuid")),
-        "smartrecruiters_job_id": _text(payload.get("jobId")),
-        "smartrecruiters_job_ad_id": _text(payload.get("jobAdId")),
-        "smartrecruiters_ref_number": _text(payload.get("refNumber")),
-        "smartrecruiters_released_date": _text(payload.get("releasedDate")),
-        "smartrecruiters_department": _label(payload.get("department")),
-        "smartrecruiters_function": _label(payload.get("function")),
-        "smartrecruiters_industry": _label(payload.get("industry")),
-        "smartrecruiters_employment_type": _label(payload.get("typeOfEmployment")),
-        "smartrecruiters_experience_level": _label(payload.get("experienceLevel")),
-        "smartrecruiters_apply_url": _text(payload.get("applyUrl")),
-        "smartrecruiters_location": dict(payload.get("location") or {}),
-        "smartrecruiters_custom_fields": payload.get("customField") or [],
-    }
+    job_ad_id = _text(payload.get("jobAdId"))
+    stable_identity = smartrecruiters_job_ad_identity(site.tenant, job_ad_id)
+    raw_payload = with_stable_identity(
+        {
+            "wohnwerk_smartrecruiters_tenant": site.tenant,
+            "wohnwerk_company": company,
+            "smartrecruiters_uuid": _text(payload.get("uuid")),
+            "smartrecruiters_job_id": _text(payload.get("jobId")),
+            "smartrecruiters_job_ad_id": job_ad_id,
+            "smartrecruiters_ref_number": _text(payload.get("refNumber")),
+            "smartrecruiters_released_date": _text(payload.get("releasedDate")),
+            "smartrecruiters_department": _label(payload.get("department")),
+            "smartrecruiters_function": _label(payload.get("function")),
+            "smartrecruiters_industry": _label(payload.get("industry")),
+            "smartrecruiters_employment_type": _label(payload.get("typeOfEmployment")),
+            "smartrecruiters_experience_level": _label(payload.get("experienceLevel")),
+            "smartrecruiters_apply_url": _text(payload.get("applyUrl")),
+            "smartrecruiters_location": dict(payload.get("location") or {}),
+            "smartrecruiters_custom_fields": payload.get("customField") or [],
+        },
+        stable_identity,
+    )
 
     return RawJob(
         source_listing_id=f"{site.tenant}:{posting_id}",
@@ -308,11 +314,7 @@ class SmartRecruitersJobSource(JobSource):
                 result_cap_hit = True
             page_number += 1
 
-        traversal_complete = (
-            reconciliation
-            and not result_cap_hit
-            and pages_fetched == max_pages
-        )
+        traversal_complete = reconciliation and not result_cap_hit and pages_fetched == max_pages
         return (
             rows,
             source_reported,
