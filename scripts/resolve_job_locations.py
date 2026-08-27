@@ -11,13 +11,15 @@ from app.models import JobLocation
 
 def main() -> None:
     with SessionLocal() as session:
+        # Remote-capable jobs can still have a real source-provided city. Preserve the
+        # remote flag, but resolve that physical city just like an on-site vacancy.
+        # Countrywide remote scopes without a concrete city are excluded naturally.
         locations = list(
             session.scalars(
                 select(JobLocation)
                 .where(
                     JobLocation.location.is_(None),
                     JobLocation.city.is_not(None),
-                    JobLocation.remote.is_(False),
                 )
                 .order_by(JobLocation.id)
             )
