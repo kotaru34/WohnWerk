@@ -119,6 +119,24 @@ def test_personio_parenthesized_austria_office_is_kept() -> None:
     assert item.locations[0].city == "linz"
 
 
+def test_personio_non_austrian_four_digit_postcode_is_not_austria_evidence() -> None:
+    item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>458</id>
+              <office>8000 Zürich</office>
+              <name>Mechanical Engineer</name>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+    )
+
+    assert item is None
+
+
 def test_personio_non_austrian_office_is_rejected() -> None:
     item = personio.parse_personio_position(
         _position(
