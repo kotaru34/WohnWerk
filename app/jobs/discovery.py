@@ -13,6 +13,16 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
+_OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "vehicle_test_operator",
+        re.compile(
+            r"\b(?:autonomous\s+)?vehicle\s+test\s+operator\w*"
+            r"|\bav\s+test\s+operator\w*"
+        ),
+    ),
+)
+
 
 def _normalize(value: str | None) -> str:
     if not value:
@@ -79,7 +89,14 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
 
     strong_title = _matches(STRONG_TITLE_PATTERNS, title)
     adjacent_role = _matches(ADJACENT_ROLE_PATTERNS, title)
-    low_relevance_title = _matches(LOW_RELEVANCE_TITLE_PATTERNS, title)
+    low_relevance_title = tuple(
+        dict.fromkeys(
+            (
+                *_matches(LOW_RELEVANCE_TITLE_PATTERNS, title),
+                *_matches(_OPERATIONAL_TEST_TITLE_PATTERNS, title),
+            )
+        )
+    )
     domain = _matches(DOMAIN_PATTERNS, combined)
     method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
     negative = _matches(NEGATIVE_CONTEXT_PATTERNS, combined)
