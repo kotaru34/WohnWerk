@@ -1,3 +1,4 @@
+from app.jobs.discovery import classify_job_candidate
 from app.sources.job import personio
 
 SITE = personio.PersonioSite(tenant="example-at", company="Example Engineering GmbH")
@@ -59,6 +60,7 @@ def test_personio_city_only_austrian_office_is_kept() -> None:
     assert item.url == "https://example-at.jobs.personio.com/job/123?language=de"
     assert "Mechanische Konstruktion" in (item.description or "")
     assert item.raw_payload["personio_department"] == "Mechanics"
+    assert item.raw_payload["personio_xml_language"] == "de"
 
 
 def test_personio_vienna_alias_is_kept_without_country_suffix() -> None:
@@ -78,6 +80,26 @@ def test_personio_vienna_alias_is_kept_without_country_suffix() -> None:
 
     assert item is not None
     assert item.locations[0].city == "wien"
+
+
+def test_personio_vienna_alias_inside_venue_label_is_kept() -> None:
+    item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>125</id>
+              <office>Austria Center Vienna</office>
+              <name>Ingenieur:in Gebäudetechnik</name>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+    )
+
+    assert item is not None
+    assert item.locations[0].city == "wien"
+    assert item.locations[0].location_text == "Austria Center Vienna"
 
 
 def test_personio_explicit_austria_office_is_kept() -> None:
@@ -176,3 +198,127 @@ def test_personio_feed_reports_all_positions_but_returns_only_austrian_jobs() ->
     assert total == 2
     assert [item.source_listing_id for item in items] == ["example-at:1"]
     assert items[0].locations[0].city == "wien"
+
+
+def test_personio_english_feed_sets_english_job_url() -> None:
+    item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>900</id>
+              <office>Vienna</office>
+              <name>Test Engineer</name>
+              <jobDescriptions>
+                <jobDescription>
+                  <name>Responsibilities</name>
+                  <value><![CDATA[<p>Testing and qualification of mechanical systems.</p>]]></value>
+                </jobDescription>
+              </jobDescriptions>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+        language="en",
+    )
+
+    assert item is not None
+    assert item.url.endswith("/job/900?language=en")
+    assert item.raw_payload["personio_xml_language"] == "en"
+
+
+def test_personio_language_merge_falls_back_to_english_description() -> None:
+    de_item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>901</id><office>Vienna</office><name>Electrical Engineer</name>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+        language="de",
+    )
+    en_item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>901</id><office>Vienna</office><name>Electrical Engineer</name>
+              <jobDescriptions>
+                <jobDescription>
+                  <name>Responsibilities</name>
+                  <value><![CDATA[
+                    <p>Design and development for automotive and rail systems, verification and testing.</p>
+                  ]]></value>
+                </jobDescription>
+              </jobDescriptions>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+        language="en",
+    )
+
+    assert de_item is not None
+    assert en_item is not None
+    merged = personio.merge_personio_language_items({"de": [de_item], "en": [en_item]})
+
+    assert len(merged) == 1
+    assert merged[0].description == en_item.description
+    assert merged[0].url.endswith("?language=en")
+    assert merged[0].raw_payload["personio_xml_languages"] == ["de", "en"]
+    assert merged[0].raw_payload["personio_primary_description_language"] == "en"
+    decision = classify_job_candidate(merged[0])
+    assert decision.accepted is True
+    assert "vehicle_engineering" in decision.domain_matches
+    assert "rail_vehicle" in decision.domain_matches
+
+
+def test_personio_language_merge_preserves_german_primary_and_english_discovery_text() -> None:
+    de_item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>902</id><office>Wien</office><name>Project Engineer</name>
+              <jobDescriptions>
+                <jobDescription><name>Aufgabe</name><value>Technische Projektarbeit.</value></jobDescription>
+              </jobDescriptions>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+        language="de",
+    )
+    en_item = personio.parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>902</id><office>Vienna</office><name>Project Engineer</name>
+              <jobDescriptions>
+                <jobDescription>
+                  <name>Role</name><value>Supplier coordination and commissioning of machinery.</value>
+                </jobDescription>
+              </jobDescriptions>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+        language="en",
+    )
+
+    assert de_item is not None
+    assert en_item is not None
+    merged = personio.merge_personio_language_items({"de": [de_item], "en": [en_item]})[0]
+
+    assert merged.description == de_item.description
+    assert merged.url.endswith("?language=de")
+    assert merged.raw_payload["personio_description_languages"] == ["de", "en"]
+    assert merged.raw_payload["wohnwerk_discovery_extra_text"] == [en_item.description]
+    decision = classify_job_candidate(merged)
+    assert decision.accepted is True
+    assert "supplier_coordination" in decision.method_tool_matches
+    assert "commissioning" in decision.method_tool_matches
