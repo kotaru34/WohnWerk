@@ -20,11 +20,7 @@ DEFAULT_TENANTS = [
     TenantSeed(tenant_key="ALTEN", company="ALTEN"),
     TenantSeed(tenant_key="AustroHolding", company="Austro Holding"),
     TenantSeed(tenant_key="BoschGroup", company="Bosch Group"),
-    TenantSeed(
-        tenant_key="brainlab",
-        company="Brainlab / medPhoton",
-        config={"unfiltered_austria_fallback": True},
-    ),
+    TenantSeed(tenant_key="brainlab", company="Brainlab / medPhoton"),
 ]
 
 
