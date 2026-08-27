@@ -5,18 +5,18 @@ from app.ingestion.jobs import _annual_eur_value, _merge_listing_payload
 
 def test_yearly_eur_salary_is_already_annual() -> None:
     value = _annual_eur_value(
-        Decimal("72000"),
+        Decimal(72000),
         currency="EUR",
         period="year",
         payment_count=None,
     )
 
-    assert value == Decimal("72000")
+    assert value == Decimal(72000)
 
 
 def test_monthly_salary_requires_explicit_payment_count() -> None:
     value = _annual_eur_value(
-        Decimal("4500"),
+        Decimal(4500),
         currency="EUR",
         period="month",
         payment_count=None,
@@ -27,18 +27,18 @@ def test_monthly_salary_requires_explicit_payment_count() -> None:
 
 def test_monthly_salary_uses_explicit_payment_count() -> None:
     value = _annual_eur_value(
-        Decimal("4500"),
+        Decimal(4500),
         currency="EUR",
         period="month",
         payment_count=14,
     )
 
-    assert value == Decimal("63000")
+    assert value == Decimal(63000)
 
 
 def test_non_eur_salary_is_not_silently_normalized() -> None:
     value = _annual_eur_value(
-        Decimal("90000"),
+        Decimal(90000),
         currency="USD",
         period="year",
         payment_count=None,
