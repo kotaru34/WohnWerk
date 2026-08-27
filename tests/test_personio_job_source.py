@@ -1,6 +1,5 @@
 from app.sources.job import personio
 
-
 SITE = personio.PersonioSite(tenant="example-at", company="Example Engineering GmbH")
 AUSTRIAN_LOCALITIES = {"graz", "wien", "linz", "hohenberg", "anif"}
 
