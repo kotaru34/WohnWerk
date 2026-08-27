@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v6"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v7"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -23,6 +23,18 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"|\bav\s+test\s+operator\w*"
         ),
     ),
+)
+
+# These title semantics are structural exclusions for this working-professional
+# corpus and therefore win even over an otherwise strong mechanical title.
+# Examples: "Werkstudent Mechanical Engineer" or
+# "Lehrausbildung Konstrukteur - Maschinenbautechnik".
+_HARD_TITLE_EXCLUSIONS = frozenset(
+    {
+        "student_training_stage",
+        "software_role",
+        "ai_data_role",
+    }
 )
 
 
@@ -77,14 +89,7 @@ def _decision(
 
 
 def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
-    """Apply a high-recall professional-neighbourhood gate before persistence.
-
-    The gate is deliberately broader than a CV title list. It recognizes strong
-    mechanical titles directly and otherwise combines role-family, engineering-
-    domain, and method/tool evidence. Obvious IT/commercial context only dampens
-    weak matches; structurally low-relevance title families can be rejected before
-    employer/body boilerplate accidentally promotes them.
-    """
+    """Apply a high-recall professional-neighbourhood gate before persistence."""
     title = _normalize(job.title)
     body = _normalize(job.description)
     combined = f"{title}\n{body}"
@@ -102,6 +107,18 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     domain = _matches(DOMAIN_PATTERNS, combined)
     method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
     negative = _matches(NEGATIVE_CONTEXT_PATTERNS, combined)
+
+    if any(match in _HARD_TITLE_EXCLUSIONS for match in low_relevance_title):
+        return _decision(
+            accepted=False,
+            reason="structural_title_exclusion",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=low_relevance_title,
+        )
 
     if strong_title:
         return _decision(
@@ -132,10 +149,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     has_role = bool(adjacent_role)
     has_negative = bool(negative)
 
-    # A plausible engineering role plus a real mechanical/manufacturing domain is
-    # normally enough. If the vacancy is strongly software/commercial, require an
-    # additional mechanical method/tool signal rather than trusting one word such
-    # as "automotive".
     if has_role and domain_count >= 1 and (not has_negative or method_count >= 1):
         return _decision(
             accepted=True,
@@ -148,10 +161,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             low_relevance_title=low_relevance_title,
         )
 
-    # CAD/FEM/FMEA/PLM/etc. can reveal a relevant adjacent role even when the
-    # source uses an unusual title. One method/tool signal is sufficient when the
-    # title itself is already an engineering/technical role and the context is not
-    # clearly unrelated.
     if has_role and method_count >= 1 and not has_negative:
         return _decision(
             accepted=True,
@@ -164,8 +173,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             low_relevance_title=low_relevance_title,
         )
 
-    # Generic or novel titles remain discoverable when the body contains multiple
-    # independent mechanical domains plus a concrete engineering method/tool.
     if domain_count >= 2 and method_count >= 1:
         return _decision(
             accepted=True,
@@ -178,8 +185,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             low_relevance_title=low_relevance_title,
         )
 
-    # A method-heavy vacancy can still be relevant despite a weak title. This is
-    # useful for titles such as "Technical Specialist" or supplier-side roles.
     if method_count >= 3 and not has_negative:
         return _decision(
             accepted=True,
@@ -222,12 +227,7 @@ def _attach_discovery_evidence(item: RawJob, decision: JobDiscoveryDecision) -> 
 
 
 def partition_job_candidates(items: list[RawJob]) -> tuple[list[RawJob], list[RawJob]]:
-    """Classify all Austrian source candidates while preserving evidence for both sides.
-
-    Rejected *new* vacancies are still not persisted. The rejected list exists so the
-    runner can refresh source-lifecycle state for listings that were persisted by an
-    earlier gate version but are no longer professionally relevant.
-    """
+    """Classify all Austrian source candidates while preserving evidence for both sides."""
     accepted: list[RawJob] = []
     rejected: list[RawJob] = []
 
@@ -243,12 +243,7 @@ def partition_job_candidates(items: list[RawJob]) -> tuple[list[RawJob], list[Ra
 
 
 def filter_job_candidates(items: list[RawJob]) -> list[RawJob]:
-    """Backward-compatible accepted-only helper.
-
-    Rejected items are deliberately left untouched here because callers that only want
-    filtering should not observe payload mutation. The crawl runner uses
-    `partition_job_candidates()` instead so it can track rejected existing listings.
-    """
+    """Backward-compatible accepted-only helper."""
     accepted: list[RawJob] = []
     for item in items:
         decision = classify_job_candidate(item)
