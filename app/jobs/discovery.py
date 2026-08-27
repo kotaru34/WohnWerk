@@ -151,6 +151,15 @@ def _normalize(value: str | None) -> str:
     return " ".join(value.casefold().split())
 
 
+def _discovery_extra_text(job: RawJob) -> str:
+    value = (job.raw_payload or {}).get("wohnwerk_discovery_extra_text")
+    if isinstance(value, str):
+        return _normalize(value)
+    if isinstance(value, list):
+        return "\n".join(_normalize(item) for item in value if isinstance(item, str))
+    return ""
+
+
 def _negative_context_text(text: str) -> str:
     """Protect technical after-sales service from generic commercial sales matching."""
     return _AFTER_SALES_SERVICE_RE.sub("after_sales_service", text)
@@ -204,7 +213,8 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     """Apply a high-recall professional-neighbourhood gate before persistence."""
     title = _normalize(job.title)
     body = _normalize(job.description)
-    combined = f"{title}\n{body}"
+    extra = _discovery_extra_text(job)
+    combined = f"{title}\n{body}\n{extra}"
 
     strong_title = _matches(STRONG_TITLE_PATTERNS, title)
     adjacent_role = tuple(
