@@ -1,0 +1,102 @@
+[
+  {
+    "tenant": "toyota-material-handling-austria-gmbh",
+    "company": "Toyota Material Handling Austria GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://toyota-material-handling-austria-gmbh.jobs.personio.de/job/2758857",
+      "evidence_note": "Current Austrian Servicetechniker vacancy in Graz / Großraum Graz"
+    }
+  },
+  {
+    "tenant": "iakw",
+    "company": "Internationales Amtssitz- und Konferenzzentrum Wien, AG",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://iakw.jobs.personio.de/?language=de",
+      "evidence_note": "Current Vienna engineering vacancies including Gebäudetechnik / HKLS"
+    }
+  },
+  {
+    "tenant": "hitzler",
+    "company": "Hitzler Ingenieure",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://hitzler.jobs.personio.de/job/2742993",
+      "evidence_note": "Current Wien Projektleitung Bauprojektsteuerung vacancy"
+    }
+  },
+  {
+    "tenant": "optimuse",
+    "company": "OPTIMUSE",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://optimuse.jobs.personio.de/job/2769148?language=en",
+      "evidence_note": "Current Vienna engineering/simulation career site"
+    }
+  },
+  {
+    "tenant": "gasser-partner",
+    "company": "Gasser Partner / PIADENO / VOLTIDA",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://gasser-partner.jobs.personio.de/job/2591648",
+      "evidence_note": "Current Klagenfurt BESS Integration Engineering vacancy"
+    }
+  },
+  {
+    "tenant": "prewave",
+    "company": "Prewave",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://prewave.jobs.personio.de/",
+      "evidence_note": "Current Vienna Personio career site with technical roles"
+    }
+  },
+  {
+    "tenant": "wwp",
+    "company": "WWP",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://wwp.jobs.personio.de/",
+      "evidence_note": "Current Personio career site with Dornbirn, Wien and Innsbruck positions"
+    }
+  },
+  {
+    "tenant": "schwer-fittings-gmbh",
+    "company": "Schwer Fittings GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://schwer-fittings-gmbh.jobs.personio.de/job/2710550",
+      "evidence_note": "Current Linz, Österreich vacancy on a multi-country Personio feed"
+    }
+  },
+  {
+    "tenant": "anyline-gmbh",
+    "company": "Anyline GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://anyline-gmbh.jobs.personio.de/?language=de",
+      "evidence_note": "Current Vienna-based Personio career site"
+    }
+  },
+  {
+    "tenant": "tenics",
+    "company": "Tenics Software Engineering GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://tenics.jobs.personio.de/?language=en",
+      "evidence_note": "Current Vienna Personio office; broad discovery gate will reject irrelevant software roles"
+    }
+  }
+]
