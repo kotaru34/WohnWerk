@@ -20,7 +20,8 @@ from app.sources.base import (
     SourceShardSpec,
 )
 
-PERSONIO_BASE_SUFFIX = ".jobs.personio.de"
+PERSONIO_BASE_SUFFIX = ".jobs.personio.com"
+PERSONIO_LEGACY_BASE_SUFFIX = ".jobs.personio.de"
 _SPACE_RE = re.compile(r"\s+")
 _POSTAL_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 
@@ -29,12 +30,31 @@ _POSTAL_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 class PersonioSite:
     tenant: str
     company: str
+    base_url: str | None = None
 
     def __post_init__(self) -> None:
         if not self.tenant.strip():
             raise ValueError("Personio tenant must not be empty")
         if not self.company.strip():
             raise ValueError("Personio company must not be empty")
+        if self.base_url is not None and not self.base_url.strip():
+            raise ValueError("Personio base_url must not be blank")
+
+    @property
+    def career_base_url(self) -> str:
+        if self.base_url:
+            return self.base_url.rstrip("/")
+        return f"https://{self.tenant}{PERSONIO_BASE_SUFFIX}"
+
+
+def personio_feed_urls(site: PersonioSite) -> tuple[str, ...]:
+    """Return configured feed first, otherwise current .com then legacy .de."""
+    if site.base_url:
+        return (f"{site.career_base_url}/xml",)
+    return (
+        f"https://{site.tenant}{PERSONIO_BASE_SUFFIX}/xml",
+        f"https://{site.tenant}{PERSONIO_LEGACY_BASE_SUFFIX}/xml",
+    )
 
 
 class _TextExtractor(HTMLParser):
@@ -84,7 +104,6 @@ def _known_localities_in_office(
     if not normalized:
         return []
 
-    # Exact aliases such as Vienna -> Wien should pass before literal matching.
     exact_canonical = canonicalize_locality(office)
     if exact_canonical in austrian_localities:
         return [exact_canonical]
@@ -97,7 +116,6 @@ def _known_localities_in_office(
         if re.search(pattern, normalized):
             matches.append(locality)
 
-    # Also resolve aliases in common comma/slash/semicolon-separated multi-office labels.
     for part in re.split(r"[,;/|]", office):
         canonical = canonicalize_locality(part.strip())
         if canonical in austrian_localities and canonical not in matches:
@@ -118,7 +136,7 @@ def _fallback_city_from_office(office: str) -> str | None:
         "",
         cleaned,
         flags=re.IGNORECASE,
-    ).strip(" ,-–—")
+    ).strip(" ,-–—()")
     if not cleaned:
         return None
     if "," in cleaned:
@@ -219,11 +237,12 @@ def parse_personio_position(
         "personio_seniority": _child_text(position, "seniority"),
         "personio_schedule": _child_text(position, "schedule"),
         "personio_years_of_experience": _child_text(position, "yearsOfExperience"),
+        "personio_career_base_url": site.career_base_url,
     }
 
     return RawJob(
         source_listing_id=f"{site.tenant}:{position_id}",
-        url=f"https://{site.tenant}{PERSONIO_BASE_SUFFIX}/job/{position_id}?language=de",
+        url=f"{site.career_base_url}/job/{position_id}?language=de",
         title=title,
         company=site.company,
         description=_description(position),
@@ -278,7 +297,11 @@ class PersonioJobSource(JobSource):
         return [
             SourceShardSpec(
                 key=site.tenant,
-                params={"tenant": site.tenant, "company": site.company},
+                params={
+                    "tenant": site.tenant,
+                    "company": site.company,
+                    "base_url": site.base_url,
+                },
             )
             for site in self.sites
         ]
@@ -287,9 +310,12 @@ class PersonioJobSource(JobSource):
     def _site_from_shard(shard: SourceShardSpec) -> PersonioSite:
         tenant = shard.params.get("tenant")
         company = shard.params.get("company")
+        base_url = shard.params.get("base_url")
         if not isinstance(tenant, str) or not isinstance(company, str):
             raise TypeError(f"Invalid Personio shard parameters for {shard.key!r}")
-        return PersonioSite(tenant=tenant, company=company)
+        if base_url is not None and not isinstance(base_url, str):
+            raise TypeError(f"Invalid Personio base URL for {shard.key!r}")
+        return PersonioSite(tenant=tenant, company=company, base_url=base_url)
 
     async def fetch_shard(
         self,
@@ -300,41 +326,62 @@ class PersonioJobSource(JobSource):
     ) -> SourceBatch[RawJob]:
         del cursor, reconciliation
         site = self._site_from_shard(shard)
-        if self.request_delay_seconds > 0:
-            await asyncio.sleep(self.request_delay_seconds)
-
-        url = f"https://{site.tenant}{PERSONIO_BASE_SUFFIX}/xml"
         headers = {
             "Accept": "application/xml,text/xml;q=0.9,*/*;q=0.1",
             "User-Agent": "WohnWerk/0.1 (+private self-hosted Austrian job search)",
         }
 
-        try:
-            async with httpx.AsyncClient(
-                headers=headers,
-                timeout=30.0,
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(url, params={"language": "de"})
-                response.raise_for_status()
-                items, total_positions = parse_personio_feed(
-                    response.content,
-                    site=site,
-                    austrian_localities=self.austrian_localities,
-                )
-        except Exception as exc:
+        successful_feed: str | None = None
+        items: list[RawJob] = []
+        total_positions = 0
+        errors: list[str] = []
+
+        async with httpx.AsyncClient(
+            headers=headers,
+            timeout=30.0,
+            follow_redirects=True,
+        ) as client:
+            for url in personio_feed_urls(site):
+                if self.request_delay_seconds > 0:
+                    await asyncio.sleep(self.request_delay_seconds)
+                try:
+                    response = await client.get(url, params={"language": "de"})
+                    response.raise_for_status()
+                    resolved_base = url.removesuffix("/xml")
+                    resolved_site = PersonioSite(
+                        tenant=site.tenant,
+                        company=site.company,
+                        base_url=resolved_base,
+                    )
+                    items, total_positions = parse_personio_feed(
+                        response.content,
+                        site=resolved_site,
+                        austrian_localities=self.austrian_localities,
+                    )
+                except Exception as exc:
+                    errors.append(f"{url}: {type(exc).__name__}: {exc}")
+                    continue
+                successful_feed = url
+                break
+
+        if successful_feed is None:
+            detail = "; ".join(errors) if errors else "no feed URLs attempted"
             raise SourceFetchError(
-                f"Personio shard {shard.key!r} failed: {exc}",
+                f"Personio shard {shard.key!r} failed: {detail}",
                 pages_fetched=0,
                 items_seen=0,
                 source_reported_count=None,
-                next_cursor={},
+                next_cursor={"attempted_feed_urls": list(personio_feed_urls(site))},
                 partial_items=[],
-            ) from exc
+            )
 
         return SourceBatch(
             items=items,
-            next_cursor={"source_positions": total_positions},
+            next_cursor={
+                "source_positions": total_positions,
+                "feed_url": successful_feed,
+                "legacy_domain_fallback": PERSONIO_LEGACY_BASE_SUFFIX in successful_feed,
+            },
             source_reported_count=total_positions,
             coverage_complete=True,
             result_cap_hit=False,
