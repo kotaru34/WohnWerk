@@ -80,6 +80,39 @@ class Source(Base):
     )
 
 
+class JobSourceTenant(Base):
+    """Configured employer/account for a multi-tenant job acquisition source."""
+
+    __tablename__ = "job_source_tenants"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id",
+            "namespace",
+            "tenant_key",
+            name="uq_job_source_tenants_source_namespace_key",
+        ),
+        Index("ix_job_source_tenants_enabled", "source_id", "enabled"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    namespace: Mapped[str] = mapped_column(String(40), default="default", nullable=False)
+    tenant_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    company: Mapped[str] = mapped_column(String(300), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    discovered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class SourceShard(Base):
     __tablename__ = "source_shards"
     __table_args__ = (
