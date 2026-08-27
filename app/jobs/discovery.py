@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v5"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v6"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -82,8 +82,8 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     The gate is deliberately broader than a CV title list. It recognizes strong
     mechanical titles directly and otherwise combines role-family, engineering-
     domain, and method/tool evidence. Obvious IT/commercial context only dampens
-    weak matches; clearly operational title families can be rejected before weak
-    body-text signals accidentally promote them.
+    weak matches; structurally low-relevance title families can be rejected before
+    employer/body boilerplate accidentally promotes them.
     """
     title = _normalize(job.title)
     body = _normalize(job.description)
