@@ -249,7 +249,7 @@ def test_personio_language_merge_falls_back_to_english_description() -> None:
                 <jobDescription>
                   <name>Responsibilities</name>
                   <value><![CDATA[
-                    <p>Design and development for automotive and rail systems, verification and testing.</p>
+                    <p>Design and development for automotive systems, verification and testing.</p>
                   ]]></value>
                 </jobDescription>
               </jobDescriptions>
@@ -273,7 +273,8 @@ def test_personio_language_merge_falls_back_to_english_description() -> None:
     decision = classify_job_candidate(merged[0])
     assert decision.accepted is True
     assert "vehicle_engineering" in decision.domain_matches
-    assert "rail_vehicle" in decision.domain_matches
+    assert "validation" in decision.method_tool_matches
+    assert "testing" in decision.method_tool_matches
 
 
 def test_personio_language_merge_preserves_german_primary_and_english_discovery_text() -> None:
