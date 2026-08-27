@@ -13,19 +13,22 @@ from app.crawling.coverage import (
     reconcile_missing_listings,
 )
 from app.crawling.shards import sync_source_shards
-from app.ingestion.jobs import ingest_jobs
-from app.jobs.discovery import filter_job_candidates
+from app.ingestion.jobs import ingest_jobs, record_rejected_job_sightings
+from app.jobs.discovery import partition_job_candidates
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import JobSource, RawJob, SourceFetchError
 
 
-def _filter_with_diagnostics(items: list[RawJob], cursor: dict) -> tuple[list[RawJob], dict]:
-    accepted = filter_job_candidates(items)
+def _partition_with_diagnostics(
+    items: list[RawJob],
+    cursor: dict,
+) -> tuple[list[RawJob], list[RawJob], dict]:
+    accepted, rejected = partition_job_candidates(items)
     diagnostics = dict(cursor)
     diagnostics["job_candidates_fetched"] = len(items)
     diagnostics["job_candidates_accepted"] = len(accepted)
-    diagnostics["job_candidates_rejected"] = len(items) - len(accepted)
-    return accepted, diagnostics
+    diagnostics["job_candidates_rejected"] = len(rejected)
+    return accepted, rejected, diagnostics
 
 
 async def run_job_source(
@@ -35,7 +38,7 @@ async def run_job_source(
     adapter: JobSource,
     reconciliation: bool = False,
 ) -> tuple[CrawlRun, CoverageSummary]:
-    """Run all enabled job shards with coverage guarantees and a broad relevance gate."""
+    """Run enabled job shards with coverage and relevance kept as separate states."""
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
     specs_by_key = {spec.key: spec for spec in specs}
@@ -64,7 +67,7 @@ async def run_job_source(
                 cursor=shard.cursor,
                 reconciliation=reconciliation,
             )
-            candidate_items, next_cursor = _filter_with_diagnostics(
+            candidate_items, rejected_items, next_cursor = _partition_with_diagnostics(
                 batch.items,
                 batch.next_cursor,
             )
@@ -74,11 +77,22 @@ async def run_job_source(
                 run=run,
                 items=candidate_items,
             )
+            rejected_existing_seen, rejected_reactivated = record_rejected_job_sightings(
+                session,
+                source=source,
+                run=run,
+                items=rejected_items,
+            )
+            next_cursor["job_rejected_existing_seen"] = rejected_existing_seen
+            next_cursor["job_rejected_reactivated"] = rejected_reactivated
 
             now = datetime.now(UTC)
             shard_run.status = RunStatus.SUCCESS
             shard_run.finished_at = now
             shard_run.pages_fetched = batch.pages_fetched
+            # `items_seen` intentionally remains the durable relevant-corpus count.
+            # Source-lifecycle sightings for rejected persisted listings are recorded
+            # separately in next_cursor diagnostics and last_seen_crawl_run_id.
             shard_run.items_seen = len(candidate_items)
             shard_run.items_new = new_count
             shard_run.items_updated = updated_count
@@ -106,7 +120,7 @@ async def run_job_source(
                     raise RuntimeError(
                         f"Could not reload partial-run state for {source.name}/{spec.key}"
                     ) from exc
-                candidate_items, partial_cursor = _filter_with_diagnostics(
+                candidate_items, rejected_items, partial_cursor = _partition_with_diagnostics(
                     cast(list[RawJob], exc.partial_items),
                     exc.next_cursor,
                 )
@@ -117,6 +131,14 @@ async def run_job_source(
                     run=partial_run,
                     items=candidate_items,
                 )
+                rejected_existing_seen, rejected_reactivated = record_rejected_job_sightings(
+                    session,
+                    source=partial_source,
+                    run=partial_run,
+                    items=rejected_items,
+                )
+                partial_cursor["job_rejected_existing_seen"] = rejected_existing_seen
+                partial_cursor["job_rejected_reactivated"] = rejected_reactivated
 
             failed_shard_run = session.get(CrawlShardRun, shard_run_id)
             failed_shard = session.get(SourceShard, shard_id)
