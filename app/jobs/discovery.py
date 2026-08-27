@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.jobs.profile_seed import (
+    ADJACENT_ROLE_PATTERNS,
+    DOMAIN_PATTERNS,
+    METHOD_TOOL_PATTERNS,
+    NEGATIVE_CONTEXT_PATTERNS,
+    STRONG_TITLE_PATTERNS,
+)
 from app.sources.base import RawJob
 
 
@@ -12,53 +19,6 @@ def _normalize(value: str | None) -> str:
     return " ".join(value.casefold().split())
 
 
-STRONG_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("maschinenbau", re.compile(r"\bmaschinenbau\w*")),
-    ("konstruktion", re.compile(r"\bkonstrukt\w*")),
-    ("entwicklungsingenieur", re.compile(r"\bentwicklungsingenieur\w*")),
-    ("mechanical_engineer", re.compile(r"\bmechanical\s+(?:design\s+)?engineer\w*")),
-    ("berechnungsingenieur", re.compile(r"\bberechnungsingenieur\w*")),
-    ("cad_konstrukteur", re.compile(r"\bcad[-\s]*konstrukt\w*")),
-    ("produktentwicklung", re.compile(r"\bproduktentwick\w*")),
-    ("sondermaschinenbau", re.compile(r"\bsondermaschinenbau\w*")),
-    ("mechatronik", re.compile(r"\bmechatronik\w*")),
-)
-
-ADJACENT_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("application_engineer", re.compile(r"\bapplication\s+engineer\w*")),
-    ("project_engineer", re.compile(r"\bproject\s+engineer\w*")),
-    ("projektingenieur", re.compile(r"\bprojektingenieur\w*")),
-    ("projektleiter", re.compile(r"\bprojektleiter\w*")),
-    ("product_engineer", re.compile(r"\bproduct\s+engineer\w*")),
-    ("development_engineer", re.compile(r"\bdevelopment\s+engineer\w*")),
-    ("design_engineer", re.compile(r"\bdesign\s+engineer\w*")),
-    ("simulation_engineer", re.compile(r"\bsimulation\s+engineer\w*")),
-    ("r_and_d_engineer", re.compile(r"\br\s*[&/]\s*d\s+engineer\w*")),
-    ("technical_project", re.compile(r"\btechn(?:ical|isch\w*)\s+projekt\w*")),
-)
-
-SUPPORT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("cad", re.compile(r"\bcad\b")),
-    ("creo", re.compile(r"\bcreo\b")),
-    ("solidworks", re.compile(r"\bsolidworks\b")),
-    ("catia", re.compile(r"\bcatia\b")),
-    ("inventor", re.compile(r"\bautodesk\s+inventor\b|\binventor\b")),
-    ("siemens_nx", re.compile(r"\bsiemens\s+nx\b|\bnx\s+cad\b")),
-    ("maschinenbau", re.compile(r"\bmaschinenbau\w*")),
-    ("mechanical", re.compile(r"\bmechanical\b")),
-    ("konstruktion", re.compile(r"\bkonstrukt\w*")),
-    ("produktentwicklung", re.compile(r"\bproduktentwick\w*")),
-    ("sondermaschinenbau", re.compile(r"\bsondermaschinenbau\w*")),
-    ("blechkonstruktion", re.compile(r"\bblechkonstrukt\w*")),
-    ("fem", re.compile(r"\bfem\b|\bfinite\s+element")),
-    ("berechnung", re.compile(r"\bberechnung\w*")),
-    ("anlagenbau", re.compile(r"\banlagenbau\w*")),
-    ("maschinenkonstruktion", re.compile(r"\bmaschinenkonstrukt\w*")),
-    ("technical_drawing", re.compile(r"\btechnical\s+drawing\w*")),
-    ("technische_zeichnung", re.compile(r"\btechnisch\w*\s+zeichnung\w*")),
-)
-
-
 @dataclass(frozen=True, slots=True)
 class JobDiscoveryDecision:
     accepted: bool
@@ -66,60 +26,138 @@ class JobDiscoveryDecision:
     strong_title_matches: tuple[str, ...] = ()
     adjacent_title_matches: tuple[str, ...] = ()
     support_matches: tuple[str, ...] = ()
+    domain_matches: tuple[str, ...] = ()
+    method_tool_matches: tuple[str, ...] = ()
+    negative_context_matches: tuple[str, ...] = ()
 
 
-def _matches(patterns: tuple[tuple[str, re.Pattern[str]], ...], text: str) -> tuple[str, ...]:
+def _matches(
+    patterns: tuple[tuple[str, re.Pattern[str]], ...],
+    text: str,
+) -> tuple[str, ...]:
     return tuple(name for name, pattern in patterns if pattern.search(text))
 
 
-def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
-    """Apply a deliberately broad coarse gate before local persistence.
+def _decision(
+    *,
+    accepted: bool,
+    reason: str,
+    strong_title: tuple[str, ...],
+    adjacent_role: tuple[str, ...],
+    domain: tuple[str, ...],
+    method_tool: tuple[str, ...],
+    negative: tuple[str, ...],
+) -> JobDiscoveryDecision:
+    return JobDiscoveryDecision(
+        accepted=accepted,
+        reason=reason,
+        strong_title_matches=strong_title,
+        adjacent_title_matches=adjacent_role,
+        support_matches=tuple(dict.fromkeys((*domain, *method_tool))),
+        domain_matches=domain,
+        method_tool_matches=method_tool,
+        negative_context_matches=negative,
+    )
 
-    This is not the final fit model. Its only purpose is to keep the local corpus
-    within the broad mechanical-engineering neighbourhood while preserving high
-    recall for adjacent roles that can be ranked later from user-reviewed concepts.
+
+def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
+    """Apply a high-recall professional-neighbourhood gate before persistence.
+
+    The gate is deliberately broader than a CV title list. It recognizes strong
+    mechanical titles directly and otherwise combines role-family, engineering-
+    domain, and method/tool evidence. Obvious IT/commercial context only dampens
+    weak matches; it is not a hard blacklist.
     """
     title = _normalize(job.title)
     body = _normalize(job.description)
     combined = f"{title}\n{body}"
 
     strong_title = _matches(STRONG_TITLE_PATTERNS, title)
-    adjacent_title = _matches(ADJACENT_TITLE_PATTERNS, title)
-    support = _matches(SUPPORT_PATTERNS, combined)
+    adjacent_role = _matches(ADJACENT_ROLE_PATTERNS, title)
+    domain = _matches(DOMAIN_PATTERNS, combined)
+    method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
+    negative = _matches(NEGATIVE_CONTEXT_PATTERNS, combined)
 
     if strong_title:
-        return JobDiscoveryDecision(
+        return _decision(
             accepted=True,
-            reason="strong_title",
-            strong_title_matches=strong_title,
-            adjacent_title_matches=adjacent_title,
-            support_matches=support,
+            reason="strong_mechanical_title",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
         )
 
-    if adjacent_title and support:
-        return JobDiscoveryDecision(
+    domain_count = len(set(domain))
+    method_count = len(set(method_tool))
+    has_role = bool(adjacent_role)
+    has_negative = bool(negative)
+
+    # A plausible engineering role plus a real mechanical/manufacturing domain is
+    # normally enough. If the vacancy is strongly software/commercial, require an
+    # additional mechanical method/tool signal rather than trusting one word such
+    # as "automotive".
+    if has_role and domain_count >= 1 and (not has_negative or method_count >= 1):
+        return _decision(
             accepted=True,
-            reason="adjacent_title_with_technical_support",
-            strong_title_matches=strong_title,
-            adjacent_title_matches=adjacent_title,
-            support_matches=support,
+            reason="engineering_role_with_domain",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
         )
 
-    if len(set(support)) >= 2:
-        return JobDiscoveryDecision(
+    # CAD/FEM/FMEA/PLM/etc. can reveal a relevant adjacent role even when the
+    # source uses an unusual title. One method/tool signal is sufficient when the
+    # title itself is already an engineering/technical role and the context is not
+    # clearly unrelated.
+    if has_role and method_count >= 1 and not has_negative:
+        return _decision(
             accepted=True,
-            reason="multiple_technical_signals",
-            strong_title_matches=strong_title,
-            adjacent_title_matches=adjacent_title,
-            support_matches=support,
+            reason="engineering_role_with_method",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
         )
 
-    return JobDiscoveryDecision(
+    # Generic or novel titles remain discoverable when the body contains multiple
+    # independent mechanical domains plus a concrete engineering method/tool.
+    if domain_count >= 2 and method_count >= 1:
+        return _decision(
+            accepted=True,
+            reason="multiple_domains_with_method",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+        )
+
+    # A method-heavy vacancy can still be relevant despite a weak title. This is
+    # useful for titles such as "Technical Specialist" or supplier-side roles.
+    if method_count >= 3 and not has_negative:
+        return _decision(
+            accepted=True,
+            reason="multiple_engineering_methods",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+        )
+
+    return _decision(
         accepted=False,
         reason="insufficient_base_relevance",
-        strong_title_matches=strong_title,
-        adjacent_title_matches=adjacent_title,
-        support_matches=support,
+        strong_title=strong_title,
+        adjacent_role=adjacent_role,
+        domain=domain,
+        method_tool=method_tool,
+        negative=negative,
     )
 
 
@@ -137,6 +175,9 @@ def filter_job_candidates(items: list[RawJob]) -> list[RawJob]:
             "strong_title_matches": list(decision.strong_title_matches),
             "adjacent_title_matches": list(decision.adjacent_title_matches),
             "support_matches": list(decision.support_matches),
+            "domain_matches": list(decision.domain_matches),
+            "method_tool_matches": list(decision.method_tool_matches),
+            "negative_context_matches": list(decision.negative_context_matches),
         }
         item.raw_payload = payload
         accepted.append(item)
