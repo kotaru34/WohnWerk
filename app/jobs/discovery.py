@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v12"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-28-v13"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -25,8 +25,8 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-# Narrow run-31 parity fixes that still require the normal domain/method evidence
-# below. They intentionally do not make arbitrary *techniker or management titles
+# Narrow parity aliases that still require the normal domain/method evidence
+# below. They intentionally do not make arbitrary service/management titles
 # relevant by themselves.
 _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -37,8 +37,37 @@ _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     (
+        "field_service_manager",
+        re.compile(r"\bfield[-\s]+service[-\s]+manager\w*"),
+    ),
+    (
+        "production_lead",
+        re.compile(
+            r"\b(?:produktionsleiter|fertigungsleiter|production\s+manager|"
+            r"manufacturing\s+manager)\w*"
+        ),
+    ),
+    (
         "team_lead",
         re.compile(r"\bteamleitung\w*"),
+    ),
+)
+
+# Source vocabularies that are clearly technical but were missing from the
+# original CV-seeded domain set. These are intentionally support evidence only:
+# an adjacent engineering/management role is still required unless other normal
+# gate criteria are satisfied.
+_DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "building_services",
+        re.compile(
+            r"\b(?:gebäudetechnik|gebaeudetechnik|hkls|tga|hvac|"
+            r"building\s+(?:services?|systems?))\w*"
+        ),
+    ),
+    (
+        "manufacturing_compound",
+        re.compile(r"\b\w*fertigung\w*"),
     ),
 )
 
@@ -65,6 +94,13 @@ _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(
             r"\b(?:metallfacharbeiter|facharbeiter|schlosser|mechaniker|"
             r"schweißer|schweisser|welder)\w*"
+        ),
+    ),
+    (
+        "vehicle_workshop_trade",
+        re.compile(
+            r"\b(?:kfz[-\s]*(?:mechatroniker|techniker)|"
+            r"automotive\s+(?:mechanic|technician))\w*"
         ),
     ),
 )
@@ -104,6 +140,7 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "graduate_entry_stage",
         "software_role",
         "ai_data_role",
+        "vehicle_workshop_trade",
     }
 )
 
@@ -189,9 +226,27 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             )
         )
     )
-    domain = _matches(DOMAIN_PATTERNS, combined)
+    domain = tuple(
+        dict.fromkeys(
+            (
+                *_matches(DOMAIN_PATTERNS, combined),
+                *_matches(_DOMAIN_AUGMENT_PATTERNS, combined),
+            )
+        )
+    )
     method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
-    negative = _matches(NEGATIVE_CONTEXT_PATTERNS, _negative_context_text(combined))
+    negative_text = _negative_context_text(combined)
+    negative = _matches(NEGATIVE_CONTEXT_PATTERNS, negative_text)
+    negative_title = set(
+        _matches(NEGATIVE_CONTEXT_PATTERNS, _negative_context_text(title))
+    )
+
+    # HR/recruiting boilerplate is common in otherwise technical Personio job
+    # descriptions. Preserve it in audit evidence, but only let HR block a weak
+    # technical match when HR semantics are actually present in the title.
+    blocking_negative = tuple(
+        name for name in negative if name != "hr" or name in negative_title
+    )
 
     if any(match in _HARD_TITLE_EXCLUSIONS for match in low_relevance_title):
         return _decision(
@@ -232,7 +287,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     domain_count = len(set(domain))
     method_count = len(set(method_tool))
     has_role = bool(adjacent_role)
-    has_negative = bool(negative)
+    has_negative = bool(blocking_negative)
 
     if has_role and domain_count >= 1 and (not has_negative or method_count >= 1):
         return _decision(
