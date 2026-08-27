@@ -25,7 +25,7 @@ def test_service_technician_is_not_blocked_by_recruiting_boilerplate() -> None:
     decision = classify_job_candidate(
         _job(
             "Servicetechniker (m/w/d) Oberösterreich",
-            "Mechanische Systeme warten und Störungen beheben. HR Recruiting Team beantwortet Fragen.",
+            "Mechanik, Wartung und Störungsbehebung. HR Recruiting Team beantwortet Fragen.",
         )
     )
 
