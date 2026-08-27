@@ -84,6 +84,11 @@ def _known_localities_in_office(
     if not normalized:
         return []
 
+    # Exact aliases such as Vienna -> Wien should pass before literal matching.
+    exact_canonical = canonicalize_locality(office)
+    if exact_canonical in austrian_localities:
+        return [exact_canonical]
+
     matches: list[str] = []
     for locality in sorted(austrian_localities, key=len, reverse=True):
         if not locality:
@@ -92,7 +97,12 @@ def _known_localities_in_office(
         if re.search(pattern, normalized):
             matches.append(locality)
 
-    # Avoid duplicate nested matches such as "wien" and a more specific label.
+    # Also resolve aliases in common comma/slash/semicolon-separated multi-office labels.
+    for part in re.split(r"[,;/|]", office):
+        canonical = canonicalize_locality(part.strip())
+        if canonical in austrian_localities and canonical not in matches:
+            matches.append(canonical)
+
     result: list[str] = []
     for match in matches:
         if any(match in existing for existing in result):
@@ -131,7 +141,8 @@ def _austrian_locations(
     text = _SPACE_RE.sub(" ", office).strip()
     explicit_austria = _contains_austria(text)
     locality_matches = _known_localities_in_office(text, austrian_localities)
-    postal_code = (_POSTAL_CODE_RE.search(text) or [None, None])[1]
+    postal_match = _POSTAL_CODE_RE.search(text)
+    postal_code = postal_match.group(1) if postal_match else None
 
     if not explicit_austria and not locality_matches and postal_code is None:
         return []
