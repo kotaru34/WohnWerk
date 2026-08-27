@@ -209,7 +209,7 @@ METHOD_TOOL_PATTERNS: PatternSet = (
     ("solidworks", re.compile(r"\bsolidworks\b")),
     ("inventor", re.compile(r"\b(?:autodesk\s+)?inventor\b")),
     ("siemens_nx", re.compile(r"\b(?:siemens\s+)?nx(?:\s+cad)?\b")),
-    ("fem_fea", re.compile(r"\b(?:fem|fea|finite\s+element)\w*")),
+    ("fem_fea", re.compile(r"\b(?:fem|fea)\b|\bfinite\s+elements?\b")),
     (
         "emc_emv",
         re.compile(
