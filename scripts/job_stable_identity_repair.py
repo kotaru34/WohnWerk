@@ -46,6 +46,9 @@ def _survivor_listing(listings: list[JobListing]) -> JobListing:
 
 
 def _merge_missing_job_fields(survivor: Job, duplicate: Job) -> None:
+    # Never transfer canonical_hash here: it is unique and represents a canonical
+    # row identity, not source evidence. A republish merge keeps the survivor's
+    # hash (or lack of one) and deletes the duplicate row.
     scalar_fields = (
         "company",
         "description",
@@ -61,7 +64,6 @@ def _merge_missing_job_fields(survivor: Job, duplicate: Job) -> None:
         "salary_max_eur_year",
         "salary_is_minimum_only",
         "job_fit_score",
-        "canonical_hash",
     )
     for field in scalar_fields:
         if getattr(survivor, field) is None and getattr(duplicate, field) is not None:
