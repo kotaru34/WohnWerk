@@ -36,134 +36,134 @@ Do not reopen absent a live regression:
 
 ## SmartRecruiters — correctness closed
 
-Production checkpoint #33:
+Production #33:
 
 - 15/15 shards, coverage OK, source_reported=411.
-- 57 persisted listings / 53 source-active.
-- 42 relevant-active source listings / 42 relevant-active canonical jobs.
+- 53 source-active listings.
+- 42 relevant-active canonical jobs.
 - 41/42 relevant locations resolved.
 - Remaining Tirol regional scope intentionally non-point.
 
-Liveness audit previously confirmed 43/43 relevant-active rows technically live with zero dead/unknown/missing-apply cases.
+Liveness previously confirmed 43/43 relevant-active rows technically live.
 
-Republish identity is source-backed as:
-
-`smartrecruiters:{tenant}:jobad:{jobAdId}`
-
-Production repair backfilled 56 identities, merged two verified Anton Paar republish canonical duplicates and reassigned two listings. Post-repair audit reports zero duplicate identity groups.
+Republish identity is source-backed as `smartrecruiters:{tenant}:jobad:{jobAdId}`. Production repair backfilled 56 identities, merged two verified Anton Paar republish canonical duplicates and left zero duplicate identity groups.
 
 ## Discovery gate v14 — correctness closed
 
 Current version: `profile-seed-2026-08-28-v14`.
 
-v13 generic parity was production-confirmed:
-
-- Gebäudetechnik / HKLS / TGA / HVAC support;
-- Field Service Manager parity;
-- Produktionsleiter/Fertigungsleiter/production/manufacturing management with technical evidence;
-- compound German `*fertigung*` support;
-- HR/recruiting body boilerplate does not block otherwise technical jobs unless HR semantics are in the title;
-- KFZ-Mechatroniker / KFZ-Techniker workshop roles are hard structural exclusions;
-- true Intern/Internship remains excluded while `internal` / `international` are unaffected.
-
-v14 is only an evidence-boundary correction: the old FEM regex could interpret EEO words such as `female` as `fem_fea`. Standalone FEM/FEA and finite element(s) still match; `female`/`feminine` do not.
+v13 generic parity was production-confirmed for HKLS/building-services, technical field service and production management while structurally excluding KFZ workshop trades. v14 only corrects the FEM evidence boundary: `FEM`, `FEA` and `finite element(s)` match; English EEO words such as `female` do not.
 
 Do not micro-calibrate the gate further unless a later broad-corpus audit exposes another genuinely generic correctness problem. Candidate preference never belongs in this gate.
 
 ## Personio — correctness/calibration closed on production #37
 
-### Adapter / verification semantics
+Adapter semantics:
 
-- Probe current `*.jobs.personio.com` first, legacy `.jobs.personio.de` second.
-- Fetch DE + EN XML and merge by stable Personio position ID.
-- Source counts/listings do not double across languages.
-- German description remains canonical primary when present; English is primary only when German is absent.
-- Distinct secondary translation may be stored as `wohnwerk_discovery_extra_text` for discovery evidence only.
-- Austria requires a known Austrian locality or explicit Austria/Österreich; four-digit PLZ alone is insufficient.
-- Failed candidate verification never disables/removes an existing tenant.
+- current `*.jobs.personio.com` first, legacy `.jobs.personio.de` fallback;
+- fetch DE + EN XML and merge by stable Personio position ID;
+- source counts/listings do not double across languages;
+- German description remains canonical primary where present; English fills missing descriptions and can provide supplemental discovery evidence;
+- Austria requires a known Austrian locality or explicit Austria/Österreich evidence;
+- failed verification never disables/removes an existing tenant.
 
-### Production #37
-
-Final v14 production proof:
+Production #37:
 
 - status=success, coverage=ok
 - shards=14/14, pages=28
 - source_reported=215
 - current relevant seen=17
 - new=0, updated=17, disappeared=0
-- listings_total=23, source_active=22
-- relevant_active_listings=17 / canonical jobs=17
+- 22 source-active listings / 17 relevant-active canonical jobs
 - relevant_locations=17, geo_resolved=16
-- only Personio unresolved relevant location: `österreichweit`, intentionally non-point
+- only unresolved relevant Personio location: `österreichweit`, intentionally non-point
 
-The two generic #36 regressions are confirmed fixed in #37:
+Run #37 confirms both generic #36 repairs: stale `Center Vienna` is gone and unrelated English vacancies no longer receive fake `fem_fea` evidence.
 
-1. stale `Center Vienna` is gone; `Austria Center Vienna` is represented by its resolved Wien interpretation rather than duplicate parser-era JobLocations;
-2. unrelated Cloud/Full-Stack/Product/Business jobs no longer receive fake `fem_fea` evidence from English EEO text.
+Personio correctness/calibration is CLOSED. Keep the adapter as a supplementary clean feed; do not spend primary acquisition effort manually discovering employers one by one.
 
-Personio correctness/calibration is therefore CLOSED. Further Personio work is tenant scaling, not gate tuning.
+## Lever — correctness stable, scaling no longer primary
 
-### Personio registry / candidates
+Production remains #22:
 
-Current enabled production registry before next expansion: 14 tenants; legacy `isoplus-fwt-aut` remains disabled. `optimuse` previously returned 404 on both domains and was never inserted.
+- 5/5 shards, coverage OK
+- 6 relevant active jobs
+- all relevant locations resolved
+- disappeared=0
 
-`data/job_tenants/personio_austria_candidates.json` now also contains:
-
-- `teamstyria` / Team Styria Werkstätten GmbH
-
-Reason: current Styria Personio feed is a real industrial/manufacturing watchlist. Current roles include CNC production of Maschinenbauteile plus `Arbeitsvorbereiter:in Holzmanufaktur` with CAD construction and technical drawings. The current CAD role is wood-industry and is NOT treated as evidence that it personally fits the candidate. The feed is useful because future mechanical/manufacturing roles can appear there.
-
-Next production step for Personio is verify/apply Team Styria, then reconcile. Do not expect or force a relevant job count increase if the current titles remain outside the mechanical-engineering neighbourhood.
-
-## Lever — scaling foundation
-
-Calibrated production remains run #22:
-
-- 5/5 shards, coverage OK.
-- 6 relevant active jobs.
-- all relevant locations resolved.
-- disappeared=0.
-
-Existing runner bootstrap seeds remain for backward compatibility:
-
-- `eu:blackshark`
-- `eu:westernacher`
-- `global:cargo-partner`
-- `global:qualysoft`
-- `global:tsmg`
-
-Do not hardcode newly discovered employers into `DEFAULT_TENANTS`.
-
-### New data/registry-driven verifier
-
-Added:
+A registry-driven candidate verifier now exists:
 
 - `data/job_tenants/lever_austria_candidates.json`
 - `scripts/verify_lever_candidates.py`
-- `tests/test_lever_candidate_verifier.py`
+- regression tests for namespace identity, complete traversal and capped/incomplete rejection
 
-The candidate inventory currently includes the five existing bootstrap tenants as a baseline so production can backfill explicit capability evidence without changing their operator-managed state. New discoveries should be appended to this file rather than to runner code.
+Existing five bootstrap tenants remain for backward compatibility. New tenants should not be hardcoded into the runner.
 
-Verifier semantics:
+However, manual/bespoke Lever tenant discovery is no longer a primary scaling path. Austria mechanical/CAD density in the currently discovered Lever feeds is low compared with broad Austrian job boards. Keep Lever as a supplementary source and only add tenants when discovery can be automated or there is clear high-value Austrian coverage.
 
-- candidate identity is `(namespace, tenant)` where namespace is `eu` or `global`;
-- uses the matching documented public Lever Postings API endpoint;
-- traverses pagination to completion rather than trusting the first page;
-- reports total published source positions and Austrian positions;
-- a healthy feed with 0 current Austrian vacancies is still a verified endpoint;
-- hitting `hard_max_pages` while pages remain full is incomplete and therefore NOT verified;
-- malformed/error feeds are not verified;
-- `--apply` inserts verified missing rows or refreshes only `lever_feed_verification` + `last_verified_at` on existing rows;
-- existing company/enabled/discovery/operator configuration is preserved;
-- failed verification never disables/removes a tenant.
+## PRIMARY JOB ACQUISITION STRATEGY — broad Austrian job boards first
 
-CI #303 passed Ruff, Compile and the full test suite after the verifier/import tests were corrected to load the CLI module without turning `scripts/` into a Python package.
+This is the current architecture priority.
 
-### Lever discovery strategy
+The project had over-focused on ATS tenant feeds (Personio/Lever/SmartRecruiters). Those are useful because they are structured and clean, but they are not how most Austrian job seekers obtain broad market coverage. The primary corpus should instead come from the large Austria-wide job search platforms that already aggregate thousands of employers and often expose location/PLZ detail.
 
-Current web discovery shows Lever has many excellent mechanical/CAD/chassis/product-development roles globally, including jobs whose task vocabulary is almost ideal for the candidate, but the currently found ones are outside Austria. Do not add Germany/Switzerland/US-only employers merely because the role content is attractive.
+Current public-web validation on 2026-08-28:
 
-Austria Lever density appears lower than Personio/other ATS sources for this mechanical niche. Continue searching, but prefer real Austrian technical presence and current source evidence over registry size.
+1. **AMS `alle jobs` / eJob-Room**
+   - official Austrian public employment search;
+   - explicitly supports `Ort, PLZ, Bundesland`;
+   - `alle jobs` combines AMS-managed vacancies, eJob-Room self-service postings and jobs gathered from the internet, plus public administration and selected neighbouring-country sources;
+   - potentially the broadest single Austria discovery layer;
+   - because it is itself an aggregator, source provenance and duplicate handling need special attention.
+
+2. **karriere.at**
+   - broad Austrian marketplace with very high engineering density;
+   - current search shows >1,000 `Mechanical Engineer` results;
+   - `Mechanischer Konstrukteur` results contain many directly relevant roles;
+   - current example: PEISCHL Fahrzeugbau `Konstrukteur / Entwicklungsingenieur Fahrzeugbau / Mechanical Engineer` with 3D CAD, Bauteile/Baugruppen, Fertigungszeichnungen, Stücklisten and Serienreife — very close to the target profile;
+   - location often includes city/district and sometimes postal-code-formatted Wien locations.
+
+3. **jobs.at**
+   - currently exposes >1,100 `Metall & Maschinenbau` jobs overall;
+   - current Wien Maschinenbau search shows ~150 jobs;
+   - public result pages expose location, employment form, salary and sometimes PLZ (`1100 Wien`, `1030 Wien`, etc.);
+   - current example: Plasser & Theurer `Konstrukteur:in Senior Maschinenbau` with Getriebe, Antriebsstränge, mechanische Baugruppen, 3D/detail drawings.
+
+4. **willhaben Jobs**
+   - currently around 15.7k jobs across Austria;
+   - broad consumer-facing job marketplace with filters by job title, location/region, Bundesland/Bezirk, employment type and position level;
+   - strong candidate for large coverage once public pagination/detail semantics are mapped conservatively.
+
+5. **StepStone Austria**
+   - current `Konstrukteur Maschinenbau` search shows roughly 340 jobs;
+   - result pages expose city and sometimes explicit PLZ such as `1030 Wien`;
+   - useful independent layer with likely overlap that can help canonical dedupe and freshness confirmation.
+
+Other boards can be evaluated after these core sources (e.g. hokify and niche/industry boards), but do not expand the source list merely for count.
+
+### Broad-board adapter requirements
+
+For each board, before production crawling:
+
+- identify a stable public listing ID or conservative stable identity;
+- map complete pagination/search traversal and any result caps;
+- preserve raw source location/PLZ exactly and resolve with the existing Austrian postal/locality layer;
+- retain source URL, employer, title, description, salary text/structured salary where defensible, publication/update date when present, employment type and workplace model;
+- never invent PLZ from city if the source gives only city;
+- reconcile only when coverage is provably complete;
+- if the board redirects to the original employer/ATS, preserve both board listing identity and outbound apply/source URL where possible;
+- expect heavy cross-board duplication and dedupe at canonical Job level while retaining separate JobListings per source;
+- respect public access rules/robots/ToS and never bypass anti-bot controls.
+
+### Recommended implementation order
+
+1. **karriere.at adapter first** — excellent mechanical relevance, human-readable HTML, useful detail fields and straightforward examples for parser calibration.
+2. **jobs.at adapter second** — very high Maschinenbau volume and explicit PLZ examples.
+3. **AMS alle jobs / eJob-Room** — potentially the broadest source, but treat aggregator provenance/duplicates carefully.
+4. **willhaben Jobs** — broad volume; map pagination/detail semantics before production.
+5. **StepStone Austria** — independent coverage and useful PLZ/location information.
+
+ATS tenant discovery becomes secondary after at least two broad boards are production-stable.
 
 ## Candidate personalization / future fit
 
@@ -174,12 +174,11 @@ Seed CV:
 Explicit user clarification:
 
 - candidate is fundamentally mechanical / Maschinenbau, not electrical;
-- core positive competence neighbourhood: mechanische Konstruktion, CAD, Bauteile/Baugruppen, machine parts, automotive/special-vehicle/rail components, chassis/suspension-like mechanical systems, product development, technical project work, supplier coordination, validation/testing and mechanically relevant assembly/commissioning;
+- core competence neighbourhood: mechanische Konstruktion, CAD, Bauteile/Baugruppen, machine parts, automotive/special-vehicle/rail components, chassis/suspension-like mechanical systems, product development, technical project work, supplier coordination, validation/testing and mechanically relevant assembly/commissioning;
 - pure electrical engineering is explicitly outside competence and interest;
-- initialize future `electrical_engineering` candidate concept as strong negative (`cannot + not want`) unless user later overrides it;
-- pure Electrical/Electronics roles can remain in broad acquisition but should rank near the bottom for this candidate.
-
-Other personal dislikes (e.g. Kunststoffteile construction) likewise affect candidate fit/preferences, never discovery taxonomy.
+- initialize `electrical_engineering` candidate concept as strong negative (`cannot + not want`) unless user later overrides it;
+- pure Electrical/Electronics roles can remain in broad acquisition but should rank near the bottom for this candidate;
+- other personal dislikes (e.g. Kunststoffteile construction) affect candidate fit/preferences, never discovery taxonomy.
 
 Future fit architecture after corpus reaches hundreds→thousands relevant active jobs:
 
@@ -187,18 +186,16 @@ Future fit architecture after corpus reaches hundreds→thousands relevant activ
 - CV-seeded capability plus explicit user constraints;
 - German UI with independent `Können` and `Wollen`;
 - explicit answers override inference;
-- likely ordinal `Wollen`: Nein / Eher nein / Neutral / Eher ja / Ja;
-- vacancy feedback: Interessant / Nicht interessant, optionally Warum nicht?;
-- feedback updates candidate fit only.
+- vacancy feedback updates candidate fit only.
 
 ## Immediate work order
 
-1. Pull current branch and run tests.
-2. Dry-verify Team Styria Personio candidate; if healthy, apply it.
-3. Dry-run `verify_lever_candidates.py` across the five baseline tenants; inspect namespace/API/page/source/Austria counts.
-4. If verification looks sane, apply Lever verification evidence; this should refresh existing rows rather than create duplicates.
-5. Reconcile Personio after Team Styria import and Lever after verifier refresh.
-6. Run source health/stats/rejection audits; do not tune gate for expected non-fit industrial/IT roles.
-7. Continue sourcing actual Austrian mechanical/CAD/product-development employers across Personio and Lever, but switch to additional ATS/source layers when marginal density drops.
-8. Next independent acquisition layers: Greenhouse, Ashby, Workable and suitable employer/job-board sources.
+1. **Do not spend the next production cycle manually adding Personio/Lever companies.**
+2. Research/map `karriere.at` public search pagination, listing identity, detail fields, location/PLZ semantics, publication date and reconciliation completeness.
+3. Implement `karriere.at` as the first broad-board source with tests and conservative lifecycle coverage.
+4. Production dry-run/reconciliation and rejection audit; do not tune gate to one board.
+5. Implement `jobs.at` next with the same invariants, especially explicit PLZ preservation.
+6. Then implement AMS `alle jobs` / eJob-Room with explicit aggregator provenance and duplicate handling.
+7. Add willhaben Jobs and StepStone after the first broad sources are stable.
+8. Keep Personio/Lever/SmartRecruiters running as supplementary sources and dedupe their canonical Jobs against broad-board listings.
 9. At corpus scale implement normalized concept extraction, German profile review, intrinsic candidate fit and house/job recommendations.
