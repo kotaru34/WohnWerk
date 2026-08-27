@@ -15,10 +15,12 @@ from app.sources.job.personio import PERSONIO_BASE_SUFFIX, PersonioJobSource, Pe
 ADAPTER_PATH = "app.sources.job.personio.PersonioJobSource"
 SOURCE_NAME = "personio-public-xml"
 
+# Bootstrap only. The DB-backed registry is authoritative after seeding. Add or
+# disable tenants with scripts/job_tenants.py rather than editing this list in
+# steady-state operation.
 DEFAULT_TENANTS = [
     TenantSeed(tenant_key="easelink-gmbh", company="Easelink GmbH"),
     TenantSeed(tenant_key="axess-ag", company="Axess AG"),
-    TenantSeed(tenant_key="isoplus-fwt-aut", company="ISOPLUS Fernwärmetechnik GmbH"),
     TenantSeed(tenant_key="lcm", company="Linz Center of Mechatronics GmbH"),
     TenantSeed(tenant_key="denzel-gruppe", company="DENZEL Gruppe"),
 ]
