@@ -15,7 +15,7 @@ The desired scale is not a small hand-picked shortlist. The target is a large co
 
 The pre-ingestion gate is intentionally **not** the final suitability algorithm. It should err toward retaining plausible adjacent technical roles.
 
-Clearly incompatible employment stages may still be rejected before persistence even when the technical content is relevant. For the current experienced-professional target, explicit apprenticeship, internship, trainee and student/working-student vacancies are outside the durable corpus. This is a structural career-stage rule, not a negative judgment about the engineering concepts contained in those vacancies.
+Structural career-stage exclusions are a separate axis from professional relevance. Explicit student/working-student, apprenticeship/Lehre, internship and trainee vacancies are outside the current experienced working-professional corpus even when their technical title or tasks are otherwise highly relevant. This structural exclusion takes precedence over a strong mechanical title; for example, `Lehrausbildung Konstrukteur – Maschinenbautechnik` must not enter the durable target corpus merely because `Konstrukteur` is a strong discovery title.
 
 Initial seed vocabulary includes concepts such as:
 
@@ -176,6 +176,9 @@ broad acquisition / source traversal
         |
         v
 Austria location gate
+        |
+        v
+structural working-professional stage gate
         |
         v
 high-recall base professional relevance gate
