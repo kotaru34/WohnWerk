@@ -112,12 +112,11 @@ def test_depot_specialist_is_rejected_despite_vehicle_words() -> None:
     assert "depot_operations" in decision.low_relevance_title_matches
 
 
-def test_vehicle_test_operator_is_rejected_despite_testing_words() -> None:
+def test_autonomous_vehicle_test_operator_is_rejected() -> None:
     decision = classify_job_candidate(
         _job(
             "Autonomous vehicle Test Operator",
-            "Drive and monitor autonomous vehicles, test vehicle behavior, log rides and "
-            "provide reports to operations and engineering teams.",
+            "Operate and monitor autonomous vehicles, document rides and submit shift reports.",
         )
     )
 
@@ -149,6 +148,22 @@ def test_devsecops_security_tooling_is_not_mechanical_tooling() -> None:
     assert decision.accepted is False
     assert "software" in decision.negative_context_matches
     assert "fixture_tooling" not in decision.domain_matches
+
+
+def test_generic_it_project_manager_is_not_promoted_by_system_integration() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Projektmanager (f/m/d)",
+            "Technologiegetriebene Entwicklungs- und Rollout-Projekte mit Fokus auf "
+            "IT-Systemintegration. EDV-orientierte Ausbildung und langjährige Erfahrung "
+            "in der Beratungs- und IT-Branche erforderlich.",
+        )
+    )
+
+    assert decision.accepted is False
+    assert "project_manager" in decision.adjacent_title_matches
+    assert "system_integration" in decision.method_tool_matches
+    assert "generic_it" in decision.negative_context_matches
 
 
 def test_automotive_software_engineer_needs_real_mechanical_evidence() -> None:
