@@ -44,6 +44,25 @@ def test_personio_city_only_austrian_office_is_kept() -> None:
     assert item.raw_payload["personio_department"] == "Mechanics"
 
 
+def test_personio_vienna_alias_is_kept_without_country_suffix() -> None:
+    item = parse_personio_position(
+        _position(
+            """
+            <position>
+              <id>124</id>
+              <office>Vienna</office>
+              <name>Project Engineer</name>
+            </position>
+            """
+        ),
+        site=SITE,
+        austrian_localities=AUSTRIAN_LOCALITIES,
+    )
+
+    assert item is not None
+    assert item.locations[0].city == "wien"
+
+
 def test_personio_explicit_austria_office_is_kept() -> None:
     item = parse_personio_position(
         _position(
