@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.jobs.location_resolution import LocalityResolution, resolve_localities
 from app.models import CrawlRun, Job, JobListing, JobLocation, ListingStatus, PostalCode, Source
 from app.sources.base import RawJob, RawJobLocation
 
@@ -14,20 +15,34 @@ def _listing_payload(
     item: RawJob,
     *,
     known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
 ) -> dict:
     payload = dict(item.raw_payload)
-    payload["wohnwerk_location_resolution"] = [
-        {
+    resolution_rows: list[dict] = []
+    for location in item.locations:
+        postal = known_postal.get(location.postal_code or "")
+        locality = locality_resolutions.get(location.city or "")
+        row = {
             "source_postal_code": location.postal_code,
-            "postal_code_resolved": bool(
-                location.postal_code and location.postal_code in known_postal
-            ),
+            "postal_code_resolved": postal is not None,
             "city": location.city,
             "location_text": location.location_text,
             "remote": location.remote,
+            "location_resolved": postal is not None or locality is not None,
         }
-        for location in item.locations
-    ]
+        if locality is not None and postal is None:
+            row.update(
+                {
+                    "resolution_method": locality.method,
+                    "resolution_source": locality.source,
+                    "canonical_locality": locality.canonical_locality,
+                    "matched_postal_codes": list(locality.postal_codes),
+                    "address_sample_count": locality.address_sample_count,
+                }
+            )
+        resolution_rows.append(row)
+
+    payload["wohnwerk_location_resolution"] = resolution_rows
     return payload
 
 
@@ -143,6 +158,7 @@ def _enrich_locations(
     *,
     locations: list[RawJobLocation],
     known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
 ) -> None:
     """Add/enrich locations without erasing richer locations from another source."""
     existing_by_key = {
@@ -158,13 +174,20 @@ def _enrich_locations(
     for item in locations:
         postal = known_postal.get(item.postal_code or "")
         postal_code = postal.postal_code if postal is not None else None
+        locality = locality_resolutions.get(item.city or "") if not item.remote else None
         key = _location_key(
             postal_code=postal_code,
             city=item.city,
             location_text=item.location_text,
             remote=item.remote,
         )
-        if key in existing_by_key:
+        existing = existing_by_key.get(key)
+        if existing is not None:
+            if existing.location is None:
+                if postal is not None:
+                    existing.location = postal.location
+                elif locality is not None:
+                    existing.location = locality.as_wkt()
             continue
 
         # If an earlier sparse source could only preserve the human-readable location,
@@ -187,7 +210,13 @@ def _enrich_locations(
             postal_code=postal_code,
             city=item.city,
             location_text=item.location_text,
-            location=postal.location if postal is not None else None,
+            location=(
+                postal.location
+                if postal is not None
+                else locality.as_wkt()
+                if locality is not None
+                else None
+            ),
             remote=item.remote,
         )
         job_row.locations.append(location_row)
@@ -199,6 +228,7 @@ def _enrich_job(
     *,
     item: RawJob,
     known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
     now: datetime,
 ) -> None:
     if item.title:
@@ -210,7 +240,12 @@ def _enrich_job(
 
     _enrich_salary(job_row, item)
     if item.locations:
-        _enrich_locations(job_row, locations=item.locations, known_postal=known_postal)
+        _enrich_locations(
+            job_row,
+            locations=item.locations,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+        )
 
     job_row.status = ListingStatus.ACTIVE
     job_row.last_seen_at = now
@@ -241,6 +276,13 @@ def ingest_jobs(
             select(PostalCode).where(PostalCode.postal_code.in_(postal_codes))
         )
     }
+    city_labels = {
+        location.city
+        for item in items
+        for location in item.locations
+        if location.city and not location.remote
+    }
+    locality_resolutions = resolve_localities(session, city_labels)
 
     source_ids = [item.source_listing_id for item in items]
     existing = {
@@ -266,7 +308,11 @@ def ingest_jobs(
 
     for item in items:
         listing = existing.get(item.source_listing_id)
-        payload = _listing_payload(item, known_postal=known_postal)
+        payload = _listing_payload(
+            item,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+        )
 
         if listing is None:
             job_row = exact_url_jobs.get(item.url)
@@ -282,10 +328,21 @@ def ingest_jobs(
                 )
                 session.add(job_row)
                 _enrich_salary(job_row, item)
-                _enrich_locations(job_row, locations=item.locations, known_postal=known_postal)
+                _enrich_locations(
+                    job_row,
+                    locations=item.locations,
+                    known_postal=known_postal,
+                    locality_resolutions=locality_resolutions,
+                )
                 session.flush()
             else:
-                _enrich_job(job_row, item=item, known_postal=known_postal, now=now)
+                _enrich_job(
+                    job_row,
+                    item=item,
+                    known_postal=known_postal,
+                    locality_resolutions=locality_resolutions,
+                    now=now,
+                )
 
             exact_url_jobs[item.url] = job_row
             listing = JobListing(
@@ -305,7 +362,13 @@ def ingest_jobs(
             continue
 
         job_row = listing.job
-        _enrich_job(job_row, item=item, known_postal=known_postal, now=now)
+        _enrich_job(
+            job_row,
+            item=item,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+            now=now,
+        )
         listing.url = item.url
         listing.status = ListingStatus.ACTIVE
         listing.raw_payload = _merge_listing_payload(listing.raw_payload, payload)
