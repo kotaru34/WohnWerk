@@ -247,6 +247,50 @@ def test_apprenticeship_constructor_is_rejected_before_strong_title_acceptance()
     assert "student_training_stage" in decision.low_relevance_title_matches
 
 
+def test_compound_doppellehre_is_rejected_before_strong_title_acceptance() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Doppellehre Maschinenbautechniker & Elektrotechniker (m/w/d) - 2027",
+            "Ausbildung im Maschinenbau und in der Elektrotechnik.",
+        )
+    )
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
+    assert "maschinenbauingenieur" in decision.strong_title_matches
+    assert "student_training_stage" in decision.low_relevance_title_matches
+
+
+def test_explicit_graduate_role_is_rejected_for_experienced_corpus() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "TU/FH Absolvent (all gender)",
+            "Karrierestart in Maschinen- und Anlagenbau, Konstruktion, Projektmanagement "
+            "oder Inbetriebnahme mit erster Berufserfahrung durch Praktika.",
+        )
+    )
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
+    assert "graduate_entry_stage" in decision.low_relevance_title_matches
+
+
+def test_manual_trade_titles_are_rejected_even_with_real_mechanical_work() -> None:
+    for title in (
+        "Metallfacharbeiter (w/m/div.)",
+        "Mechaniker im Prüffeld (w/m/div)",
+        "Metalltechniker / Schlosser (d/w/m)*",
+    ):
+        decision = classify_job_candidate(
+            _job(
+                title,
+                "Fertigung mechanischer Bauteile nach technischen Zeichnungen, CNC, "
+                "Messmittel, Montage und Qualitätsprüfung.",
+            )
+        )
+        assert decision.accepted is False
+        assert decision.reason == "low_relevance_operational_title"
+        assert "manual_metal_trade" in decision.low_relevance_title_matches
+
+
 def test_strong_mechanical_engineer_title_wins_over_incidental_ai_word() -> None:
     decision = classify_job_candidate(
         _job(
