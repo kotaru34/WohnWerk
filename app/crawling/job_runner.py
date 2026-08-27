@@ -19,6 +19,42 @@ from app.jobs.tenant_registry import mark_tenant_verified
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import JobSource, RawJob, SourceFetchError
 
+_REJECTED_AUDIT_LIMIT = 50
+
+
+def _rejected_audit_sample(items: list[RawJob]) -> list[dict]:
+    """Keep a bounded diagnostic sample without durably ingesting rejected vacancies."""
+    samples: list[dict] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    for item in items:
+        gate = (item.raw_payload or {}).get("wohnwerk_discovery_gate")
+        if not isinstance(gate, dict):
+            continue
+        title = item.title or "<untitled>"
+        reason = gate.get("reason")
+        key = (title, reason if isinstance(reason, str) else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        samples.append(
+            {
+                "title": title,
+                "source_listing_id": item.source_listing_id,
+                "reason": reason,
+                "strong_title_matches": gate.get("strong_title_matches") or [],
+                "adjacent_title_matches": gate.get("adjacent_title_matches") or [],
+                "domain_matches": gate.get("domain_matches") or [],
+                "method_tool_matches": gate.get("method_tool_matches") or [],
+                "negative_context_matches": gate.get("negative_context_matches") or [],
+                "low_relevance_title_matches": gate.get("low_relevance_title_matches") or [],
+            }
+        )
+        if len(samples) >= _REJECTED_AUDIT_LIMIT:
+            break
+
+    return samples
+
 
 def _partition_with_diagnostics(
     items: list[RawJob],
@@ -29,6 +65,7 @@ def _partition_with_diagnostics(
     diagnostics["job_candidates_fetched"] = len(items)
     diagnostics["job_candidates_accepted"] = len(accepted)
     diagnostics["job_candidates_rejected"] = len(rejected)
+    diagnostics["job_rejected_audit_sample"] = _rejected_audit_sample(rejected)
     return accepted, rejected, diagnostics
 
 
