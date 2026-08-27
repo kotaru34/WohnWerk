@@ -13,6 +13,8 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v5"
+
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "vehicle_test_operator",
@@ -202,25 +204,56 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     )
 
 
+def _attach_discovery_evidence(item: RawJob, decision: JobDiscoveryDecision) -> None:
+    payload = dict(item.raw_payload)
+    payload["wohnwerk_discovery_gate"] = {
+        "version": DISCOVERY_GATE_VERSION,
+        "accepted": decision.accepted,
+        "reason": decision.reason,
+        "strong_title_matches": list(decision.strong_title_matches),
+        "adjacent_title_matches": list(decision.adjacent_title_matches),
+        "support_matches": list(decision.support_matches),
+        "domain_matches": list(decision.domain_matches),
+        "method_tool_matches": list(decision.method_tool_matches),
+        "negative_context_matches": list(decision.negative_context_matches),
+        "low_relevance_title_matches": list(decision.low_relevance_title_matches),
+    }
+    item.raw_payload = payload
+
+
+def partition_job_candidates(items: list[RawJob]) -> tuple[list[RawJob], list[RawJob]]:
+    """Classify all Austrian source candidates while preserving evidence for both sides.
+
+    Rejected *new* vacancies are still not persisted. The rejected list exists so the
+    runner can refresh source-lifecycle state for listings that were persisted by an
+    earlier gate version but are no longer professionally relevant.
+    """
+    accepted: list[RawJob] = []
+    rejected: list[RawJob] = []
+
+    for item in items:
+        decision = classify_job_candidate(item)
+        _attach_discovery_evidence(item, decision)
+        if decision.accepted:
+            accepted.append(item)
+        else:
+            rejected.append(item)
+
+    return accepted, rejected
+
+
 def filter_job_candidates(items: list[RawJob]) -> list[RawJob]:
+    """Backward-compatible accepted-only helper.
+
+    Rejected items are deliberately left untouched here because callers that only want
+    filtering should not observe payload mutation. The crawl runner uses
+    `partition_job_candidates()` instead so it can track rejected existing listings.
+    """
     accepted: list[RawJob] = []
     for item in items:
         decision = classify_job_candidate(item)
         if not decision.accepted:
             continue
-
-        payload = dict(item.raw_payload)
-        payload["wohnwerk_discovery_gate"] = {
-            "accepted": True,
-            "reason": decision.reason,
-            "strong_title_matches": list(decision.strong_title_matches),
-            "adjacent_title_matches": list(decision.adjacent_title_matches),
-            "support_matches": list(decision.support_matches),
-            "domain_matches": list(decision.domain_matches),
-            "method_tool_matches": list(decision.method_tool_matches),
-            "negative_context_matches": list(decision.negative_context_matches),
-            "low_relevance_title_matches": list(decision.low_relevance_title_matches),
-        }
-        item.raw_payload = payload
+        _attach_discovery_evidence(item, decision)
         accepted.append(item)
     return accepted
