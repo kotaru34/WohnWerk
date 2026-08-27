@@ -1,6 +1,6 @@
 # Austrian Source Candidates
 
-Research snapshot updated: 2026-08-26
+Research snapshot updated: 2026-08-27
 
 This is a source-planning inventory, not a statement that every acquisition method is permitted for every site. WohnWerk is coverage-first: alerts may supplement discovery, but they are not authoritative inventory sources. Each source gets its own adapter and operational policy.
 
@@ -70,34 +70,92 @@ Justimmo documents both HTTP APIs and full FTP exports in OpenImmo and related f
 
 ## Job acquisition layers
 
-Job coverage should combine aggregators, professional job boards and direct employers.
+Job coverage should combine structured public employer feeds/APIs, public-sector sources and additional legitimate independent sources. No one employer ATS is a nationwide anchor by itself, so coverage must be composed from many independent shards/sources.
 
-### AMS `alle jobs`
+### Lever Public Postings API — first live structured layer
 
-AMS describes `alle jobs` as a search engine covering free positions throughout Austria. Its result set combines several source classes, including:
+Lever documents a public Postings API for published vacancies. Published jobs are publicly viewable, the API exposes paginated JSON, and Lever's own documentation explicitly notes that published postings may be scraped by third parties. The API has separate global and EU instances.
 
-- AMS-managed vacancies;
-- AMS eJob-Room vacancies;
-- vacancies discovered on websites of employers/institutions active in Austria;
-- federal/state public administration vacancies;
-- selected German Bundesagentur fuer Arbeit listings.
+WohnWerk therefore treats explicitly configured Lever tenants as legitimate structured source shards. The adapter:
 
-That makes AMS a high-recall anchor, but it is not assumed to be an unrestricted public bulk-download API. The adapter must use a suitable supported/public acquisition path.
+- scans one tenant per shard;
+- uses stable Lever posting IDs;
+- traverses pagination to a short final page for authoritative reconciliation;
+- retains only postings whose location is demonstrably Austrian;
+- preserves title, employer, descriptions, source URL, workplace type and structured salary information where exposed;
+- never assumes a monthly salary implies 14 annual payments;
+- reports a safety-page ceiling as incomplete/capped coverage rather than silently succeeding.
 
-### Additional job sources
+Initial tenant seeds are deliberately modest and can be expanded as Austrian employers using Lever are identified:
 
-Coverage candidates include:
+- Blackshark.ai (EU Lever instance);
+- Westernacher Consulting (EU Lever instance);
+- cargo-partner (global Lever instance);
+- Qualysoft (global Lever instance);
+- TSMG (global Lever instance).
+
+This source is **not** equivalent to an Austria-wide job board. Its value is that each configured employer feed is complete, structured and independently reconcilable.
+
+### AMS `alle jobs` — discovery reference, not a crawler backend
+
+AMS `alle jobs` remains valuable as a high-recall reference because it combines AMS vacancies, eJob-Room, internet-discovered vacancies, public administration and selected neighbouring-country data.
+
+However, the current AMS terms for `alle jobs` explicitly restrict use to a person's own manual job search and prohibit automated mechanisms for using listed job data for one's own purposes. WohnWerk must therefore **not** implement a direct `alle jobs` crawler or private API reverse-engineering path without separate permission or a newly documented supported feed/API.
+
+AMS can still inform product/search design conceptually. Its documented search behaviour is itself a useful reminder that high recall requires more than exact title matching: AMS considers text frequency, word parts, spelling similarity, stemming/derivation and German normalization.
+
+### AMS occupational/skills taxonomy
+
+AMS occupational information remains an attractive future vocabulary/reference layer for WohnWerk's adaptive title/skill discovery. It can help normalize related occupations, competencies and titles instead of maintaining one brittle hand-written keyword list.
+
+Before automated ingestion is implemented, the exact supported machine-readable access and reuse terms for the relevant AMS taxonomy/data product must be confirmed. Until then, WohnWerk's runtime discovery should rely on vacancy-corpus extraction plus locally curated aliases/weights rather than silently crawling the AMS taxonomy.
+
+### EURES
+
+EURES is useful as a coverage/reference service, but it is not currently assumed to be a public bulk vacancy API for WohnWerk. Any EURES-backed acquisition must use an explicitly permitted interface and access model; do not screen-scrape or reverse-engineer it as a shortcut.
+
+### Austrian public-sector sources
+
+Official public-sector publication channels are valuable because they can contain technical vacancies absent from commercial boards.
+
+EVI (`evi.gv.at`) publishes Bundesdienst and related official notices, including vacancy notices with fields such as service location, employment type, application deadline and, in some notices, salary information. It is a promising independent public-sector layer.
+
+Before enabling an automated EVI adapter, WohnWerk must confirm an appropriate machine-readable/reuse path and its terms. A public web page alone is not treated as permission for bulk automated acquisition.
+
+### Additional structured employer feeds
+
+Many Austrian employers use ATS platforms with structured published-job feeds. These can become additional independent layers when the platform's public interface and reuse semantics support it.
+
+Candidates include:
+
+- Personio public career-site XML feeds;
+- Greenhouse public job-board endpoints;
+- Ashby public job-board endpoints;
+- other documented employer ATS feeds;
+- direct company career APIs/feeds where explicitly public/supported.
+
+Platform availability does not make every tenant automatically relevant; WohnWerk should add Austrian employers deliberately and keep one tenant/employer as an independently diagnosable acquisition shard where practical.
+
+### Conventional job boards
+
+Coverage candidates still worth separate source-by-source review include:
 
 - karriere.at;
 - StepStone Austria;
 - willhaben Jobs;
 - jobs.at;
 - hokify;
-- employer career pages;
-- public-sector portals;
 - engineering and technical recruitment sites.
 
-Queries must cover adjacent mechanical-engineering roles rather than one exact title. Candidate generation and local ranking remain separate steps.
+Queries and ranking must cover adjacent mechanical-engineering roles rather than one exact title. Candidate generation and local ranking remain separate steps.
+
+## Adaptive job vocabulary
+
+WohnWerk must not depend on a static list such as `Maschinenbauingenieur` alone.
+
+As real vacancies arrive, the system should discover related job titles, skills, tools and role-family concepts from the corpus. These automatically discovered concepts are later presented in `Profil / Skills`, where the user assigns suitability/experience/preference weights. Unknown/unreviewed concepts remain neutral.
+
+The intrinsic `job_fit_score` is recomputed from vacancy features plus the current user profile. It remains independent of geography. House/job pair recommendations then combine intrinsic job fit, property suitability and configured distance constraints without destroying the underlying component scores.
 
 ## Austrian compensation data
 
@@ -105,7 +163,7 @@ Austrian private-sector job advertisements are generally required to state the a
 
 Advertised amounts may be collective-agreement minima rather than expected final salaries, so WohnWerk preserves raw salary text and provenance alongside normalized figures.
 
-Do not automatically multiply every monthly salary advertisement by 14. Special payments are common but their exact entitlement/basis depends on the applicable collective agreement or contract.
+Do not automatically multiply every monthly salary advertisement by 14. Special payments are common but their exact entitlement/basis depends on the applicable collective agreement or contract. Annualization may use a payment count only when the source makes that dimension explicit or otherwise supplies sufficiently reliable semantics.
 
 ## Postal-code reference data
 
