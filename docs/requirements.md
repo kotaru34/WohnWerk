@@ -64,7 +64,9 @@ Canonical properties must support more than one source listing.
 
 Initial search phrases may include terms such as `Maschinenbauingenieur`, but job discovery must not depend on exact title matching.
 
-The system should also find adjacent plausible roles such as construction/design engineering, product development, project engineering, technical specialist work, machine/plant engineering, and other roles inferred from the manually curated professional profile.
+The system should also find adjacent plausible roles such as construction/design engineering, product development, technical project leadership, project engineering, technical specialist work, machine/plant engineering, vehicle and rail engineering, fixtures/tooling, validation/testing, and other roles inferred from the manually curated professional profile.
+
+The initial coarse discovery seed is intentionally broader than a literal CV title list. It should represent the known professional neighbourhood while allowing the vacancy corpus to surface additional adjacent concepts for later review. Generalized seed details are documented in `docs/professional_seed.md`.
 
 ### Stored job data
 
@@ -122,6 +124,8 @@ Example preference states:
 - avoid.
 
 These dimensions must not be collapsed into one irreversible boolean.
+
+The initial known profile includes strong evidence around mechanical/product development, design/construction, technical project leadership, vehicle/rail/special-vehicle engineering, fixtures/tooling, FEM/strength assessment, FMEA, supplier coordination, requirements/specifications, validation/testing, assembly/commissioning, PDM/PLM and related engineering methods. Supporting workplace tools such as SAP or generic agile terminology must not make an otherwise unrelated vacancy pass the coarse relevance gate by themselves.
 
 ### Adaptive tag/title/skill discovery
 
@@ -206,6 +210,10 @@ Primary navigation:
 ```text
 Häuser | Jobs | Matching | Profil / Skills | Sources
 ```
+
+All end-user interface text produced by WohnWerk must be in **German**. Ukrainian must not appear in user-facing navigation, labels, help text, settings, status messages, generated explanations, or recommendation UI. English may remain where it is source-derived or is the natural technical/job term, for example an advertised English job title, `Mechanical Engineer`, `CATIA`, `Creo`, `PLM`, or an external source label.
+
+Developer-facing code, internal logs, database identifiers and technical documentation may remain in English unless a user-facing surface displays them directly.
 
 Property browsing must support sorting/filtering by at least:
 
