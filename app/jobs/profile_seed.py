@@ -94,6 +94,10 @@ LOW_RELEVANCE_TITLE_PATTERNS: PatternSet = (
             r"\b(?:sicherheitsfahrer|safety\s+driver|safety\s+operator|vehicle\s+driver)\w*"
         ),
     ),
+    (
+        "vehicle_test_operator",
+        re.compile(r"\b(?:autonomous\s+vehicle\s+)?test\s+operator\w*"),
+    ),
     ("field_survey", re.compile(r"\b(?:field\s+surveyor|field\s+data\s+collection)\w*")),
 )
 
@@ -243,15 +247,22 @@ METHOD_TOOL_PATTERNS: PatternSet = (
 )
 
 
-# These are not absolute exclusions. They only prevent one weak domain token such
-# as "automotive" from making an otherwise clearly software/commercial vacancy
-# look mechanically relevant.
+# These are not absolute exclusions. They only prevent one weak domain/method
+# token from making an otherwise clearly IT/commercial vacancy look mechanically
+# relevant.
 NEGATIVE_CONTEXT_PATTERNS: PatternSet = (
     (
         "software",
         re.compile(
             r"\b(?:software|backend|frontend|full[-\s]*stack|devops|devsecops|cloud|"
             r"kubernetes|terraform)\w*"
+        ),
+    ),
+    (
+        "generic_it",
+        re.compile(
+            r"\b(?:it[-\s]*(?:system|projekt|branche|beratung|consulting|transformation|"
+            r"integration|infrastruktur)|edv[-\s]*(?:ausbildung|orientiert))\w*"
         ),
     ),
     (
