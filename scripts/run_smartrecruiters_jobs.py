@@ -20,10 +20,11 @@ DEFAULT_TENANTS = [
     TenantSeed(tenant_key="ALTEN", company="ALTEN"),
     TenantSeed(tenant_key="AustroHolding", company="Austro Holding"),
     TenantSeed(tenant_key="BoschGroup", company="Bosch Group"),
-    # SmartRecruiters companyIdentifier must match the canonical default career-site
-    # identifier. Brainlab's canonical careers URL uses lowercase `brainlab` even though
-    # individual posting URLs are often rendered with `Brainlab`.
-    TenantSeed(tenant_key="brainlab", company="Brainlab / medPhoton"),
+    TenantSeed(
+        tenant_key="brainlab",
+        company="Brainlab / medPhoton",
+        config={"unfiltered_austria_fallback": True},
+    ),
 ]
 
 
@@ -87,7 +88,16 @@ def load_sites(source_id: int) -> list[SmartRecruitersSite]:
         if source is None:
             raise RuntimeError("SmartRecruiters source disappeared before tenant loading")
         tenants = enabled_tenants(session, source=source)
-        sites = [SmartRecruitersSite(tenant=row.tenant_key, company=row.company) for row in tenants]
+        sites = [
+            SmartRecruitersSite(
+                tenant=row.tenant_key,
+                company=row.company,
+                unfiltered_austria_fallback=bool(
+                    (row.config or {}).get("unfiltered_austria_fallback", False)
+                ),
+            )
+            for row in tenants
+        ]
         if not sites:
             raise RuntimeError("No enabled SmartRecruiters tenants are registered")
         return sites
