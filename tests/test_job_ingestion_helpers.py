@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from app.ingestion.jobs import _annual_eur_value, _enrich_locations, _merge_listing_payload
 from app.jobs.location_resolution import LocalityResolution
-from app.models import Job
+from app.models import Job, JobLocation
 from app.sources.base import RawJobLocation
 
 
@@ -86,6 +86,17 @@ def test_transient_job_detail_failure_does_not_downgrade_success() -> None:
     assert merged["detail_enrichment_last_error"] == "temporary 503"
 
 
+def _wien_resolution() -> LocalityResolution:
+    return LocalityResolution(
+        requested_city="wien",
+        canonical_locality="wien",
+        longitude=16.3738,
+        latitude=48.2082,
+        postal_codes=("1010", "1020"),
+        address_sample_count=1000,
+    )
+
+
 def test_remote_capable_job_keeps_source_provided_city_centroid() -> None:
     job = Job(title="Technical Project Manager")
     resolution = LocalityResolution(
@@ -113,4 +124,68 @@ def test_remote_capable_job_keeps_source_provided_city_centroid() -> None:
     assert len(job.locations) == 1
     assert job.locations[0].remote is True
     assert job.locations[0].city == "Vienna"
+    assert job.locations[0].location is not None
+
+
+def test_same_source_label_upgrades_stale_unresolved_city_guess() -> None:
+    job = Job(title="Building Services Engineer")
+    job.locations.append(
+        JobLocation(
+            city="Center Vienna",
+            location_text="Austria Center Vienna",
+            remote=False,
+        )
+    )
+
+    _enrich_locations(
+        job,
+        locations=[
+            RawJobLocation(
+                city="wien",
+                location_text="Austria Center Vienna",
+                remote=False,
+            )
+        ],
+        known_postal={},
+        locality_resolutions={"wien": _wien_resolution()},
+    )
+
+    assert len(job.locations) == 1
+    assert job.locations[0].city == "wien"
+    assert job.locations[0].location is not None
+
+
+def test_resolved_source_label_removes_prior_unresolved_duplicate() -> None:
+    job = Job(title="Building Services Engineer")
+    job.locations.extend(
+        [
+            JobLocation(
+                city="Center Vienna",
+                location_text="Austria Center Vienna",
+                remote=False,
+            ),
+            JobLocation(
+                city="wien",
+                location_text="Austria Center Vienna",
+                location=_wien_resolution().as_wkt(),
+                remote=False,
+            ),
+        ]
+    )
+
+    _enrich_locations(
+        job,
+        locations=[
+            RawJobLocation(
+                city="wien",
+                location_text="Austria Center Vienna",
+                remote=False,
+            )
+        ],
+        known_postal={},
+        locality_resolutions={"wien": _wien_resolution()},
+    )
+
+    assert len(job.locations) == 1
+    assert job.locations[0].city == "wien"
     assert job.locations[0].location is not None
