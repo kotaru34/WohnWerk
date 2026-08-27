@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v9"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-27-v10"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -73,6 +73,8 @@ _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+_AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
+
 # These title semantics are structural exclusions for this experienced
 # working-professional corpus and therefore win even over an otherwise strong
 # mechanical title.
@@ -90,6 +92,11 @@ def _normalize(value: str | None) -> str:
     if not value:
         return ""
     return " ".join(value.casefold().split())
+
+
+def _negative_context_text(text: str) -> str:
+    """Protect technical after-sales service from generic commercial sales matching."""
+    return _AFTER_SALES_SERVICE_RE.sub("after_sales_service", text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +164,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
     )
     domain = _matches(DOMAIN_PATTERNS, combined)
     method_tool = _matches(METHOD_TOOL_PATTERNS, combined)
-    negative = _matches(NEGATIVE_CONTEXT_PATTERNS, combined)
+    negative = _matches(NEGATIVE_CONTEXT_PATTERNS, _negative_context_text(combined))
 
     if any(match in _HARD_TITLE_EXCLUSIONS for match in low_relevance_title):
         return _decision(
