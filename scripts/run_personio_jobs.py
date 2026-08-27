@@ -44,6 +44,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _verified_base_url(config: dict | None) -> str | None:
+    verification = (config or {}).get("personio_feed_verification")
+    if not isinstance(verification, dict):
+        return None
+    feed_url = verification.get("feed_url")
+    if not isinstance(feed_url, str) or not feed_url.strip():
+        return None
+    normalized = feed_url.strip().split("?", 1)[0].rstrip("/")
+    if not normalized.endswith("/xml"):
+        return None
+    return normalized.removesuffix("/xml")
+
+
 def get_or_create_source() -> int:
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
@@ -51,8 +64,8 @@ def get_or_create_source() -> int:
             "scope": "Austrian vacancies from registered Personio career sites",
             "acquisition": "documented public Personio career-site XML feed",
             "sharding": "one shard per enabled DB-backed tenant",
-            "tenant_registry": "job_source_tenants",
             "feed_path": "/xml?language=de",
+            "domain_policy": "verified endpoint or .com with .de fallback",
             "reconciliation_interval_hours": 24,
         }
         if source is None:
@@ -70,6 +83,7 @@ def get_or_create_source() -> int:
             session.refresh(source)
         else:
             source.adapter = ADAPTER_PATH
+            source.base_url = f"https://{{tenant}}{PERSONIO_BASE_SUFFIX}/xml"
             source.enabled = True
             source.config = config
             session.commit()
@@ -85,7 +99,14 @@ def load_runtime(source_id: int) -> tuple[list[PersonioSite], set[str]]:
             raise RuntimeError("Personio source disappeared before tenant loading")
 
         tenants = enabled_tenants(session, source=source)
-        sites = [PersonioSite(tenant=row.tenant_key, company=row.company) for row in tenants]
+        sites = [
+            PersonioSite(
+                tenant=row.tenant_key,
+                company=row.company,
+                base_url=_verified_base_url(row.config),
+            )
+            for row in tenants
+        ]
         if not sites:
             raise RuntimeError("No enabled Personio tenants are registered")
 
