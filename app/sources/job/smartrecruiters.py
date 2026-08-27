@@ -173,14 +173,14 @@ def parse_smartrecruiters_list(payload: dict[str, Any]) -> tuple[list[dict[str, 
     content = payload.get("content")
     total = payload.get("totalFound")
     if not isinstance(content, list):
-        raise ValueError("SmartRecruiters posting list has no content array")
+        raise TypeError("SmartRecruiters posting list has no content array")
     if not isinstance(total, int) or total < 0:
         raise ValueError("SmartRecruiters posting list has invalid totalFound")
 
     rows: list[dict[str, Any]] = []
     for item in content:
         if not isinstance(item, dict):
-            raise ValueError("SmartRecruiters posting list contains a non-object item")
+            raise TypeError("SmartRecruiters posting list contains a non-object item")
         rows.append(item)
     return rows, total
 
@@ -245,9 +245,9 @@ class SmartRecruitersJobSource(JobSource):
                 response.raise_for_status()
                 payload = response.json()
                 if not isinstance(payload, dict):
-                    raise ValueError("SmartRecruiters returned a non-object JSON response")
+                    raise TypeError("SmartRecruiters returned a non-object JSON response")
                 return payload
-            except (httpx.HTTPError, ValueError) as exc:
+            except (httpx.HTTPError, TypeError, ValueError) as exc:
                 last_error = exc
                 retryable = isinstance(exc, httpx.HTTPStatusError) and (
                     exc.response.status_code in _RETRYABLE_STATUS
@@ -311,7 +311,7 @@ class SmartRecruitersJobSource(JobSource):
                         },
                     )
                     rows, total_found = parse_smartrecruiters_list(payload)
-                except Exception as exc:
+                except (httpx.HTTPError, TypeError, ValueError) as exc:
                     raise SourceFetchError(
                         f"SmartRecruiters shard {shard.key!r} list fetch failed: {exc}",
                         pages_fetched=pages_fetched,
@@ -345,7 +345,7 @@ class SmartRecruitersJobSource(JobSource):
                     try:
                         detail = await self._get_json(client, detail_url)
                         job = parse_smartrecruiters_detail(detail, site=site)
-                    except Exception:
+                    except (httpx.HTTPError, TypeError, ValueError):
                         detail_failed += 1
                         detail_failed_ids.append(posting_id)
                         continue
