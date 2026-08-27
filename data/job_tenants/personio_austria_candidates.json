@@ -98,5 +98,15 @@
       "evidence_url": "https://tenics.jobs.personio.de/?language=en",
       "evidence_note": "Current Vienna Personio office; broad discovery gate will reject irrelevant software roles"
     }
+  },
+  {
+    "tenant": "enpulsion",
+    "company": "ENPULSION GmbH",
+    "config": {
+      "discovery_method": "public_web_search",
+      "discovered_on": "2026-08-28",
+      "evidence_url": "https://enpulsion.jobs.personio.com/",
+      "evidence_note": "Current Vienna engineering and production-technology roles including Electrical, Maintenance and Test Engineer"
+    }
   }
 ]
