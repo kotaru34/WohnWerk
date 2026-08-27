@@ -14,8 +14,18 @@ from app.crawling.coverage import (
 )
 from app.crawling.shards import sync_source_shards
 from app.ingestion.jobs import ingest_jobs
+from app.jobs.discovery import filter_job_candidates
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import JobSource, RawJob, SourceFetchError
+
+
+def _filter_with_diagnostics(items: list[RawJob], cursor: dict) -> tuple[list[RawJob], dict]:
+    accepted = filter_job_candidates(items)
+    diagnostics = dict(cursor)
+    diagnostics["job_candidates_fetched"] = len(items)
+    diagnostics["job_candidates_accepted"] = len(accepted)
+    diagnostics["job_candidates_rejected"] = len(items) - len(accepted)
+    return accepted, diagnostics
 
 
 async def run_job_source(
@@ -25,7 +35,7 @@ async def run_job_source(
     adapter: JobSource,
     reconciliation: bool = False,
 ) -> tuple[CrawlRun, CoverageSummary]:
-    """Run all enabled job shards with the same coverage guarantees as properties."""
+    """Run all enabled job shards with coverage guarantees and a broad relevance gate."""
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
     specs_by_key = {spec.key: spec for spec in specs}
@@ -54,27 +64,31 @@ async def run_job_source(
                 cursor=shard.cursor,
                 reconciliation=reconciliation,
             )
+            candidate_items, next_cursor = _filter_with_diagnostics(
+                batch.items,
+                batch.next_cursor,
+            )
             new_count, updated_count = ingest_jobs(
                 session,
                 source=source,
                 run=run,
-                items=batch.items,
+                items=candidate_items,
             )
 
             now = datetime.now(UTC)
             shard_run.status = RunStatus.SUCCESS
             shard_run.finished_at = now
             shard_run.pages_fetched = batch.pages_fetched
-            shard_run.items_seen = len(batch.items)
+            shard_run.items_seen = len(candidate_items)
             shard_run.items_new = new_count
             shard_run.items_updated = updated_count
             shard_run.source_reported_count = batch.source_reported_count
             shard_run.result_cap_hit = batch.result_cap_hit
             shard_run.coverage_complete = batch.coverage_complete
-            shard_run.next_cursor = batch.next_cursor
+            shard_run.next_cursor = next_cursor
 
-            shard.cursor = batch.next_cursor
-            shard.last_item_count = len(batch.items)
+            shard.cursor = next_cursor
+            shard.last_item_count = len(candidate_items)
             shard.last_success_at = now
             shard.consecutive_failures = 0
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
@@ -83,6 +97,8 @@ async def run_job_source(
             session.rollback()
             partial_new = 0
             partial_updated = 0
+            partial_items_seen = 0
+            partial_cursor: dict = {}
             if isinstance(exc, SourceFetchError) and exc.partial_items:
                 partial_source = session.get(Source, source_id)
                 partial_run = session.get(CrawlRun, run_id)
@@ -90,11 +106,16 @@ async def run_job_source(
                     raise RuntimeError(
                         f"Could not reload partial-run state for {source.name}/{spec.key}"
                     ) from exc
+                candidate_items, partial_cursor = _filter_with_diagnostics(
+                    cast(list[RawJob], exc.partial_items),
+                    exc.next_cursor,
+                )
+                partial_items_seen = len(candidate_items)
                 partial_new, partial_updated = ingest_jobs(
                     session,
                     source=partial_source,
                     run=partial_run,
-                    items=cast(list[RawJob], exc.partial_items),
+                    items=candidate_items,
                 )
 
             failed_shard_run = session.get(CrawlShardRun, shard_run_id)
@@ -110,11 +131,11 @@ async def run_job_source(
             failed_shard_run.error = f"{type(exc).__name__}: {exc}"
             if isinstance(exc, SourceFetchError):
                 failed_shard_run.pages_fetched = exc.pages_fetched
-                failed_shard_run.items_seen = exc.items_seen
+                failed_shard_run.items_seen = partial_items_seen
                 failed_shard_run.items_new = partial_new
                 failed_shard_run.items_updated = partial_updated
                 failed_shard_run.source_reported_count = exc.source_reported_count
-                failed_shard_run.next_cursor = exc.next_cursor
+                failed_shard_run.next_cursor = partial_cursor or exc.next_cursor
             failed_shard.consecutive_failures += 1
 
         session.commit()
