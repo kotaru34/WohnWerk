@@ -29,6 +29,7 @@ _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 class SmartRecruitersSite:
     tenant: str
     company: str
+    unfiltered_austria_fallback: bool = False
 
     def __post_init__(self) -> None:
         if not self.tenant.strip():
@@ -106,11 +107,7 @@ def _location(payload: dict[str, Any]) -> RawJobLocation | None:
     remote = bool(value.get("remote"))
     location_parts = [part for part in (city, region, "Austria") if part]
     location_text = ", ".join(dict.fromkeys(location_parts)) or "Austria"
-    return RawJobLocation(
-        city=city,
-        location_text=location_text,
-        remote=remote,
-    )
+    return RawJobLocation(city=city, location_text=location_text, remote=remote)
 
 
 def parse_smartrecruiters_detail(
@@ -211,7 +208,11 @@ class SmartRecruitersJobSource(JobSource):
         return [
             SourceShardSpec(
                 key=site.tenant,
-                params={"tenant": site.tenant, "company": site.company},
+                params={
+                    "tenant": site.tenant,
+                    "company": site.company,
+                    "unfiltered_austria_fallback": site.unfiltered_austria_fallback,
+                },
             )
             for site in self.sites
         ]
@@ -220,9 +221,16 @@ class SmartRecruitersJobSource(JobSource):
     def _site_from_shard(shard: SourceShardSpec) -> SmartRecruitersSite:
         tenant = shard.params.get("tenant")
         company = shard.params.get("company")
+        fallback = shard.params.get("unfiltered_austria_fallback", False)
         if not isinstance(tenant, str) or not isinstance(company, str):
             raise TypeError(f"Invalid SmartRecruiters shard parameters for {shard.key!r}")
-        return SmartRecruitersSite(tenant=tenant, company=company)
+        if not isinstance(fallback, bool):
+            raise TypeError(f"Invalid SmartRecruiters fallback flag for {shard.key!r}")
+        return SmartRecruitersSite(
+            tenant=tenant,
+            company=company,
+            unfiltered_austria_fallback=fallback,
+        )
 
     async def _sleep(self) -> None:
         if self.request_delay_seconds > 0:
@@ -257,6 +265,63 @@ class SmartRecruitersJobSource(JobSource):
                 await asyncio.sleep(2**attempt)
         raise RuntimeError("unreachable") from last_error
 
+    async def _fetch_list_pages(
+        self,
+        client: httpx.AsyncClient,
+        list_url: str,
+        *,
+        reconciliation: bool,
+        country: str | None,
+    ) -> tuple[list[dict[str, Any]], int, int, int, bool, bool]:
+        page_size = 100
+        page_number = 0
+        pages_fetched = 0
+        source_reported = 0
+        max_pages = 1
+        result_cap_hit = False
+        rows: list[dict[str, Any]] = []
+
+        while True:
+            if page_number >= max_pages:
+                break
+            if not reconciliation and page_number >= self.incremental_pages:
+                break
+            if page_number >= self.hard_max_pages:
+                result_cap_hit = True
+                break
+
+            params: dict[str, object] = {
+                "destination": "PUBLIC",
+                "limit": page_size,
+                "offset": page_number * page_size,
+            }
+            if country is not None:
+                params["country"] = country
+
+            payload = await self._get_json(client, list_url, params=params)
+            page_rows, total_found = parse_smartrecruiters_list(payload)
+            rows.extend(page_rows)
+            pages_fetched += 1
+            source_reported = total_found
+            max_pages = max(1, math.ceil(total_found / page_size))
+            if max_pages > self.hard_max_pages:
+                result_cap_hit = True
+            page_number += 1
+
+        traversal_complete = (
+            reconciliation
+            and not result_cap_hit
+            and pages_fetched == max_pages
+        )
+        return (
+            rows,
+            source_reported,
+            pages_fetched,
+            max_pages,
+            result_cap_hit,
+            traversal_complete,
+        )
+
     async def fetch_shard(
         self,
         shard: SourceShardSpec,
@@ -273,14 +338,16 @@ class SmartRecruitersJobSource(JobSource):
             "User-Agent": "WohnWerk/0.1 (+private self-hosted Austrian job search)",
         }
 
-        page_size = 100
         pages_fetched = 0
         source_reported: int | None = None
-        max_pages = 1
         result_cap_hit = False
+        traversal_complete = False
+        fallback_used = False
+        fallback_unfiltered_reported: int | None = None
         detail_attempted = 0
         detail_succeeded = 0
         detail_failed = 0
+        detail_non_austrian = 0
         detail_failed_ids: list[str] = []
         items_by_id: dict[str, RawJob] = {}
 
@@ -289,92 +356,109 @@ class SmartRecruitersJobSource(JobSource):
             timeout=self.timeout_seconds,
             follow_redirects=True,
         ) as client:
-            page_number = 0
-            while True:
-                if page_number >= max_pages:
-                    break
-                if not reconciliation and page_number >= self.incremental_pages:
-                    break
-                if page_number >= self.hard_max_pages:
-                    result_cap_hit = True
-                    break
+            try:
+                (
+                    rows,
+                    filtered_reported,
+                    filtered_pages,
+                    _filtered_max_pages,
+                    filtered_cap,
+                    filtered_complete,
+                ) = await self._fetch_list_pages(
+                    client,
+                    list_url,
+                    reconciliation=reconciliation,
+                    country="at",
+                )
+            except (httpx.HTTPError, TypeError, ValueError) as exc:
+                raise SourceFetchError(
+                    f"SmartRecruiters shard {shard.key!r} list fetch failed: {exc}",
+                    pages_fetched=pages_fetched,
+                    items_seen=0,
+                    source_reported_count=None,
+                    next_cursor={"country_filter": "at"},
+                    partial_items=[],
+                ) from exc
 
+            pages_fetched += filtered_pages
+            source_reported = filtered_reported
+            result_cap_hit = filtered_cap
+            traversal_complete = filtered_complete
+
+            if filtered_reported == 0 and site.unfiltered_austria_fallback:
+                fallback_used = True
                 try:
-                    payload = await self._get_json(
+                    (
+                        rows,
+                        fallback_unfiltered_reported,
+                        fallback_pages,
+                        _fallback_max_pages,
+                        fallback_cap,
+                        fallback_complete,
+                    ) = await self._fetch_list_pages(
                         client,
                         list_url,
-                        params={
-                            "country": "at",
-                            "destination": "PUBLIC",
-                            "limit": page_size,
-                            "offset": page_number * page_size,
-                        },
+                        reconciliation=reconciliation,
+                        country=None,
                     )
-                    rows, total_found = parse_smartrecruiters_list(payload)
                 except (httpx.HTTPError, TypeError, ValueError) as exc:
                     raise SourceFetchError(
-                        f"SmartRecruiters shard {shard.key!r} list fetch failed: {exc}",
+                        f"SmartRecruiters shard {shard.key!r} fallback list fetch failed: {exc}",
                         pages_fetched=pages_fetched,
-                        items_seen=len(items_by_id),
-                        source_reported_count=source_reported,
+                        items_seen=0,
+                        source_reported_count=0,
                         next_cursor={
-                            "source_postings": source_reported,
-                            "detail_attempted": detail_attempted,
-                            "detail_succeeded": detail_succeeded,
-                            "detail_failed": detail_failed,
-                            "detail_failed_ids": detail_failed_ids[:20],
+                            "country_filter": "at",
+                            "country_filtered_reported": filtered_reported,
+                            "unfiltered_austria_fallback": True,
                         },
-                        partial_items=list(items_by_id.values()),
+                        partial_items=[],
                     ) from exc
+                pages_fetched += fallback_pages
+                source_reported = None
+                result_cap_hit = fallback_cap
+                traversal_complete = fallback_complete
 
-                pages_fetched += 1
-                source_reported = total_found
-                max_pages = max(1, math.ceil(total_found / page_size))
-                if max_pages > self.hard_max_pages:
-                    result_cap_hit = True
+            for row in rows:
+                posting_id = _text(row.get("id")) or _text(row.get("uuid"))
+                if posting_id is None:
+                    detail_failed += 1
+                    detail_failed_ids.append("<missing-id>")
+                    continue
 
-                for row in rows:
-                    posting_id = _text(row.get("id")) or _text(row.get("uuid"))
-                    if posting_id is None:
-                        detail_failed += 1
-                        detail_failed_ids.append("<missing-id>")
-                        continue
+                detail_attempted += 1
+                detail_url = f"{list_url}/{posting_id}"
+                try:
+                    detail = await self._get_json(client, detail_url)
+                    job = parse_smartrecruiters_detail(detail, site=site)
+                except (httpx.HTTPError, TypeError, ValueError):
+                    detail_failed += 1
+                    detail_failed_ids.append(posting_id)
+                    continue
 
-                    detail_attempted += 1
-                    detail_url = f"{list_url}/{posting_id}"
-                    try:
-                        detail = await self._get_json(client, detail_url)
-                        job = parse_smartrecruiters_detail(detail, site=site)
-                    except (httpx.HTTPError, TypeError, ValueError):
-                        detail_failed += 1
-                        detail_failed_ids.append(posting_id)
-                        continue
-                    if job is None:
-                        detail_failed += 1
-                        detail_failed_ids.append(posting_id)
-                        continue
-                    items_by_id[job.source_listing_id] = job
-                    detail_succeeded += 1
+                detail_succeeded += 1
+                if job is None:
+                    detail_non_austrian += 1
+                    continue
+                items_by_id[job.source_listing_id] = job
 
-                page_number += 1
-
-        coverage_complete = (
-            reconciliation
-            and not result_cap_hit
-            and pages_fetched == max_pages
-            and detail_failed == 0
-        )
+        coverage_complete = traversal_complete and detail_failed == 0
+        next_cursor = {
+            "source_postings": source_reported,
+            "detail_attempted": detail_attempted,
+            "detail_succeeded": detail_succeeded,
+            "detail_failed": detail_failed,
+            "detail_non_austrian": detail_non_austrian,
+            "detail_failed_ids": detail_failed_ids[:20],
+            "country_filtered_reported": 0 if fallback_used else source_reported,
+            "unfiltered_austria_fallback": fallback_used,
+            "fallback_unfiltered_reported": fallback_unfiltered_reported,
+            "fallback_austrian_postings": len(items_by_id) if fallback_used else None,
+        }
 
         return SourceBatch(
             items=list(items_by_id.values()),
-            next_cursor={
-                "source_postings": source_reported,
-                "source_pages": max_pages,
-                "detail_attempted": detail_attempted,
-                "detail_succeeded": detail_succeeded,
-                "detail_failed": detail_failed,
-                "detail_failed_ids": detail_failed_ids[:20],
-            },
+            next_cursor=next_cursor,
             source_reported_count=source_reported,
             coverage_complete=coverage_complete,
             result_cap_hit=result_cap_hit,
