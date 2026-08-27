@@ -1,4 +1,7 @@
+import pytest
+
 from app.sources.job.smartrecruiters import (
+    SmartRecruitersJobSource,
     SmartRecruitersSite,
     parse_smartrecruiters_detail,
     parse_smartrecruiters_list,
@@ -103,3 +106,51 @@ def test_remote_austrian_posting_preserves_remote_flag() -> None:
     job = parse_smartrecruiters_detail(payload, site=SITE)
     assert job is not None
     assert job.locations[0].remote is True
+
+
+@pytest.mark.asyncio
+async def test_country_zero_can_fallback_to_unfiltered_detail_scan(monkeypatch) -> None:
+    site = SmartRecruitersSite(
+        tenant="ExampleEngineering",
+        company="Example Engineering GmbH",
+        unfiltered_austria_fallback=True,
+    )
+    source = SmartRecruitersJobSource(sites=[site], request_delay_seconds=0)
+    shard = source.default_shards()[0]
+
+    austrian = _detail(country="at", title="Mechanical Engineer")
+    austrian["id"] = "at-1"
+    german = _detail(country="de", title="Software Engineer")
+    german["id"] = "de-1"
+
+    async def fake_get_json(client, url, *, params=None):
+        del client
+        if url.endswith("/postings"):
+            if params and params.get("country") == "at":
+                return {"limit": 100, "offset": 0, "totalFound": 0, "content": []}
+            return {
+                "limit": 100,
+                "offset": 0,
+                "totalFound": 2,
+                "content": [{"id": "at-1"}, {"id": "de-1"}],
+            }
+        if url.endswith("/at-1"):
+            return austrian
+        if url.endswith("/de-1"):
+            return german
+        raise AssertionError(url)
+
+    monkeypatch.setattr(source, "_get_json", fake_get_json)
+    batch = await source.fetch_shard(shard, reconciliation=True)
+
+    assert batch.coverage_complete is True
+    assert batch.pages_fetched == 2
+    assert batch.source_reported_count is None
+    assert [job.title for job in batch.items] == ["Mechanical Engineer"]
+    assert batch.next_cursor["unfiltered_austria_fallback"] is True
+    assert batch.next_cursor["fallback_unfiltered_reported"] == 2
+    assert batch.next_cursor["fallback_austrian_postings"] == 1
+    assert batch.next_cursor["detail_attempted"] == 2
+    assert batch.next_cursor["detail_succeeded"] == 2
+    assert batch.next_cursor["detail_failed"] == 0
+    assert batch.next_cursor["detail_non_austrian"] == 1
