@@ -162,7 +162,10 @@ def _austrian_locations(
     postal_match = _POSTAL_CODE_RE.search(text)
     postal_code = postal_match.group(1) if postal_match else None
 
-    if not explicit_austria and not locality_matches and postal_code is None:
+    # A four-digit postal code alone is not Austrian proof (Switzerland also uses
+    # four digits). Require either an explicitly Austrian label or a locality that
+    # exists in the loaded Austrian postal reference; PLZ then only enriches it.
+    if not explicit_austria and not locality_matches:
         return []
 
     cities = locality_matches
