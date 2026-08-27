@@ -16,7 +16,6 @@ from app.sources.property.sreal_detail import (
     parse_sreal_detail_page,
 )
 
-
 HEADERS = {
     "User-Agent": "WohnWerk/0.1 (+private self-hosted Austrian property search)",
     "Accept": "text/html,application/xhtml+xml",
