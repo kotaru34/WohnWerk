@@ -1,22 +1,16 @@
-from xml.etree import ElementTree as ET
-
-from app.sources.job.personio import (
-    PersonioSite,
-    parse_personio_feed,
-    parse_personio_position,
-)
+from app.sources.job import personio
 
 
-SITE = PersonioSite(tenant="example-at", company="Example Engineering GmbH")
+SITE = personio.PersonioSite(tenant="example-at", company="Example Engineering GmbH")
 AUSTRIAN_LOCALITIES = {"graz", "wien", "linz", "hohenberg", "anif"}
 
 
-def _position(xml: str) -> ET.Element:
-    return ET.fromstring(xml)
+def _position(xml: str):
+    return personio.ET.fromstring(xml)
 
 
 def test_personio_city_only_austrian_office_is_kept() -> None:
-    item = parse_personio_position(
+    item = personio.parse_personio_position(
         _position(
             """
             <position>
@@ -49,7 +43,7 @@ def test_personio_city_only_austrian_office_is_kept() -> None:
 
 
 def test_personio_vienna_alias_is_kept_without_country_suffix() -> None:
-    item = parse_personio_position(
+    item = personio.parse_personio_position(
         _position(
             """
             <position>
@@ -68,7 +62,7 @@ def test_personio_vienna_alias_is_kept_without_country_suffix() -> None:
 
 
 def test_personio_explicit_austria_office_is_kept() -> None:
-    item = parse_personio_position(
+    item = personio.parse_personio_position(
         _position(
             """
             <position>
@@ -88,7 +82,7 @@ def test_personio_explicit_austria_office_is_kept() -> None:
 
 
 def test_personio_non_austrian_office_is_rejected() -> None:
-    item = parse_personio_position(
+    item = personio.parse_personio_position(
         _position(
             """
             <position>
@@ -117,7 +111,7 @@ def test_personio_feed_reports_all_positions_but_returns_only_austrian_jobs() ->
     </workzag-jobs>
     """
 
-    items, total = parse_personio_feed(
+    items, total = personio.parse_personio_feed(
         payload,
         site=SITE,
         austrian_localities=AUSTRIAN_LOCALITIES,
