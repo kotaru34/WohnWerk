@@ -1,6 +1,10 @@
 import xml.etree.ElementTree as ET
 
-from app.sources.job.personio import PersonioSite, parse_personio_feed, parse_personio_position
+from app.sources.job.personio import (
+    PersonioSite,
+    parse_personio_feed,
+    parse_personio_position,
+)
 
 
 SITE = PersonioSite(tenant="example-at", company="Example Engineering GmbH")
