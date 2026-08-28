@@ -102,7 +102,7 @@ Cards use restrained score-band/tint styling. Filters include Passend / Favorite
 
 Migration `0009_candidate_job_preferences` supplies sparse per-profile `favorite` / `hidden` state. Hidden jobs remain recoverable; favorites are independent. Future canonical merge OR-preserves curation state onto the survivor before donor deletion. The user confirmed the current father-feedback UI version is working in production after deployment cleanup.
 
-## PostGIS spatial matching — first read-only slice ready
+## PostGIS spatial matching — validated first slice
 
 Existing `Property.location` and `JobLocation.location` are `geography(POINT,4326)` with spatial indexes.
 
@@ -112,7 +112,7 @@ Current location semantics are approximate by design:
 - otherwise conservative locality centroids derived from RTR postal names + BEV postal centroids
 - unresolved/countrywide locations remain ungeocoded; no coordinates are invented
 
-New `app/matching.py` provides:
+`app/matching.py` provides:
 - `geo_coverage()` for production coverage diagnostics
 - `nearest_properties_for_job_stmt()` / `nearest_properties_for_job()`
 - `load_spatial_candidate_matches()` combining current live father-reviewed fit with on-demand spatial selection
@@ -128,13 +128,55 @@ Spatial query semantics:
 
 Read-only CLI: `scripts/spatial_match_audit.py`.
 
-CI #502 passed Ruff, Compile and the full test suite for the spatial service/audit slice.
+Production audit at 50 km on 2026-08-28:
+- active properties: 14,262
+- located properties: 14,260 (reported ratio 1.000)
+- relevant jobs: 156
+- relevant job locations: 161
+- located job locations: 134
+- jobs with at least one located location: 131 (ratio 0.840)
+- actual nearest-house examples were sensible for Wels, Kufstein, Stallhofen, Nebelberg, Lungötz, Weiz, Vöcklabruck, Radfeld and Wien
+
+Centroid-level geography is therefore validated as a useful first ranking signal. Same-PLZ pairs naturally collapse to 0 km because the current coordinates are postal centroids; do not misrepresent this as street accuracy.
+
+## Optional OSRM road refinement — code ready, production benchmark next
+
+Road routing is now an optional second-stage refinement; it does not replace PostGIS and does not alter intrinsic fit.
+
+New code:
+- `app/routing.py`: bounded OSRM Table client returning fastest-route distance and duration
+- `app/road_matching.py`: Luftlinie prefilter -> road matrix refinement
+- `scripts/road_match_audit.py`: read-only production benchmark/audit
+- `tests/test_routing.py`: parsing, null/unreachable, batching and validation coverage
+
+Semantics and guards:
+- PostGIS `ST_DWithin` remains the cheap first-stage candidate search and fallback
+- default road prefilter routes only the nearest 75 Luftlinie properties per selected job
+- property destinations sharing the same centroid are deduplicated before OSRM calls
+- all geocoded physical locations of a multi-location job are routed; the fastest reachable location is retained per property
+- road matches are sorted by driving duration, then road distance, then Luftlinie
+- configured 50 km radius is applied to actual road distance after refinement
+- no permanent Job×Property route table/cache exists yet
+- no migration is required
+- OSRM is disabled by default and expected on loopback at `127.0.0.1:5000`
+- if routing is not deployed, the established Luftlinie matching path remains unchanged
+- current PLZ/locality centroid limitation still applies: same-centroid houses/jobs can still produce 0 road km/min; road refinement chiefly improves cross-centroid topology until street-level geocoding exists
+
+Configuration keys are documented in `.env.example`:
+- `WOHNWERK_ROUTING_ENABLED`
+- `WOHNWERK_ROUTING_BASE_URL`
+- `WOHNWERK_ROUTING_TIMEOUT_SECONDS`
+- `WOHNWERK_ROUTING_MAX_TABLE_COORDINATES`
+- `WOHNWERK_ROUTING_PREFILTER_PROPERTIES_PER_JOB`
+
+CI #510 passed Ruff, Compile and the full suite: 228 tests passed, 1 existing Starlette/httpx deprecation warning.
 
 ## Immediate next steps
 
-1. Pull current branch; no migration is required for the spatial slice.
-2. Run `python scripts/spatial_match_audit.py --radius-km 50 --jobs 10 --properties-per-job 5` against production.
-3. Inspect production geo coverage and actual nearest-house pairs. If coverage is healthy, treat centroid-level distance as the first geographic ranking signal.
-4. Add a German matching UI surface and property source links/filters around the validated spatial service.
-5. Compose final recommendation score from intrinsic fit + distance + source-backed salary + property price/area attributes.
-6. Only add road routing/travel-time estimation after centroid-distance matching is validated; never label Luftlinie as commute time.
+1. Pull the current branch on production; no migration is required.
+2. Inspect available container runtime and host RAM/disk before deploying a router.
+3. If acceptable, build a local Austria-only OSRM graph from the current Geofabrik PBF and bind `osrm-routed` to loopback only.
+4. Compare baseline `scripts/spatial_match_audit.py` with `scripts/road_match_audit.py` at `--radius-km 50 --jobs 10 --properties-per-job 5 --prefilter-properties-per-job 75`; record routing latency and OSRM RSS/CPU.
+5. Keep road refinement only if the measured runtime overhead is acceptable; otherwise retain Luftlinie as the production signal.
+6. After routing semantics are validated, add a German matching UI surface and property source links/filters.
+7. Compose final recommendation score from intrinsic fit + geographic/commute signal + source-backed salary + property price/area attributes.
