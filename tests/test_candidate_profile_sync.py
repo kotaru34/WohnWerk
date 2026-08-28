@@ -8,8 +8,8 @@ from app.jobs.candidate_fit import (
     CandidateProfile,
 )
 from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES, PROFILE_SEED_VERSION, PROFILE_SLUG
+from app.jobs.candidate_profile_store import sync_seed_profile
 from app.jobs.concepts import JobConcept
-from scripts.sync_candidate_profile import _apply
 
 
 def _database() -> tuple[object, Session]:
@@ -38,7 +38,7 @@ def test_profile_seed_is_idempotent_and_preserves_manual_override() -> None:
     try:
         _seed_required_concepts(session)
 
-        _apply(session)
+        sync_seed_profile(session)
         profile = session.scalar(select(CandidateProfile).where(CandidateProfile.slug == PROFILE_SLUG))
         assert profile is not None
         preferences = list(
@@ -64,7 +64,7 @@ def test_profile_seed_is_idempotent_and_preserves_manual_override() -> None:
         manual_state = manual.state
         session.commit()
 
-        _apply(session)
+        sync_seed_profile(session)
         session.refresh(manual)
         assert manual.source == CandidatePreferenceSource.MANUAL.value
         assert manual.seed_version is None
