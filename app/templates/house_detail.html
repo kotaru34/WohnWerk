@@ -117,7 +117,7 @@
           <h3><a href="/jobs/{{ row.job.id }}?radius_km={{ radius_km|round|int }}">{{ row.job.title }}</a></h3>
           <div class="badges">
             {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
-            <span class="badge">{{ item.location_label }}</span>
+            {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
             {% if row.favorite %}<span class="badge">Favorit</span>{% endif %}
           </div>
         </div>
