@@ -59,6 +59,11 @@ def _elapsed(reference: datetime | None, *, now: datetime) -> timedelta | None:
     return None if aware is None else now - aware
 
 
+def _latest_time(*values: datetime | None) -> datetime | None:
+    aware = [item for value in values if (item := _aware(value)) is not None]
+    return max(aware) if aware else None
+
+
 def _reconciliation_interval(source: Source) -> timedelta | None:
     value = (source.config or {}).get("reconciliation_interval_hours")
     if value is None:
@@ -111,9 +116,12 @@ def source_due_run(
             if since_attempt is None or since_attempt >= retry_after:
                 return DueSourceRun(plan=plan, reconciliation=True)
 
+    # A complete reconciliation is also a fresh source scan. Do not immediately run an
+    # incremental scan just because last_incremental_at predates the full reconciliation.
+    latest_scan = _latest_time(source.last_incremental_at, source.last_reconciliation_at)
     poll_interval = timedelta(minutes=max(1, source.poll_interval_minutes))
-    since_incremental = _elapsed(source.last_incremental_at, now=current)
-    if since_incremental is None or since_incremental >= poll_interval:
+    since_scan = _elapsed(latest_scan, now=current)
+    if since_scan is None or since_scan >= poll_interval:
         return DueSourceRun(plan=plan, reconciliation=False)
     return None
 
