@@ -102,12 +102,33 @@ def _is_markup_noise(value: str) -> bool:
     return bool(_STYLE_NOISE_RE.search(cleaned))
 
 
-def _title_part_index(parts: list[str]) -> int | None:
+def _human_anchor_fragment(value: str) -> str | None:
+    cleaned = " ".join(html.unescape(value).split()).strip()
+    if not cleaned:
+        return None
+
+    if _STYLE_NOISE_RE.search(cleaned):
+        # Emotion/no-js styles can be emitted in the same HTML text node as the
+        # visible title. Keep only the human suffix after the final CSS block.
+        if "}" not in cleaned:
+            return None
+        cleaned = cleaned.rsplit("}", 1)[-1].strip()
+
+    if (
+        not cleaned
+        or len(cleaned) > 500
+        or cleaned.casefold() in _TITLE_NOISE
+        or _STYLE_NOISE_RE.search(cleaned)
+    ):
+        return None
+    return cleaned
+
+
+def _title_part(parts: list[str]) -> tuple[int, str] | None:
     for index, part in enumerate(parts):
-        cleaned = " ".join(html.unescape(part).split()).strip()
-        if not cleaned or len(cleaned) > 500 or _is_markup_noise(cleaned):
-            continue
-        return index
+        human = _human_anchor_fragment(part)
+        if human is not None:
+            return index, human
     return None
 
 
@@ -171,10 +192,11 @@ class _SearchParser(HTMLParser):
         # can contain only Emotion/no-js CSS, while title links can contain CSS before
         # the actual human title. Never promote those style fragments into a job row.
         anchor_parts = [html.unescape(part).strip() for part in self._anchor_parts if part.strip()]
-        title_index = _title_part_index(anchor_parts)
-        if title_index is not None:
+        title_part = _title_part(anchor_parts)
+        if title_part is not None:
+            title_index, title = title_part
             self._current_job_id = self._anchor_job_id
-            self._current_title = " ".join(anchor_parts[title_index].split()).strip()
+            self._current_title = title
             self._current_url = urljoin(BASE_URL, self._anchor_href or "")
             self._current_tail = [
                 part
