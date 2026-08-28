@@ -29,7 +29,7 @@ Consumer-board acquisition should behave like a person quickly scanning vacancie
 - a handful of broad/focused searches;
 - first result page initially;
 - stable-ID dedupe;
-- details only when actually useful and title looks interesting;
+- details only when useful and title looks interesting;
 - sequential low-rate requests;
 - no whole-site crawl, aggressive pagination or reconciliation for these frontiers;
 - ToS text can inform priority but is advisory rather than an architecture blocker by itself;
@@ -79,10 +79,6 @@ Broad searches: Maschinenbau, Konstrukteur, CAD Konstrukteur, Mechanischer Konst
 
 ### StepStone Austria — clean production #45
 
-Design: five search pages, zero details, stable numeric listing ID, always coverage-incomplete.
-
-After the one-time parser cleanup/reset:
-
 - 5/5 shards, 0 failed;
 - exactly 5 HTTP requests, zero details;
 - 37 relevant jobs;
@@ -92,19 +88,13 @@ After the one-time parser cleanup/reset:
 
 ### willhaben Jobs — production #46
 
-Design: five first-page search requests, zero details.
-
 - 5/5 shards, 0 failed;
 - exactly 5 HTTP requests, zero details;
 - 18 relevant jobs;
 - sane source_reported=448;
 - 17 locations, 15 geo-resolved.
 
-Acquisition micro-polishing is now paused intentionally.
-
-## Supplementary broad APIs
-
-Adzuna Austria and Jooble Austria remain implemented/tested but have not been production-run because credentials were not supplied. They are optional corpus bonuses.
+Acquisition micro-polishing is paused intentionally.
 
 ## Canonical job dedupe — current primary work
 
@@ -124,73 +114,100 @@ Current pre-merge corpus:
 
 No audit has changed the database.
 
-### Production audit history
+### Final production audit before first merge batch
 
-Initial audit under the first rule set:
+After iterative tightening, the final read-only audit produced exactly:
 
-- 14 high-confidence edges;
-- 0 medium;
-- exposed an over-permissive Trenkwalder `Konstrukteur` cluster.
+- `duplicate_candidates_high=8`
+- `duplicate_candidates_medium=8`
 
-Second audit after generic-title/location refinement:
+High pairs:
 
-- 10 high-confidence edges;
-- 6 medium-confidence edges.
+- 131/225 — PEISCHL Fahrzeugbau, karriere.at ↔ StepStone, Stegersbach, description overlap 0.971.
+- 136/240 — Global Hydro, karriere.at ↔ StepStone, Niederranna.
+- 155/255 — IVM Technical Consultants, karriere.at ↔ StepStone, Linz.
+- 157/227 — Trenkwalder E-Plan Konstrukteur, jobs.at ↔ StepStone, description overlap 1.000.
+- 159/206 — APS Group, jobs.at ↔ willhaben, Frohnleiten.
+- 163/168 — teampool, same jobs.at source, description overlap 0.950.
+- 165/208 — Trenkwalder Konstrukteur, jobs.at ↔ willhaben, Klagenfurt naming variants.
+- 251/252 — Oberaigner, same StepStone source, German/English variants, description overlap 1.000.
 
-Strong cross-board evidence included PEISCHL, Global Hydro, IVM, E-Plan/Trenkwalder, APS Group and the Klagenfurt Trenkwalder syndication. Same-source strong examples included teampool and Oberaigner.
+Medium includes TSMG 3/4, Austro Holding 34/228, the ambiguous Trenkwalder 164/165/169/208 edges, and Anton Paar 67/68.
 
-The second audit exposed two remaining risks:
+### Dry-run findings
 
-1. TSMG jobs 3/4 are separate Lever listing IDs with the same normalized title/location but only `description_similarity=0.307`; same-source exact title/location is therefore not sufficient.
-2. Trenkwalder jobs 164/169 are same-source generic `Konstrukteur` titles with `description_similarity=0.888`; staffing-agency template reuse can make that look stronger than it really is.
+All eight high pairs initially reported `safe=yes`, but dry-run exposed one safety gap:
+
+- 163 has source location text `Wien, Österreich`, remote=true;
+- 168 has `Wels, Oberösterreich, Österreich`, remote=true;
+- both are separate jobs.at listing IDs with nearly identical staffing-template text.
+
+This can represent parallel location-targeted openings and must not be merged merely because body text is similar.
+
+Therefore **do not apply 163/168**.
+
+The remaining seven pairs are the first approved apply candidates:
+
+- 131/225
+- 136/240
+- 155/255
+- 157/227
+- 159/206
+- 165/208
+- 251/252
+
+Expected post-merge corpus if all seven apply cleanly:
+
+- `relevant_canonical_jobs=156`
+- `already_multi_listing_canonical_jobs=7`
 
 ### Current duplicate evidence policy
 
-Current rules are deliberately conservative:
+Rules are deliberately conservative:
 
 - known different normalized companies are a hard conflict;
-- gender suffixes such as `(m/w/d)`, `all genders`, bare `m|f|d` normalize away;
+- gender suffixes normalize away;
 - Klagenfurt naming variants canonicalize together;
-- generic titles are treated conservatively;
-- descriptions use token-containment similarity so snippets can match fuller descriptions;
-- source listing IDs/URLs, description similarity, generic-title flag and shared-source flag are printed by the audit;
+- generic titles are conservative;
+- descriptions use token-containment similarity so snippets can match full descriptions;
+- audit prints source listing IDs/URLs, description similarity, generic-title and shared-source flags;
 - cross-board exact company/title/location is strong syndication evidence;
-- **same-source** different listing IDs are treated as possible parallel openings rather than automatic duplicates;
-- same-source non-generic pairs need `description_similarity >= 0.82` for high confidence;
-- same-source generic/template pairs need `description_similarity >= 0.95` for high confidence;
-- otherwise matching same-company titles remain medium rather than being destructively merged.
-
-This should downgrade TSMG 3/4 and the ambiguous generic Trenkwalder 164/169 pair while retaining strong Oberaigner/teampool same-source variants.
-
-CI #376 passed Ruff, Compile and the full test suite for these final thresholds.
+- same-source different listing IDs are possible parallel openings;
+- same-source non-generic needs `description_similarity >= 0.82` for high confidence;
+- same-source generic/template needs `description_similarity >= 0.95` for high confidence;
+- otherwise pairs remain medium.
 
 ## Fail-closed canonical merge engine
 
-`merge_duplicate_jobs.py` is dry-run by default and accepts explicit canonical Job IDs only. It never automatically merges every audit hit.
+`merge_duplicate_jobs.py` is dry-run by default and accepts explicit canonical Job IDs only.
 
 Safety behavior:
 
 - group must be connected by high-confidence evidence;
 - conflicting normalized companies block merge;
 - conflicting canonical salary bundles block merge;
-- survivor is chosen by canonical richness: structured salary, PLZ/geography, description depth, listing count, then lower-ID tie-break;
+- **same-source explicit location disagreement now blocks merge even if title/body evidence is strong**;
+- sparse location text such as `Wien, Österreich` is conservatively reduced to its explicit first locality only for this merge-safety check;
+- countrywide/remote-only labels do not invent a locality;
+- survivor is chosen by canonical richness;
 - richer description/company and non-conflicting salary bundle are preserved;
-- all `JobListing` rows move to the survivor with independent source lifecycle/raw payloads preserved;
-- locations are unioned and obvious equivalent city/PLZ rows deduplicated/enriched;
+- all JobListing rows move to the survivor with source lifecycle/raw payloads preserved;
+- locations are unioned and equivalent rows deduplicated/enriched;
 - stale canonical hash is cleared;
 - conflicting/non-uniform fit score is cleared for recomputation;
-- absorbed canonical Jobs are deleted only after transfers;
-- `--apply` is required for mutation.
+- absorbed Jobs are deleted only after transfers;
+- `--apply` is required.
+
+Regression tests cover the teampool-style same-source `Wien` vs `Wels` conflict and an equivalent-location same-source case.
+
+CI #379 passed Ruff, Compile and the full test suite for the location-conflict guard.
 
 ## Immediate work order
 
 1. Pull current `bootstrap/austria-mvp`.
-2. Run the final refined read-only audit:
-   `python scripts/job_duplicate_audit.py --include-medium --limit 100`.
-3. Expect TSMG and ambiguous same-source staffing/template pairs to be downgraded.
-4. Dry-run clearly safe high-confidence groups with `scripts/merge_duplicate_jobs.py <ids...>`; no `--apply` yet.
-5. Inspect salary/company/evidence blockers and survivor choice.
-6. Apply only explicitly safe groups.
-7. Re-run duplicate audit; canonical count should fall and multi-listing canonicals should rise by predictable amounts.
-8. Leave TSMG/Austro Holding/Anton Paar and other ambiguous medium cases untouched until stronger evidence exists.
-9. Then shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
+2. Optionally dry-run `163 168` once to verify the new blocker reports `safe=no` with Wien/Wels conflict.
+3. Apply only the seven approved groups: 131/225, 136/240, 155/255, 157/227, 159/206, 165/208, 251/252.
+4. Re-run duplicate audit immediately.
+5. Expected canonical count is 156 and multi-listing canonical count is 7 if all seven merge successfully.
+6. Leave TSMG/Austro Holding/Anton Paar/ambiguous staffing-template medium pairs and teampool 163/168 untouched.
+7. If post-merge audit is clean, shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
