@@ -10,6 +10,7 @@ from app.geo import radius_metres
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.fit_store import JobFitView, load_live_job_fit, relevant_active_jobs
 from app.models import JobLocation, ListingStatus, Property
+from app.property_visibility import product_visible_property_condition
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,14 +69,6 @@ def nearest_properties_for_job_stmt(
     *,
     limit: int = 25,
 ):
-    """Build an indexed PostGIS query for the nearest active properties to one job.
-
-    A canonical job may have several physical locations. `ST_DWithin` first constrains
-    candidate pairs using geography spatial indexes. A window then keeps only the closest
-    job location for each property, so one house cannot appear repeatedly for a multi-site
-    vacancy. The returned distance is geodesic straight-line distance in kilometres.
-    """
-
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
     if limit <= 0:
@@ -121,6 +114,7 @@ def nearest_properties_for_job_stmt(
         .where(
             Property.status == ListingStatus.ACTIVE,
             Property.location.is_not(None),
+            product_visible_property_condition(),
         )
         .subquery("property_job_location_candidates")
     )
@@ -176,9 +170,12 @@ def nearest_properties_for_job(
 
 
 def geo_coverage(session: Session) -> GeoCoverage:
+    visible = product_visible_property_condition()
     active_properties = int(
         session.scalar(
-            select(func.count()).select_from(Property).where(Property.status == ListingStatus.ACTIVE)
+            select(func.count())
+            .select_from(Property)
+            .where(Property.status == ListingStatus.ACTIVE, visible)
         )
         or 0
     )
@@ -186,7 +183,11 @@ def geo_coverage(session: Session) -> GeoCoverage:
         session.scalar(
             select(func.count())
             .select_from(Property)
-            .where(Property.status == ListingStatus.ACTIVE, Property.location.is_not(None))
+            .where(
+                Property.status == ListingStatus.ACTIVE,
+                Property.location.is_not(None),
+                product_visible_property_condition(),
+            )
         )
         or 0
     )
@@ -245,13 +246,6 @@ def load_spatial_candidate_matches(
     job_limit: int = 10,
     properties_per_job: int = 5,
 ) -> list[SpatialJobMatch]:
-    """Pair the best current intrinsic-fit jobs with nearby active properties.
-
-    Candidate curation and fit remain separate from geography: hidden and hard-incompatible
-    jobs are excluded, while favorite status does not change intrinsic score ordering.
-    No NxM pair table is created; each selected job uses an indexed radius query on demand.
-    """
-
     if job_limit <= 0:
         raise ValueError("job_limit must be greater than zero")
     if properties_per_job <= 0:
