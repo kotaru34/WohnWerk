@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, exists, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 
 from app.models import ListingStatus, Property, PropertyListing
 from app.property_acquisition import (
@@ -19,11 +19,21 @@ def _policy_observation_condition():
     )
 
 
+def _usable_source_observation_condition():
+    original_url_missing = func.coalesce(
+        PropertyListing.raw_payload.op("->>")("original_url_missing"),
+        "false",
+    )
+    return original_url_missing != "true"
+
+
 def product_visible_property_condition():
     """Return the SQL condition for father-facing property visibility.
 
     Current source observations are authoritative when they carry the visibility policy.
-    A property is shown if at least one active current observation is explicitly accepted.
+    A property is shown if at least one active current observation is explicitly accepted
+    and represents a usable source listing. Internal synthetic crawler identities are never
+    product-facing even if an older payload accidentally marked them accepted.
 
     Legacy active listings created before this policy are temporarily allowed to fall back
     to the canonical price so deploying the code does not blank the catalogue before the
@@ -40,6 +50,7 @@ def product_visible_property_condition():
         select(PropertyListing.id).where(
             PropertyListing.property_id == Property.id,
             _policy_observation_condition(),
+            _usable_source_observation_condition(),
             PropertyListing.raw_payload["product_visible"].as_boolean().is_(True),
         )
     )
