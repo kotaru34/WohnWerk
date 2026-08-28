@@ -4,7 +4,9 @@ from app.sources.base import RawProperty
 from app.sources.property.sreal_detail import enrich_sreal_property, parse_sreal_detail_page
 
 DETAIL_FIXTURE = """
-<html><body>
+<html><head>
+<meta property="og:image" content="/media/immobilien/964-31642-main.jpg">
+</head><body>
 <h3>Preis-Hit mit viel Platz – Zwei Häuser auf einem Grundstück</h3>
 <div>4372 St. Georgen am Walde - 964/31642</div>
 <ul>
@@ -20,6 +22,8 @@ DETAIL_FIXTURE = """
 <h3>Infrastruktur</h3>
 </body></html>
 """
+
+EXPECTED_IMAGE_URL = "https://www.sreal.at/media/immobilien/964-31642-main.jpg"
 
 
 def test_sreal_detail_parser_extracts_full_property_metadata() -> None:
@@ -40,6 +44,7 @@ def test_sreal_detail_parser_extracts_full_property_metadata() -> None:
     assert detail.description is not None
     assert "außergewöhnliche Liegenschaft" in detail.description
     assert "Kontakttext" not in detail.description
+    assert detail.primary_image_url == EXPECTED_IMAGE_URL
 
 
 def test_sreal_detail_enrichment_preserves_card_fallbacks() -> None:
@@ -61,3 +66,4 @@ def test_sreal_detail_enrichment_preserves_card_fallbacks() -> None:
     assert enriched.plot_area_m2 == Decimal(1649)
     assert enriched.description is not None
     assert enriched.raw_payload["detail_enriched"] is True
+    assert enriched.raw_payload["primary_image_url"] == EXPECTED_IMAGE_URL
