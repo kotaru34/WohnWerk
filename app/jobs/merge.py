@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.jobs.dedupe import DuplicateJobSnapshot, duplicate_evidence, normalize_company, normalize_locality
+from app.jobs.dedupe import (
+    DuplicateJobSnapshot,
+    duplicate_evidence,
+    normalize_company,
+    normalize_locality,
+)
 from app.models import Job, JobListing, JobLocation, ListingStatus
 
 _SALARY_FIELDS = (
@@ -94,7 +98,7 @@ def _salary_quality(job: Job) -> tuple[int, Decimal, int]:
         score += 2
     if job.salary_text:
         score += 1
-    confidence = job.salary_confidence or Decimal("0")
+    confidence = job.salary_confidence or Decimal(0)
     provenance = 1 if (job.salary_provenance or "").lower() == "explicit" else 0
     return score, confidence, provenance
 
@@ -178,8 +182,10 @@ def _evidence_blockers(jobs: list[Job], source_names: dict[int, str]) -> list[st
         return []
     disconnected = sorted(set(adjacency) - seen)
     return [
-        "merge group is not connected by high-confidence duplicate evidence; "
-        f"disconnected_job_ids={','.join(map(str, disconnected))}"
+        (
+            "merge group is not connected by high-confidence duplicate evidence; "
+            f"disconnected_job_ids={','.join(map(str, disconnected))}"
+        )
     ]
 
 
@@ -280,7 +286,9 @@ def _merge_scalar_fields(survivor: Job, jobs: list[Job], salary_source: Job | No
         if any(job.status == ListingStatus.ACTIVE for job in jobs)
         else survivor.status
     )
-    survivor.inactive_at = None if survivor.status == ListingStatus.ACTIVE else survivor.inactive_at
+    survivor.inactive_at = (
+        None if survivor.status == ListingStatus.ACTIVE else survivor.inactive_at
+    )
     survivor.canonical_hash = None
 
     fit_scores = {job.job_fit_score for job in jobs if job.job_fit_score is not None}
@@ -300,7 +308,9 @@ def apply_merge(
     by_id = {job.id: job for job in jobs}
     survivor = by_id[plan.survivor_id]
     absorbed = [by_id[job_id] for job_id in plan.absorbed_ids]
-    salary_source = by_id.get(plan.salary_source_job_id) if plan.salary_source_job_id else None
+    salary_source = (
+        by_id.get(plan.salary_source_job_id) if plan.salary_source_job_id else None
+    )
     _merge_scalar_fields(survivor, jobs, salary_source)
 
     listings_moved = 0
