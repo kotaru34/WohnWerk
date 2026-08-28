@@ -1,5 +1,5 @@
 [Unit]
-Description=WohnWerk property image cache
+Description=WohnWerk property thumbnail cache
 Wants=network-online.target
 After=network-online.target postgresql.service
 
@@ -14,6 +14,10 @@ ExecStart=/opt/wohnwerk/.venv/bin/python scripts/cache_property_images.py
 StateDirectory=wohnwerk
 StateDirectoryMode=0750
 UMask=0027
+TimeoutStartSec=4min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 
 NoNewPrivileges=true
 PrivateTmp=true
