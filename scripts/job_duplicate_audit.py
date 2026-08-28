@@ -141,6 +141,7 @@ def main() -> None:
                 f"similarity={evidence.title_similarity:.3f} "
                 f"description_similarity={evidence.description_similarity:.3f} "
                 f"generic_title={'yes' if evidence.generic_title else 'no'} "
+                f"shared_source={'yes' if evidence.shared_source else 'no'} "
                 f"reasons={','.join(evidence.reasons)}"
             )
             print(
