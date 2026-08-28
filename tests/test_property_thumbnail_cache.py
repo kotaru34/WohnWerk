@@ -1,6 +1,6 @@
 from app.property_thumbnail_cache import (
-    _LinkedThumbnailParser,
     _comparison_url,
+    _LinkedThumbnailParser,
     _smallest_srcset_url,
 )
 
