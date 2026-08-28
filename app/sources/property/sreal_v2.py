@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from app.property_acquisition import filter_property_items_by_budget
+from app.property_acquisition import property_budget_decision
 from app.sources.base import RawProperty, SourceBatch, SourceShardSpec
 from app.sources.property import sreal as _base
 from app.sources.property.immmo import _clean_text, _decimal
@@ -185,25 +185,42 @@ class SRealPropertySource(_base.SRealPropertySource):
         budget_price_above_max = 0
         result_cap_hit = False
 
-        def budget_filter(items: list[RawProperty]) -> list[RawProperty]:
+        def detail_candidates(items: list[RawProperty]) -> list[RawProperty]:
+            """Skip detail I/O only when the search price already proves rejection.
+
+            Search-card parsing can occasionally miss a price. Those unknown-price cards
+            are still enriched because the authoritative detail page may provide a valid
+            in-budget purchase price. The central runner applies the final acquisition gate
+            after enrichment, so unknown-after-detail items still never enter the database.
+            """
             nonlocal budget_accepted
             nonlocal budget_price_unknown
             nonlocal budget_price_below_min
             nonlocal budget_price_above_max
-            accepted, counts = filter_property_items_by_budget(items)
-            budget_accepted += counts["accepted"]
-            budget_price_unknown += counts["price_unknown"]
-            budget_price_below_min += counts["price_below_min"]
-            budget_price_above_max += counts["price_above_max"]
-            return accepted
+
+            output: list[RawProperty] = []
+            for item in items:
+                decision = property_budget_decision(item.price_eur)
+                if decision.reason == "accepted":
+                    budget_accepted += 1
+                    output.append(item)
+                elif decision.reason == "price_unknown":
+                    budget_price_unknown += 1
+                    output.append(item)
+                elif decision.reason == "price_below_min":
+                    budget_price_below_min += 1
+                else:
+                    budget_price_above_max += 1
+            return output
 
         async def materialize_page(
             client: httpx.AsyncClient,
             items: list[RawProperty],
         ) -> tuple[list[RawProperty], int, int, int]:
-            # Keep every search card for discovery/coverage accounting, but only load
-            # expensive detail/image pages for cards whose search price is already in budget.
-            candidates = budget_filter(items)
+            # Keep every search card for discovery/coverage accounting. Avoid detail/image
+            # requests only for cards already proven outside budget. Unknown search prices
+            # still get one detail chance so parser incompleteness cannot hide a valid house.
+            candidates = detail_candidates(items)
             enriched, attempted, succeeded, failed = await self._enrich_page_items(
                 client,
                 candidates,
