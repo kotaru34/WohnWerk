@@ -53,6 +53,7 @@ class DuplicateEvidence:
     location_match: bool
     location_conflict: bool
     generic_title: bool
+    shared_source: bool
     reasons: tuple[str, ...]
 
 
@@ -136,6 +137,7 @@ def duplicate_evidence(
     similarity = title_similarity(left.title, right.title)
     description_match = description_similarity(left.description, right.description)
     generic_title = is_generic_title(left.title) and is_generic_title(right.title)
+    shared_source = bool(set(left.sources) & set(right.sources))
 
     postal_match = bool(left.postal_codes & right.postal_codes)
     city_match = bool(left.cities & right.cities)
@@ -164,22 +166,35 @@ def duplicate_evidence(
         reasons.append(f"title_similarity={similarity:.3f}")
     if generic_title:
         reasons.append("generic_title")
+    if shared_source:
+        reasons.append("shared_source")
     if location_match:
         reasons.append("location_overlap")
     if description_match >= 0.72:
         reasons.append(f"description_overlap={description_match:.3f}")
 
-    high_confidence = (
-        company_match and similarity >= 0.94 and location_match
-    ) or (
-        company_match
-        and similarity >= 0.98
-        and description_match >= 0.72
-    ) or (
-        company_match
-        and similarity == 1.0
-        and not generic_title
-    )
+    # Two different boards carrying the same company/title/location are commonly the
+    # same syndicated vacancy. Inside one source, however, separate listing IDs can be
+    # legitimate parallel openings with identical titles, so require strong body-text
+    # overlap before calling a same-source pair high-confidence.
+    if shared_source:
+        high_confidence = (
+            company_match
+            and similarity >= 0.94
+            and description_match >= 0.82
+        )
+    else:
+        high_confidence = (
+            company_match and similarity >= 0.94 and location_match
+        ) or (
+            company_match
+            and similarity >= 0.98
+            and description_match >= 0.72
+        ) or (
+            company_match
+            and similarity == 1.0
+            and not generic_title
+        )
 
     medium_confidence = (
         company_match and similarity >= 0.88
@@ -207,5 +222,6 @@ def duplicate_evidence(
         location_match=location_match,
         location_conflict=location_conflict,
         generic_title=generic_title,
+        shared_source=shared_source,
         reasons=tuple(reasons),
     )
