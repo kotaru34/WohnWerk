@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from app.admin import router as admin_router
 from app.config import get_settings
@@ -13,6 +14,11 @@ app = FastAPI(
 )
 app.include_router(admin_router)
 app.include_router(matches_router)
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse("/admin/matches", status_code=307)
 
 
 @app.get("/health", tags=["system"])
