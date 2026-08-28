@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -71,7 +72,11 @@ def test_admin_is_fail_closed_without_password(monkeypatch) -> None:
     assert response.status_code == 503
 
 
-def test_admin_preference_and_alias_lifecycle() -> None:
+def test_admin_preference_and_alias_lifecycle(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.admin.get_settings",
+        lambda: SimpleNamespace(admin_username="admin", admin_password="test-passwort-ä"),
+    )
     engine, session = _database()
     profile, concept = _seed_profile_and_concept(session)
 
@@ -88,10 +93,17 @@ def test_admin_preference_and_alias_lifecycle() -> None:
             assert "Fachgebiet" in page.text
             assert "Maschinenbau" in page.text
             assert "Kann ich / möchte ich" in page.text
+            match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+            assert match is not None
+            csrf_token = match.group(1)
 
             changed = client.post(
                 f"/admin/concepts/{concept.id}/preference",
-                data={"state": "cannot_not_want", "return_kind": "domain"},
+                data={
+                    "csrf_token": csrf_token,
+                    "state": "cannot_not_want",
+                    "return_kind": "domain",
+                },
                 follow_redirects=False,
             )
             assert changed.status_code == 303
@@ -109,7 +121,7 @@ def test_admin_preference_and_alias_lifecycle() -> None:
 
             reset = client.post(
                 f"/admin/concepts/{concept.id}/preference/reset",
-                data={"return_kind": "domain"},
+                data={"csrf_token": csrf_token, "return_kind": "domain"},
                 follow_redirects=False,
             )
             assert reset.status_code == 303
@@ -120,7 +132,11 @@ def test_admin_preference_and_alias_lifecycle() -> None:
 
             added = client.post(
                 f"/admin/concepts/{concept.id}/aliases",
-                data={"alias": "Maschinenbau-Fachgebiet", "language": "de"},
+                data={
+                    "csrf_token": csrf_token,
+                    "alias": "Maschinenbau-Fachgebiet",
+                    "language": "de",
+                },
                 follow_redirects=False,
             )
             assert added.status_code == 303
@@ -134,7 +150,7 @@ def test_admin_preference_and_alias_lifecycle() -> None:
 
             toggled = client.post(
                 f"/admin/aliases/{alias.id}/toggle",
-                data={"concept_id": concept.id, "enabled": "0"},
+                data={"csrf_token": csrf_token, "concept_id": concept.id, "enabled": "0"},
                 follow_redirects=False,
             )
             assert toggled.status_code == 303
@@ -143,7 +159,7 @@ def test_admin_preference_and_alias_lifecycle() -> None:
 
             removed = client.post(
                 f"/admin/aliases/{alias.id}/delete",
-                data={"concept_id": concept.id},
+                data={"csrf_token": csrf_token, "concept_id": concept.id},
                 follow_redirects=False,
             )
             assert removed.status_code == 303
