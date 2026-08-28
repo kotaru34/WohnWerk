@@ -53,6 +53,9 @@ class CandidateProfile(Base):
     preferences: Mapped[list[CandidateConceptPreference]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )
+    job_preferences: Mapped[list[CandidateJobPreference]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
 
 
 class CandidateConceptPreference(Base):
@@ -97,6 +100,39 @@ class CandidateConceptPreference(Base):
 
     profile: Mapped[CandidateProfile] = relationship(back_populates="preferences")
     concept: Mapped[JobConcept] = relationship()
+
+
+class CandidateJobPreference(Base):
+    """Candidate-specific curation state for a canonical job.
+
+    This intentionally does not alter source lifecycle or intrinsic fit. Hidden means
+    "do not show in normal recommendation views", while favorite is an independent marker.
+    """
+
+    __tablename__ = "candidate_job_preferences"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "job_id", name="uq_candidate_job_preference_profile_job"),
+        Index("ix_candidate_job_preferences_profile_hidden", "profile_id", "hidden"),
+        Index("ix_candidate_job_preferences_profile_favorite", "profile_id", "favorite"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile_id: Mapped[int] = mapped_column(
+        ForeignKey("candidate_profiles.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    favorite: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    profile: Mapped[CandidateProfile] = relationship(back_populates="job_preferences")
 
 
 @dataclass(frozen=True, slots=True)
