@@ -180,6 +180,35 @@ def test_same_source_same_title_and_location_without_body_overlap_is_medium() ->
     assert evidence.shared_source is True
 
 
+def test_same_source_generic_staffing_template_below_095_stays_medium() -> None:
+    common = (
+        "construction cad drawings machine development technical documentation project "
+        "support manufacturing coordination assemblies components mechanical engineering"
+    )
+    left = _snapshot(
+        1,
+        title="Konstrukteur (m/w/d)",
+        company="Example Personaldienste GmbH",
+        description=common + " first customer plant alpha",
+        source="jobs.at",
+    )
+    right = _snapshot(
+        2,
+        title="Konstrukteur (m/w/d)",
+        company="Example Personaldienste GmbH",
+        description=common + " second customer plant beta extra task",
+        source="jobs.at",
+    )
+
+    evidence = duplicate_evidence(left, right)
+
+    assert evidence is not None
+    assert evidence.generic_title is True
+    assert evidence.shared_source is True
+    assert evidence.description_similarity < 0.95
+    assert evidence.confidence == "medium"
+
+
 def test_same_source_strong_description_overlap_can_be_high() -> None:
     body = (
         "Mechanical product development CAD construction supplier coordination testing "
