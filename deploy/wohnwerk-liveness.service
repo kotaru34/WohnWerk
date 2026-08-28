@@ -1,0 +1,26 @@
+[Unit]
+Description=WohnWerk conservative frontier job liveness sweep
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wohnwerk
+EnvironmentFile=/opt/wohnwerk/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/wohnwerk/.venv/bin/python /opt/wohnwerk/scripts/probe_frontier_job_liveness.py --stale-hours 24 --max-listings 200
+TimeoutStartSec=1h
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
