@@ -13,6 +13,7 @@ from app.crawling.coverage import (
     reconcile_missing_listings,
 )
 from app.crawling.shards import sync_source_shards
+from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import PropertySource, RawProperty, SourceFetchError
@@ -125,5 +126,9 @@ async def run_property_source(
 
     summary = finalize_run(session, run)
     if reconciliation:
+        # Full-coverage meta-search scans are the only safe moment to compact IMMMO
+        # downstream-provider URL rotations. Do this before absence reconciliation so a
+        # rotated URL refreshes the existing lifecycle row instead of looking disappeared.
+        reconcile_immmo_continuity(session, run)
         reconcile_missing_listings(session, run)
     return run, summary
