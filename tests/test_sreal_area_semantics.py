@@ -30,9 +30,9 @@ def test_sreal_uses_value_before_wohnflaeche_and_keeps_nutzflaeche() -> None:
     assert detail.postal_code == "4941"
     assert detail.city == "Mehrnbach"
     assert detail.price_eur == Decimal("349000.00")
-    assert detail.living_area_m2 == Decimal("140")
-    assert detail.usable_area_m2 == Decimal("140")
-    assert detail.plot_area_m2 == Decimal("1106")
+    assert detail.living_area_m2 == Decimal(140)
+    assert detail.usable_area_m2 == Decimal(140)
+    assert detail.plot_area_m2 == Decimal(1106)
 
 
 def test_sreal_accepts_wohnnutzflaeche_spelling_variants() -> None:
@@ -51,7 +51,7 @@ def test_sreal_accepts_wohnnutzflaeche_spelling_variants() -> None:
             """
         )
         assert detail.living_area_m2 == Decimal("125.5")
-        assert detail.plot_area_m2 == Decimal("650")
+        assert detail.plot_area_m2 == Decimal(650)
 
 
 def test_sreal_keeps_generic_nutzflaeche_without_renaming_it_wohnflaeche() -> None:
@@ -65,8 +65,8 @@ def test_sreal_keeps_generic_nutzflaeche_without_renaming_it_wohnflaeche() -> No
     )
 
     assert detail.living_area_m2 is None
-    assert detail.usable_area_m2 == Decimal("180")
-    assert detail.plot_area_m2 == Decimal("900")
+    assert detail.usable_area_m2 == Decimal(180)
+    assert detail.plot_area_m2 == Decimal(900)
 
 
 def test_sreal_area_fields_do_not_cross_bind_flattened_metadata() -> None:
@@ -79,5 +79,5 @@ def test_sreal_area_fields_do_not_cross_bind_flattened_metadata() -> None:
     )
 
     assert detail.living_area_m2 is None
-    assert detail.usable_area_m2 == Decimal("120")
-    assert detail.plot_area_m2 == Decimal("784")
+    assert detail.usable_area_m2 == Decimal(120)
+    assert detail.plot_area_m2 == Decimal(784)
