@@ -1,0 +1,28 @@
+[Unit]
+Description=WohnWerk dynamic source refresh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wohnwerk
+EnvironmentFile=/opt/wohnwerk/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+RuntimeDirectory=wohnwerk-refresh
+RuntimeDirectoryMode=0750
+ExecStart=/opt/wohnwerk/.venv/bin/python /opt/wohnwerk/scripts/refresh_sources.py --lock-path /run/wohnwerk-refresh/refresh.lock
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
