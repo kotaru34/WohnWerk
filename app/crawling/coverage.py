@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -214,7 +214,12 @@ def _sync_canonical_lifecycle(session: Session, *, now: datetime) -> None:
     )
 
 
-def _previous_ok_reconciliation(session: Session, run: CrawlRun) -> CrawlRun | None:
+def _previous_ok_reconciliation(
+    session: Session,
+    run: CrawlRun,
+    *,
+    offset: int = 0,
+) -> CrawlRun | None:
     return session.scalar(
         select(CrawlRun)
         .where(
@@ -225,12 +230,13 @@ def _previous_ok_reconciliation(session: Session, run: CrawlRun) -> CrawlRun | N
             CrawlRun.started_at < run.started_at,
         )
         .order_by(CrawlRun.started_at.desc())
+        .offset(offset)
         .limit(1)
     )
 
 
 def _stable_property_identity() -> tuple:
-    """Treat legacy rows as stable except known IMMMO synthetic fallback identities."""
+    """Select rows whose source identity is safe for the normal two-scan absence rule."""
     identity_stable = func.coalesce(
         PropertyListing.raw_payload.op("->>")("identity_stable"),
         "true",
@@ -242,18 +248,30 @@ def _stable_property_identity() -> tuple:
     return identity_stable != "false", original_url_missing != "true"
 
 
+def _synthetic_property_identity():
+    """Select IMMMO-style synthetic identities that need a longer absence window."""
+    identity_stable = func.coalesce(
+        PropertyListing.raw_payload.op("->>")("identity_stable"),
+        "true",
+    )
+    original_url_missing = func.coalesce(
+        PropertyListing.raw_payload.op("->>")("original_url_missing"),
+        "false",
+    )
+    return or_(identity_stable == "false", original_url_missing == "true")
+
+
 def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, int]:
-    """Deactivate only listings confirmed absent across consecutive complete scans.
+    """Deactivate only listings confirmed absent across complete scans.
 
     Live offset-paginated sources can move records between pages while a full scan is
-    running. A single complete scan therefore establishes/refreshes coverage but is not
-    enough to deactivate a listing. A listing is deactivated only when it is unseen in
-    the current complete scan and has not been seen since before the previous complete
-    reconciliation began. Incremental sightings between full scans keep it active.
+    running. Stable source identities therefore require absence from two consecutive
+    complete scans. Synthetic IMMMO fallback identities are intentionally more cautious:
+    because their fingerprint contains mutable card metadata, they require absence from
+    three consecutive complete scans before deactivation.
 
-    Synthetic fallback identities are deliberately excluded from automatic deactivation:
-    their fingerprint contains mutable card metadata, so an upstream price/title change
-    can legitimately produce a different synthetic ID even when the property still exists.
+    Degraded/partial/failed reconciliations never count. Any incremental sighting between
+    full scans refreshes ``last_seen_at`` and therefore resets the effective absence window.
     """
     if run.mode != CrawlMode.RECONCILIATION or run.coverage_status != CoverageStatus.OK:
         return 0, 0
@@ -265,29 +283,46 @@ def reconcile_missing_listings(session: Session, run: CrawlRun) -> tuple[int, in
         return 0, 0
 
     now = datetime.now(UTC)
-    confirmed_absence_cutoff = previous.started_at
-    property_result = session.execute(
+
+    stable_result = session.execute(
         update(PropertyListing)
         .where(
             PropertyListing.source_id == run.source_id,
             PropertyListing.status == ListingStatus.ACTIVE,
             PropertyListing.last_seen_crawl_run_id.is_distinct_from(run.id),
-            PropertyListing.last_seen_at < confirmed_absence_cutoff,
+            PropertyListing.last_seen_at < previous.started_at,
             *_stable_property_identity(),
         )
         .values(status=ListingStatus.INACTIVE, inactive_at=now)
     )
+
+    synthetic_count = 0
+    second_previous = _previous_ok_reconciliation(session, run, offset=1)
+    if second_previous is not None:
+        synthetic_result = session.execute(
+            update(PropertyListing)
+            .where(
+                PropertyListing.source_id == run.source_id,
+                PropertyListing.status == ListingStatus.ACTIVE,
+                PropertyListing.last_seen_crawl_run_id.is_distinct_from(run.id),
+                PropertyListing.last_seen_at < second_previous.started_at,
+                _synthetic_property_identity(),
+            )
+            .values(status=ListingStatus.INACTIVE, inactive_at=now)
+        )
+        synthetic_count = synthetic_result.rowcount or 0
+
     job_result = session.execute(
         update(JobListing)
         .where(
             JobListing.source_id == run.source_id,
             JobListing.status == ListingStatus.ACTIVE,
             JobListing.last_seen_crawl_run_id.is_distinct_from(run.id),
-            JobListing.last_seen_at < confirmed_absence_cutoff,
+            JobListing.last_seen_at < previous.started_at,
         )
         .values(status=ListingStatus.INACTIVE, inactive_at=now)
     )
-    property_count = property_result.rowcount or 0
+    property_count = (stable_result.rowcount or 0) + synthetic_count
     job_count = job_result.rowcount or 0
 
     _sync_canonical_lifecycle(session, now=now)
