@@ -13,6 +13,7 @@ def usable_area_expression():
         func.coalesce(
             PropertyListing.raw_payload["detail_usable_area_m2"].as_string(),
             PropertyListing.raw_payload["explicit_usable_area_m2"].as_string(),
+            PropertyListing.raw_payload["search_usable_area_m2"].as_string(),
         ),
         Numeric(12, 2),
     )
