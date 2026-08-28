@@ -25,7 +25,7 @@
     .links { font-size: .9rem; line-height: 1.55; }
     .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
     .nearby-head h2 { margin: 0; }
-    .semantics { margin-top: 5px; font-size: .82rem; opacity: .65; max-width: 760px; }
+    .semantics { margin-top: 5px; font-size: .82rem; opacity: .68; max-width: 900px; line-height: 1.45; }
     .radius { display: flex; gap: 8px; align-items: end; }
     .radius label { display: grid; gap: 4px; font-size: .8rem; opacity: .8; }
     input { width: 90px; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 9px; background: Field; color: FieldText; }
@@ -95,7 +95,9 @@
   <div class="nearby-head">
     <div>
       <h2>Häuser im Umkreis</h2>
-      <div class="semantics">Alle aktiven geolokalisierten Immobilien innerhalb des gewählten Luftlinien-Radius. Die angezeigte Straßenzeit wird nur für die aktuelle Seite zusätzlich berechnet.</div>
+      <div class="semantics">
+        WohnWerk zeigt hier nur aktuelle Immobilien mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Zusätzlich gilt dein gespeicherter Hausfilter: <strong>{{ house_filter_summary }}</strong>. Die Auswahl erfolgt zunächst per Luftlinie; Straßenzeit wird für die aktuelle Seite zusätzlich berechnet.
+      </div>
     </div>
     <form class="radius" method="get" action="/jobs/{{ fit.job.id }}">
       <label>Umkreis (km)
@@ -130,9 +132,10 @@
             {% if area_label(house.living_area_m2) %}
               <span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>
             {% elif area_label(view.neutral_area_m2) %}
-              <span class="fact">Fläche {{ area_label(view.neutral_area_m2) }}</span>
+              <span class="fact">Fläche {{ area_label(view.neutral_area_m2) }} · Typ nicht eindeutig</span>
             {% endif %}
-            {% if area_label(view.visible_plot_area_m2) %}<span class="fact">Grund {{ area_label(view.visible_plot_area_m2) }}</span>{% endif %}
+            {% if area_label(view.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(view.visible_usable_area_m2) }}</span>{% endif %}
+            {% if area_label(view.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(view.visible_plot_area_m2) }}</span>{% endif %}
           </div>
           <div class="distance">
             {% if item.road_duration_minutes is not none %}
@@ -143,7 +146,7 @@
         </div>
       </article>
     {% else %}
-      <div class="empty">Keine aktive Immobilie innerhalb von {{ radius_km|round|int }} km gefunden.</div>
+      <div class="empty">Keine aktuelle Immobilie innerhalb von {{ radius_km|round|int }} km entspricht dem aktiven Hausfilter.</div>
     {% endfor %}
   </div>
 
