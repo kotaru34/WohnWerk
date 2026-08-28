@@ -8,6 +8,8 @@ HOUSE_OPTIONAL_NUMERIC_FILTERS = frozenset(
         "preis_bis",
         "wohn_von",
         "wohn_bis",
+        "nutz_von",
+        "nutz_bis",
         "grund_von",
         "grund_bis",
     }
