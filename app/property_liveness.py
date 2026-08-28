@@ -10,13 +10,18 @@ import httpx
 from sqlalchemy import DateTime, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.models import ListingStatus, PropertyListing, Source
 from app.property_acquisition import property_budget_decision
 from app.property_images import _safe_http_url
 from app.sources.base import RawProperty
 
 PROPERTY_LIVENESS_POLICY = "immmo-external-liveness-2026-08-29-v1"
+PROPERTY_LIVENESS_TIMEOUT_SECONDS = 8.0
+PROPERTY_LIVENESS_BODY_LIMIT_BYTES = 512 * 1024
+PROPERTY_LIVENESS_CONCURRENCY = 12
+PROPERTY_LIVENESS_WORKER_LIMIT = 120
+PROPERTY_LIVENESS_RECHECK_HOURS = 24 * 7
+
 _LIVENESS_PAYLOAD_KEYS = (
     "source_liveness_policy",
     "source_liveness_required",
@@ -156,17 +161,16 @@ async def _probe_one(
 async def probe_property_urls(urls: list[str]) -> dict[str, PropertyLivenessProbe]:
     if not urls:
         return {}
-    settings = get_settings()
     headers = {
         "User-Agent": "WohnWerk/0.1 (+private self-hosted Austrian property search; liveness)",
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
         "Accept-Language": "de-AT,de;q=0.9,en;q=0.5",
     }
-    semaphore = asyncio.Semaphore(max(1, settings.property_liveness_concurrency))
+    semaphore = asyncio.Semaphore(PROPERTY_LIVENESS_CONCURRENCY)
     unique_urls = list(dict.fromkeys(urls))
     async with httpx.AsyncClient(
         headers=headers,
-        timeout=settings.property_liveness_timeout_seconds,
+        timeout=PROPERTY_LIVENESS_TIMEOUT_SECONDS,
         follow_redirects=True,
     ) as client:
         results = await asyncio.gather(
@@ -175,7 +179,7 @@ async def probe_property_urls(urls: list[str]) -> dict[str, PropertyLivenessProb
                     client,
                     url,
                     semaphore,
-                    body_limit=settings.property_liveness_body_limit_bytes,
+                    body_limit=PROPERTY_LIVENESS_BODY_LIMIT_BYTES,
                 )
                 for url in unique_urls
             )
@@ -312,20 +316,19 @@ async def refresh_immmo_liveness(
     limit: int | None = None,
 ) -> PropertyLivenessSummary:
     """Incrementally verify current IMMMO downstream URLs without touching detail metadata."""
-    settings = get_settings()
     source = session.scalar(select(Source).where(Source.name == "immmo.at"))
     if source is None:
         return PropertyLivenessSummary()
 
     now = datetime.now(UTC)
-    cutoff = now - timedelta(hours=max(1, settings.property_liveness_recheck_hours))
+    cutoff = now - timedelta(hours=PROPERTY_LIVENESS_RECHECK_HOURS)
     checked_text = PropertyListing.raw_payload.op("->>")("source_liveness_checked_at")
     original_missing = func.coalesce(
         PropertyListing.raw_payload.op("->>")("original_url_missing"),
         "false",
     )
     reason = PropertyListing.raw_payload.op("->>")("product_visibility_reason")
-    candidate_limit = max(1, limit or settings.property_liveness_worker_limit)
+    candidate_limit = max(1, limit or PROPERTY_LIVENESS_WORKER_LIMIT)
 
     listings = list(
         session.scalars(
