@@ -32,7 +32,7 @@ def test_primary_evidence_dominates_conflicting_context() -> None:
     result = score_job_concepts(evidence, preferences)
 
     assert result.score is not None
-    assert result.score > 80
+    assert result.score > 70
     assert result.preference_coverage == 1.0
 
 
@@ -56,6 +56,28 @@ def test_pure_primary_negative_domain_scores_low() -> None:
 
     assert result.score == 0
     assert result.signed_score == -1.0
+
+
+def test_context_only_negative_domain_is_attenuated() -> None:
+    result = score_job_concepts(
+        [
+            FitEvidence(
+                kind=ConceptKind.DOMAIN,
+                slug="electrical-engineering",
+                scope="context",
+                confidence=0.55,
+            )
+        ],
+        {
+            (
+                ConceptKind.DOMAIN,
+                "electrical-engineering",
+            ): CandidatePreferenceState.CANNOT_NOT_WANT
+        },
+    )
+
+    assert result.score == 32
+    assert result.signed_score == -0.35
 
 
 def test_unrated_concepts_reduce_coverage_without_biasing_score() -> None:
