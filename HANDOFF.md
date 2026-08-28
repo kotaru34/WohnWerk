@@ -68,70 +68,31 @@ Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit s
 
 ## Canonical job dedupe — closed for current corpus
 
-Files:
-
-- `app/jobs/dedupe.py`
-- `scripts/job_duplicate_audit.py`
-- `tests/test_job_dedupe.py`
-- `app/jobs/merge.py`
-- `scripts/merge_duplicate_jobs.py`
-- `tests/test_job_merge.py`
-
-### First production merge batch
-
-Pre-merge refined state:
+Seven explicit fail-closed groups were applied successfully. Corpus moved from:
 
 - `relevant_canonical_jobs=163`
 - `already_multi_listing_canonical_jobs=0`
-- `duplicate_candidates_high=8`
-- `duplicate_candidates_medium=8`
 
-Seven explicit fail-closed groups were applied successfully:
-
-- 131/225 — PEISCHL Fahrzeugbau, survivor 131.
-- 136/240 — Global Hydro, survivor 136.
-- 155/255 — IVM Technical Consultants, survivor 155.
-- 157/227 — Trenkwalder E-Plan, survivor 157.
-- 159/206 — APS Group, survivor 159.
-- 165/208 — Trenkwalder Klagenfurt, survivor 165.
-- 251/252 — Oberaigner German/English StepStone variants, survivor 251.
-
-Observed post-merge state matched prediction exactly:
+to:
 
 - `relevant_canonical_jobs=156`
 - `already_multi_listing_canonical_jobs=7`
 
-The final read-only production audit then confirmed:
+Final production audit:
 
 - `duplicate_candidates_high=0`
 - `duplicate_candidates_blocked=1`
 - `duplicate_candidates_medium=6`
 
-Blocked pair is teampool 163/168: same-source title/body evidence is strong but explicit source locations conflict (`Wien` vs `Wels`). Medium cases include TSMG 3/4, Austro Holding 34/228, Trenkwalder generic `Konstrukteur` edges around 164/165/169, and Anton Paar 67/68. Leave all blocked/medium pairs untouched absent stronger evidence.
+Blocked pair is teampool 163/168: strong same-source title/body evidence but explicit locations conflict (`Wien` vs `Wels`). Medium TSMG/Austro Holding/Trenkwalder/Anton Paar candidates remain untouched.
 
-### Merge safety / cleanup
-
-- known different normalized companies are a hard conflict;
-- generic titles are conservative;
-- cross-board exact company/title/location is strong syndication evidence;
-- same-source distinct listing IDs are possible parallel openings;
-- same-source non-generic needs description similarity >=0.82 for high evidence;
-- same-source generic/template needs >=0.95;
-- conflicting normalized companies or salary bundles block merge;
-- same-source explicit location disagreement blocks merge;
-- `--apply` is always required;
-- all source `JobListing` rows/raw payloads are preserved on the survivor;
-- equivalent locations are deduplicated and richer canonical data retained.
-
-The first apply batch exposed an SQLAlchemy double-delete warning for equivalent `JobLocation` rows. Current code removes duplicate children through the relationship and lets `delete-orphan` own deletion, removing the warning path without changing merge semantics.
-
-Audit now reports raw-high-but-unsafe pairs as `blocked` by running the same fail-closed merge plan used for mutation.
+Merge engine remains explicit-ID, dry-run by default and fail-closed on company/salary/evidence/same-source location conflicts. All source listings/raw payloads survive on canonical survivors. The SQLAlchemy duplicate-location double-delete warning was removed by letting relationship `delete-orphan` own child deletion. Audit and merge safety now use the same plan.
 
 Canonical dedupe is intentionally considered closed for the current corpus.
 
 ## Normalized job concepts — current primary work
 
-Goal: separate source wording from candidate preference/fit by normalizing every relevant canonical job into concepts before assigning any can/want score.
+Goal: normalize source wording into candidate-independent concepts before any can/want scoring.
 
 Dimensions:
 
@@ -141,67 +102,139 @@ Dimensions:
 - `method`
 - `tool`
 
-New files:
+Files:
 
-- `app/jobs/concepts.py` — ORM vocabulary/alias/evidence models.
+- `app/jobs/concepts.py` — canonical concept, alias and evidence ORM models.
 - `app/jobs/concept_catalog.py` — deterministic seed vocabulary + phrase extractor.
 - `migrations/versions/0007_job_concepts.py` — vocabulary/evidence tables.
-- `scripts/normalize_job_concepts.py` — read-only dry-run by default; `--apply` seeds vocabulary and recomputes current-version evidence.
+- `scripts/normalize_job_concepts.py` — read-only by default; `--apply` seeds/recomputes.
 - `tests/test_job_concepts.py` — normalization/extraction regressions.
-- `migrations/env.py` imports concept models so Alembic metadata remains complete.
+- `migrations/env.py` imports concept models for complete Alembic metadata.
 
 ### Data model
 
-`JobConcept`:
+`JobConcept` stores canonical `kind + slug`, German label and enabled state.
 
-- canonical `kind + slug` identity;
-- German display label `label_de`;
-- enabled flag.
+`JobConceptAlias` stores many surface forms per concept with normalized alias, optional language, provenance and enabled state.
 
-`JobConceptAlias`:
+`JobConceptEvidence` stores job/concept, matched alias, source field (`title` / `description`), confidence and extractor version.
 
-- many surface forms per concept;
-- normalized alias;
-- optional language;
-- seed/manual provenance;
-- enabled flag.
+Evidence is recomputable and candidate-independent. Candidate preferences belong on canonical concepts later, never raw source words.
 
-`JobConceptEvidence`:
+### Production dry-run v1
 
-- `job_id` + `concept_id`;
-- matched alias;
-- source field (`title` / `description`);
-- confidence;
-- explicit extractor version.
+Extractor v1 (`concept-seed-2026-08-28-v1`) was run read-only on the post-dedupe 156-job corpus:
 
-Evidence is recomputable and candidate-independent. Candidate preferences must be attached to canonical concepts later, not raw words.
+- `relevant_active_jobs=156`
+- `jobs_with_concepts=131`
+- `jobs_without_concepts=25`
+- `distinct_concepts_matched=32`
+- `evidence_rows=433`
+- `evidence_role=91`
+- `evidence_domain=154`
+- `evidence_task=114`
+- `evidence_method=11`
+- `evidence_tool=63`
 
-### Extractor v1
+Top raw evidence counts included:
 
-Current extractor version: `concept-seed-2026-08-28-v1`.
+- `domain:mechanical-engineering=71`
+- `domain:electrical-engineering=42`
+- `task:assembly-commissioning=36`
+- `role:development-engineer=28`
+- `domain:automotive=21`
+- `task:product-development=19`
+- `role:mechanical-designer=19`
+- `task:testing-validation=18`
+- `role:mechanical-engineer=17`
+- `domain:special-machinery=17`
+- `tool:solidworks=17`
 
-It is intentionally deterministic phrase matching first, not an LLM. Text is Unicode/case/punctuation normalized and aliases use word boundaries. This preserves inspectable evidence and avoids the earlier class of substring bugs such as `FEM` matching `female`.
+The `42` electrical figure needs evidence inspection because v1 counted title and description evidence rows rather than unique jobs.
 
-Initial vocabulary covers mechanical roles/domains/tasks/methods/tools plus explicit electrical-engineering evidence, including examples such as:
+The 25 unmatched titles were highly structured rather than random. Most were variants of:
 
-- roles: Maschinenbauingenieur, mechanischer Konstrukteur, Entwicklungsingenieur, Projektingenieur, technischer Projektleiter, Service Engineer, CAD-Konstrukteur;
-- domains: Maschinenbau, Fahrzeugbau/Automotive, Sonderfahrzeugbau, Schienenfahrzeugtechnik, Sondermaschinenbau, Wasserkraft, Elektrotechnik;
-- tasks: mechanische Konstruktion, Produktentwicklung, Anforderungen/Lasten-/Pflichtenhefte, Lieferantenkoordination, Versuch/Validierung, Montage/Inbetriebnahme, Berechnung/Simulation, technische Projektsteuerung, Teamführung, technische Dokumentation;
-- methods: FEM, FMEA, agile development/Scrum;
-- tools: SolidWorks, CATIA, Creo, Siemens NX, Inventor, AutoCAD, EPLAN.
+- `Maschinenbautechniker`
+- generic `Konstrukteur` / `Senior Designer`
+- `Service Techniker`
+- `Berechnungsingenieur`
+- `CAD-Techniker` / Detail-/Ausführungsplaner
+- `Produktionsleiter`
+- `Gebäudetechnik / HKLS`
+- `Anlagenbau`
+- `Stahlbau`
+- `Mechatroniker`
+- `Metalltechniker`
+- `Schlosser / Maschinenschlosser`
+- `Instandhaltung`
 
-Important design choice: the Python seed is only bootstrap. `--apply` seeds missing vocabulary/aliases but extraction then reads enabled concepts/aliases back from the DB. Future admin UI edits can therefore change synonyms without modifying Python code. Existing disabled aliases are not forcibly re-enabled by seeding.
+### Extractor v2
 
-CI #401 passed Ruff, Compile and the full test suite for this first normalization slice.
+Current extractor version: `concept-seed-2026-08-28-v2`.
+
+V2 expands only neutral professional normalization concepts observed in the real corpus. It does not encode candidate preference.
+
+Added/expanded roles include:
+
+- Maschinenbautechniker
+- generic Konstrukteur / Design Engineer
+- Berechnungsingenieur
+- generic Projektleiter / Projektmanager
+- Produktionsleiter
+- spaced/hyphenated Service Techniker / Field Service Technician
+- CAD-Techniker / Technischer Zeichner / Detailplaner / Ausführungsplaner
+- Mechatroniker
+- Metalltechniker
+- Schlosser / Maschinenschlosser
+
+Added domains include:
+
+- Anlagenbau
+- Stahlbau
+- Gebäudetechnik / HKLS
+- Mechatronik
+
+Added tasks include:
+
+- Instandhaltung
+- Fertigung / Produktion
+- Ausführungs-/Detailplanung
+- Toleranzanalyse
+
+Important semantic guard: generic `Konstrukteur` maps to a generic designer role but does **not** imply the `mechanical-engineering` domain. Mechanical domain still requires separate mechanical evidence. EPLAN likewise remains only a tool unless explicit electrical wording is present.
+
+The audit summary now distinguishes unique-job coverage from evidence-row counts:
+
+- `jobs_role/domain/task/method/tool`
+- per-concept `jobs=`, `title=` and `description=` counts
+
+The script also supports repeatable targeted evidence inspection:
+
+`--audit-concept KIND:SLUG`
+
+with `--audit-limit` controlling printed jobs.
+
+Deterministic recompute deletes all prior `concept-seed-*` evidence before inserting the current version, so future v3/v4 runs cannot accumulate stale deterministic evidence. Other extractor families remain untouched.
+
+Seed vocabulary is bootstrap only. Applied extraction reads enabled concepts/aliases back from the DB, allowing later admin UI synonym edits/disablement without Python changes.
+
+CI #406 passed Ruff, Compile and the full test suite for v2 vocabulary, improved audit reporting and stale deterministic evidence replacement.
 
 ## Immediate work order
 
 1. Pull current `bootstrap/austria-mvp`.
 2. Do **not** run migration `0007` yet.
-3. Run only the read-only concept coverage audit:
-   `python scripts/normalize_job_concepts.py --unmatched-limit 50`
-4. Inspect coverage counts, top concepts and unmatched titles against the real 156-job corpus.
-5. Tighten/expand the generic concept vocabulary only from real corpus evidence; avoid candidate preference scoring at this stage.
-6. Once dry-run coverage is acceptable, apply `alembic upgrade head` and then run `python scripts/normalize_job_concepts.py --apply`.
-7. After persisted concept evidence is validated, add candidate concept preferences using the four-state model: can+want / can+not-want / cannot+want / cannot+not-want.
-8. Then compute intrinsic job fit independent of geography, followed by PostGIS house/job distance and final recommendation ranking.
+3. Run v2 read-only coverage + targeted evidence audit:
+
+   `python scripts/normalize_job_concepts.py --unmatched-limit 50 --audit-concept domain:electrical-engineering --audit-concept role:mechanical-technician --audit-concept role:designer-engineer --audit-limit 50`
+
+4. Inspect:
+   - overall matched/unmatched coverage;
+   - unique jobs per concept vs title/description evidence;
+   - whether electrical-engineering examples are genuine explicit electrical mentions;
+   - whether new generic designer/technician concepts create obvious false positives.
+5. Refine only from actual evidence. Do not mix candidate preference into normalization.
+6. Once coverage/precision is healthy, apply `alembic upgrade head`, then `python scripts/normalize_job_concepts.py --apply`.
+7. Validate persisted evidence.
+8. Add four-state candidate concept preferences: can+want / can+not-want / cannot+want / cannot+not-want.
+9. Compute intrinsic fit independently of geography, then combine with PostGIS house/job distance, salary and final recommendation ranking.
