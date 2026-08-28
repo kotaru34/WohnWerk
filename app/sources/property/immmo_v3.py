@@ -89,7 +89,7 @@ def _anchor_matches_title(anchor_text: str, expected_title: str) -> bool:
         return False
     if expected in anchor:
         return True
-    if anchor not in expected:
+    if not expected.startswith(anchor):
         return False
     # Provider cards often shorten the clickable title while the surrounding visible
     # card contains a longer title. Accept that relation only when the anchor still carries
