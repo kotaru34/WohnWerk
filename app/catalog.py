@@ -497,9 +497,7 @@ def _route_jobs_from_property(
 
 
 def _safe_return_to(value: str) -> str:
-    if value.startswith("/houses") or value.startswith("/jobs"):
-        return value
-    return "/houses"
+    return value if value.startswith(("/houses", "/jobs")) else "/houses"
 
 
 @router.get("/media/properties/{property_id}", include_in_schema=False)
