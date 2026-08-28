@@ -108,6 +108,7 @@ def upgrade() -> None:
             sa.ForeignKey("job_concept_aliases.id", ondelete="SET NULL"),
         ),
         sa.Column("field", sa.String(length=24), nullable=False),
+        sa.Column("scope", sa.String(length=20), nullable=False),
         sa.Column("matched_text", sa.String(length=240), nullable=False),
         sa.Column("confidence", sa.Numeric(4, 3), nullable=False),
         sa.Column("extractor_version", sa.String(length=80), nullable=False),
@@ -146,9 +147,15 @@ def upgrade() -> None:
         "job_concept_evidence",
         ["concept_id"],
     )
+    op.create_index(
+        "ix_job_concept_evidence_scope",
+        "job_concept_evidence",
+        ["scope"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index("ix_job_concept_evidence_scope", table_name="job_concept_evidence")
     op.drop_index("ix_job_concept_evidence_concept", table_name="job_concept_evidence")
     op.drop_index("ix_job_concept_evidence_job_version", table_name="job_concept_evidence")
     op.drop_index("ix_job_concept_evidence_alias_id", table_name="job_concept_evidence")
