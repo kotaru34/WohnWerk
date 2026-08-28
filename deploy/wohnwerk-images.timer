@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule WohnWerk property image cache
+
+[Timer]
+OnBootSec=7min
+OnCalendar=*-*-* *:00/15:00
+RandomizedDelaySec=3min
+AccuracySec=1min
+Persistent=true
+Unit=wohnwerk-images.service
+
+[Install]
+WantedBy=timers.target
