@@ -98,16 +98,16 @@ def _seed_vocabulary(session: Session) -> None:
             normalized = normalize_concept_text(surface)
             if normalized in aliases:
                 continue
-            session.add(
-                JobConceptAlias(
-                    concept_id=concept.id,
-                    alias=surface,
-                    normalized_alias=normalized,
-                    language=None,
-                    source="seed",
-                    enabled=True,
-                )
+            alias = JobConceptAlias(
+                concept_id=concept.id,
+                alias=surface,
+                normalized_alias=normalized,
+                language=None,
+                source="seed",
+                enabled=True,
             )
+            session.add(alias)
+            aliases[normalized] = alias
     session.flush()
 
 
