@@ -136,12 +136,19 @@ class _SearchParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag != "a" or self._anchor_job_id is None:
             return
-        title = html.unescape(" ".join(self._anchor_parts).strip())
-        if title:
+
+        # StepStone currently serves at least two card shapes: one where only the
+        # title is linked, and another where most/all of the result card is inside
+        # the anchor. Treat the first text node as the title and feed the remaining
+        # anchor text back into the normal card tail instead of concatenating the
+        # entire card into a bogus multi-kilobyte title.
+        anchor_parts = [html.unescape(part).strip() for part in self._anchor_parts if part.strip()]
+        if anchor_parts:
             self._current_job_id = self._anchor_job_id
-            self._current_title = title
+            self._current_title = anchor_parts[0]
             self._current_url = urljoin(BASE_URL, self._anchor_href or "")
-            self._current_tail = []
+            self._current_tail = anchor_parts[1:]
+
         self._anchor_job_id = None
         self._anchor_href = None
         self._anchor_parts = []
@@ -162,11 +169,18 @@ def _compact_tail(parts: tuple[str, ...]) -> list[str]:
     return result
 
 
-def _location_from_text(value: str | None) -> RawJobLocation | None:
-    if not value:
+def _safe_short_text(value: str | None, *, max_length: int) -> str | None:
+    if value is None:
         return None
-    text = html.unescape(value).strip()
-    if not text:
+    cleaned = " ".join(html.unescape(value).split()).strip()
+    if not cleaned or len(cleaned) > max_length:
+        return None
+    return cleaned
+
+
+def _location_from_text(value: str | None) -> RawJobLocation | None:
+    text = _safe_short_text(value, max_length=500)
+    if text is None:
         return None
 
     first = text.split(",", 1)[0].strip()
@@ -210,14 +224,18 @@ def parse_stepstone_search_page(
 
     jobs: list[RawJob] = []
     for hit in parser.hits:
+        title = _safe_short_text(hit.title, max_length=500)
+        if title is None:
+            continue
+
         tail = _compact_tail(hit.tail_parts)
         if not tail:
             company = None
             location_text = None
             description = None
         else:
-            company = tail[0]
-            location_text = tail[1] if len(tail) > 1 else None
+            company = _safe_short_text(tail[0], max_length=300)
+            location_text = _safe_short_text(tail[1], max_length=500) if len(tail) > 1 else None
             description = next(
                 (
                     part
@@ -234,7 +252,7 @@ def parse_stepstone_search_page(
             RawJob(
                 source_listing_id=f"stepstoneat:{hit.job_id}",
                 url=hit.url,
-                title=hit.title,
+                title=title,
                 company=company,
                 description=description,
                 locations=[location] if location is not None else [],
