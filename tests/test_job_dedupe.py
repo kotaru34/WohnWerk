@@ -15,6 +15,7 @@ def _snapshot(
     description: str | None = None,
     postal: str | None = None,
     city: str | None = None,
+    source: str | None = None,
 ) -> DuplicateJobSnapshot:
     return DuplicateJobSnapshot(
         job_id=job_id,
@@ -23,7 +24,7 @@ def _snapshot(
         description=description,
         postal_codes=frozenset([postal]) if postal else frozenset(),
         cities=frozenset([normalize_locality(city)]) if city else frozenset(),
-        sources=("test",),
+        sources=(source or f"source-{job_id}",),
     )
 
 
@@ -37,7 +38,7 @@ def test_locality_normalizer_equates_klagenfurt_variants() -> None:
     assert normalize_locality("Klagenfurt") == normalize_locality("Klagenfurt am Wörthersee")
 
 
-def test_same_company_normalized_title_and_location_is_high_confidence() -> None:
+def test_cross_source_same_company_title_and_location_is_high_confidence() -> None:
     left = _snapshot(
         1,
         title="Entwicklungsingenieur für Maschinenbau/KFZ-Technik (m/w/d) bei Oberaigner",
@@ -58,6 +59,7 @@ def test_same_company_normalized_title_and_location_is_high_confidence() -> None
     assert evidence.company_match is True
     assert evidence.location_match is True
     assert evidence.title_similarity == 1.0
+    assert evidence.shared_source is False
 
 
 def test_same_title_but_different_companies_is_not_a_duplicate() -> None:
@@ -132,7 +134,7 @@ def test_generic_title_without_location_overlap_stays_medium() -> None:
     assert evidence.generic_title is True
 
 
-def test_generic_title_with_equivalent_location_is_high_confidence() -> None:
+def test_cross_source_generic_title_with_equivalent_location_is_high_confidence() -> None:
     left = _snapshot(
         1,
         title="Konstrukteur (m/w/d)",
@@ -151,3 +153,56 @@ def test_generic_title_with_equivalent_location_is_high_confidence() -> None:
     assert evidence is not None
     assert evidence.confidence == "high"
     assert evidence.location_match is True
+
+
+def test_same_source_same_title_and_location_without_body_overlap_is_medium() -> None:
+    left = _snapshot(
+        1,
+        title="Senior Autonomous Vehicle Technician - Fleet Maintenance",
+        company="Example GmbH",
+        description="First distinct opening with a maintenance focus and enough descriptive words to count for similarity analysis.",
+        city="Wien",
+        source="lever",
+    )
+    right = _snapshot(
+        2,
+        title="Senior Autonomous Vehicle Technician (Fleet Maintenance)",
+        company="Example GmbH",
+        description="Second separate vacancy with unrelated operational responsibilities and enough other wording to count for comparison.",
+        city="Wien",
+        source="lever",
+    )
+
+    evidence = duplicate_evidence(left, right)
+
+    assert evidence is not None
+    assert evidence.confidence == "medium"
+    assert evidence.shared_source is True
+
+
+def test_same_source_strong_description_overlap_can_be_high() -> None:
+    body = (
+        "Mechanical product development CAD construction supplier coordination testing "
+        "commissioning validation documentation project support manufacturing assemblies"
+    )
+    left = _snapshot(
+        1,
+        title="Junior Konstrukteur Maschinenbau - dein Design, unsere Zukunft!",
+        company="Example GmbH",
+        description=body,
+        source="jobs.at",
+    )
+    right = _snapshot(
+        2,
+        title="Junior Konstrukteur Maschinenbau – dein Design, unsere Zukunft!",
+        company="Example GmbH",
+        description=body + " additional detail",
+        source="jobs.at",
+    )
+
+    evidence = duplicate_evidence(left, right)
+
+    assert evidence is not None
+    assert evidence.confidence == "high"
+    assert evidence.shared_source is True
+    assert evidence.description_similarity >= 0.82
