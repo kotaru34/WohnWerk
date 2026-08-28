@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     routing_max_table_coordinates: int = 100
     routing_prefilter_properties_per_job: int = 75
 
+    property_image_dir: str = "/var/lib/wohnwerk/property-images"
+    property_image_timeout_seconds: float = 20.0
+    property_image_max_bytes: int = 12 * 1024 * 1024
+    property_image_worker_limit: int = 30
+    property_image_worker_delay_seconds: float = 1.0
+
     # The write-capable admin surface stays fail-closed until a password is configured.
     admin_username: str = "admin"
     admin_password: str | None = None
