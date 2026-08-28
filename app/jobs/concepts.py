@@ -31,6 +31,26 @@ class ConceptEvidenceScope(StrEnum):
     CONTEXT = "context"
 
 
+def concept_evidence_semantics(
+    kind: ConceptKind | str,
+    field: str,
+) -> tuple[ConceptEvidenceScope, float]:
+    """Classify phrase evidence without pretending every mention defines the job identity."""
+
+    normalized_kind = ConceptKind(kind)
+    if field == "title":
+        return ConceptEvidenceScope.PRIMARY, 1.0
+
+    context_confidence = {
+        ConceptKind.ROLE: 0.45,
+        ConceptKind.DOMAIN: 0.55,
+        ConceptKind.TASK: 0.80,
+        ConceptKind.METHOD: 0.85,
+        ConceptKind.TOOL: 0.85,
+    }
+    return ConceptEvidenceScope.CONTEXT, context_confidence[normalized_kind]
+
+
 class JobConcept(Base):
     """Canonical vocabulary item used for job normalization and later candidate fit."""
 
