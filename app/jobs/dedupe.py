@@ -104,9 +104,7 @@ def duplicate_evidence(
     )
     location_conflict = postal_conflict or city_conflict
 
-    confidence: str | None = None
     reasons: list[str] = []
-
     if company_match:
         reasons.append("company_exact")
     if similarity == 1.0:
@@ -118,16 +116,22 @@ def duplicate_evidence(
     if location_conflict:
         reasons.append("location_conflict")
 
-    if company_match and similarity >= 0.94 and location_match:
-        confidence = "high"
-    elif company_match and similarity == 1.0 and not location_conflict:
-        confidence = "high"
-    elif company_match and similarity >= 0.88 and not location_conflict:
-        confidence = "medium"
-    elif similarity == 1.0 and location_match and not location_conflict:
-        confidence = "medium"
+    high_confidence = (
+        company_match and similarity >= 0.94 and location_match
+    ) or (
+        company_match and similarity == 1.0 and not location_conflict
+    )
+    medium_confidence = (
+        company_match and similarity >= 0.88 and not location_conflict
+    ) or (
+        similarity == 1.0 and location_match and not location_conflict
+    )
 
-    if confidence is None:
+    if high_confidence:
+        confidence = "high"
+    elif medium_confidence:
+        confidence = "medium"
+    else:
         return None
 
     return DuplicateEvidence(
