@@ -11,6 +11,7 @@ from app.sources.job.willhaben_jobs import (
 def test_parse_willhaben_search_card_fields_and_postal_code() -> None:
     content = """
     <html><body>
+      <div>Marktplatz 12.523.368 Immobilien 112.312 Auto &amp; Motor 206.355 Jobs 15.342</div>
       <h1>37 Jobs für CAD Zeichner</h1>
       <a href="/jobs/job/konstrukteur-senior-designer-m-w-d/13050655">
         Konstrukteur - Senior Designer (m/w/d)
