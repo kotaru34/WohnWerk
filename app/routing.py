@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Self
 
 import httpx
 
@@ -59,7 +60,7 @@ class OSRMClient:
             self._client.close()
             self._client = None
 
-    def __enter__(self) -> OSRMClient:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
