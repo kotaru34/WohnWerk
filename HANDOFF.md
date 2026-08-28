@@ -59,114 +59,153 @@ Current gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is cl
 
 Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is explicit future fit `cannot + not want`; this must affect candidate fit, not broad acquisition.
 
-## karriere.at — production #40 stable
+## Stable low-impact broad boards
 
-Files: `app/sources/job/karriere_at.py`, `scripts/run_karriere_at_jobs.py`, tests.
-
-Production #40:
+### karriere.at — production #40
 
 - 5/5 shards, 35 HTTP requests;
-- 30 seen / 30 new / all 30 relevant;
-- source-reported counts summed to 435;
+- 30 relevant jobs;
 - 34 relevant locations, 27 geo-resolved;
 - 27 structured salaries, 15 annualized;
 - no source/rate-limit errors.
 
 Do not deepen traversal yet.
 
-## jobs.at — production #41 stable
+### jobs.at — production #41
 
 Current broad searches: Maschinenbau, Konstrukteur, CAD Konstrukteur, Mechanischer Konstrukteur, SolidWorks.
 
-Production #41:
-
 - 5/5 shards, 18 HTTP requests;
-- 13 seen / 13 new / all 13 relevant;
+- 13 relevant jobs;
 - 14 relevant locations, 7 geo-resolved;
 - 12 structured salaries + 1 salary text.
 
-`E-Plan` roles may remain in broad acquisition and later rank down via candidate fit. Do not micro-tune discovery merely for those roles.
+`E-Plan` roles may remain in broad acquisition and later rank down via candidate fit.
 
-## StepStone Austria — production #43 + final live parser cleanup
+### StepStone Austria — clean production #45
 
-Files: `app/sources/job/stepstone_at.py`, `scripts/run_stepstone_at_jobs.py`, tests.
+Design: five search pages, zero details, stable numeric listing ID, always coverage-incomplete.
 
-Design is exceptionally light: five search pages, zero detail pages, stable numeric listing ID, always coverage-incomplete.
+Run #43 exposed CSS/no-js card pollution and a postal-only parsing bug. Those were repaired and regression-tested. A one-time fail-closed purge of the malformed #43 data then reported:
 
-Production #43 after the initial whole-card-anchor repair:
+- source_listings=35;
+- affected_jobs=35;
+- exclusive_jobs=35;
+- shared_jobs=0;
+- purge_safe=yes.
 
-- 5/5 shards, 5 HTTP requests;
-- 35 relevant sightings, 32 new + 3 updated;
-- source-reported search counts summed to 5,360;
-- 35 locations, 22 geo-resolved;
-- 8 rejected candidates in audit.
+Clean rebuild #45:
 
-Run #43 exposed remaining live markup issues rather than source failures:
+- 5/5 shards, 0 failed;
+- exactly 5 HTTP requests, zero details;
+- 37 seen / 37 new;
+- source_reported=5,360;
+- 37 relevant-active canonical jobs;
+- 37 locations, 27 geo-resolved;
+- 2 source PLZ resolved, 25 city approximations, 10 unresolved;
+- no CSS title/company-as-location pollution remained.
 
-- StepStone emits logo links and title links to the same vacancy, with Emotion/no-js CSS inside the anchors.
-- A logo CSS fragment could become a bogus title; because the same stable ID then deduped the real title link, company/location shifted into the wrong fields.
-- Symptoms included CSS in rejection audit and bogus unresolved locations `Flach & Barfigo Personalleasing GmbH` and `VirtuRail GmbH`.
-- `4973, Österreich` is a real source location and must be interpreted as source PLZ `4973`, not city `4973`.
-- StepStone AT can also surface explicitly foreign results such as `München`.
+StepStone acquisition/parser work is closed for now absent a new generic live regression.
 
-Final parser behavior now committed:
+### willhaben Jobs — production #46
 
-- pure CSS/no-js anchors are ignored;
-- CSS prefixes sharing one text node with a visible title are stripped up to the final `}` and the human suffix is retained;
-- duplicate logo/title links therefore resolve to the actual title card;
-- postal-only `4973, Österreich` preserves `postal_code=4973`, city unknown;
-- explicit foreign-country labels and a conservative set of obvious foreign cities such as München are rejected from the Austria corpus;
-- ambiguous labels such as St. Gallen/Nußbach/Niederranna are not guessed away;
-- regression tests cover CSS logo/title variants, whole-card anchors, postal-only locations and obvious foreign locations.
+Design: five first-page search requests, zero details, stable `/jobs/job/<slug>/<id>` identity.
 
-CI #352 passed Ruff, Compile and the full test suite for this final parser state.
+Run #44 had a bad global count regex but clean vacancy parsing. After fixing the count parser, refresh #46 produced:
 
-Because #43 already persisted a few malformed StepStone `JobLocation` rows, do one fail-closed technical reset before the next run: `scripts/purge_job_source_listings.py stepstone.at --apply`. The utility refuses modification if any affected canonical Job is shared with another source. If safe, rerun StepStone immediately to rebuild clean rows. This reset is parser maintenance, not a strategy change.
+- 5/5 shards, 0 failed;
+- exactly 5 HTTP requests, zero details;
+- 18 seen / 0 new / 18 updated;
+- sane source_reported=448 rather than ~1.07M;
+- 18 relevant-active canonical jobs;
+- 17 locations, 15 geo-resolved, 2 unresolved.
 
-## willhaben Jobs — production #44 stable, count parser fixed
+Willhaben acquisition/parser work is closed for now absent regression.
 
-Files: `app/sources/job/willhaben_jobs.py`, `scripts/run_willhaben_jobs.py`, tests.
+## Supplementary broad APIs
 
-Design: five first-page search requests, zero details, stable `/jobs/job/<slug>/<id>` identity, card-level company/date/location/snippet.
+Adzuna Austria and Jooble Austria remain implemented/tested but have not been production-run because credentials were not supplied. They are optional corpus bonuses, not the current priority.
 
-Production #44:
+## Acquisition phase status
 
-- 5/5 shards, exactly 5 HTTP requests;
-- 18 seen / 18 new / 18 relevant;
-- 17 relevant locations, 15 geo-resolved;
-- only Nußbach and Salzburg Stadt unresolved;
-- 5 rejected candidates in audit.
+Acquisition micro-polishing is now paused intentionally. Source health is clean for all active job frontiers/feeds, and the first duplicate audit reported:
 
-The jobs themselves parsed cleanly. Only `source_reported` was wrong (`1,068,927`) because the count regex was too broad and could latch onto unrelated page-global numeric/Jobs text.
+- relevant_canonical_jobs=163;
+- already_multi_listing_canonical_jobs=0;
+- no database changes from the audit.
 
-Current fix accepts only search-specific forms `N Anzeigen` or `N Jobs für ...`. Regression includes willhaben navbar noise (`Jobs 15.342`) plus a real query count and verifies the query count wins. No purge is needed; rerun willhaben once to refresh run metadata with sane counts.
+Do not interpret 163 as 163 unique vacancies until canonical duplicate collapse is complete.
 
-## Adzuna + Jooble supplementary APIs
+## Canonical job dedupe — current primary work
 
-Both are implemented and tested. Keep them as optional extra corpus sources:
+Files:
 
-- Adzuna Austria: five API queries/run, credentials via `ADZUNA_APP_ID` / `ADZUNA_APP_KEY` only.
-- Jooble Austria: five API queries/run, key via `JOOBLE_AT_API_KEY` only.
+- `app/jobs/dedupe.py`
+- `scripts/job_duplicate_audit.py`
+- `tests/test_job_dedupe.py`
+- `app/jobs/merge.py`
+- `scripts/merge_duplicate_jobs.py`
+- `tests/test_job_merge.py`
 
-No production run yet because credentials were not supplied. They are not the current priority.
+### First production duplicate audit
 
-## Current broad-board corpus direction
+The first read-only audit on the 163-job corpus returned 14 high-confidence pair edges and 0 medium under the initial rule set.
 
-Before cross-board canonical dedupe, current live relevant listings are roughly:
+Very strong obvious examples included:
 
-- karriere.at: 30
-- jobs.at: 13
-- StepStone #43: 35 (needs one clean rebuild because a few persisted fields are malformed)
-- willhaben: 18
+- PEISCHL Fahrzeugbau karriere.at ↔ StepStone, exact title/company/Stegersbach;
+- Global Hydro karriere.at ↔ StepStone, exact title/company/Niederranna;
+- IVM karriere.at ↔ StepStone, exact title/company/Linz;
+- APS Group jobs.at ↔ willhaben, normalized exact title/company/Frohnleiten;
+- Oberaigner StepStone German/English card variants in Nebelberg;
+- Austro Holding SmartRecruiters ↔ StepStone;
+- TSMG two Lever punctuation/title variants.
 
-This is about 96 board listings before cross-board duplicate collapse, plus SmartRecruiters/Personio/Lever. Do not call 96 unique jobs.
+The audit also exposed a critical ambiguity cluster: canonical jobs 164/165/169/208 were all `Konstrukteur (m/w/d)` at Trenkwalder. Some had no location, while jobs 165 and 208 were Klagenfurt variants. The initial rule `same company + normalized exact title + no explicit location conflict` was therefore too permissive for generic titles. No merge was performed.
+
+### Refined duplicate evidence
+
+Current dedupe rules are deliberately stricter:
+
+- known different normalized companies are a hard conflict;
+- gender suffixes such as `(m/w/d)`, `all genders`, and bare `m|f|d` are normalized away;
+- `Klagenfurt`, `Klagenfurt am Wörthersee`, and ASCII `Klagenfurt am Worthersee` canonicalize together;
+- generic titles such as `Konstrukteur`, `Mechanical Engineer`, `Entwicklungsingenieur`, etc. do **not** become high confidence from company alone;
+- generic title + company requires location overlap or strong description-overlap evidence for high confidence;
+- specific long normalized-exact titles at the same company may still be high without a location when no conflict exists;
+- descriptions use conservative token-containment similarity so a board snippet can match a fuller detail description;
+- audit output now includes `description_similarity`, generic-title flag, source listing IDs and URLs.
+
+This refinement is designed specifically to split safe duplicate evidence from staffing-agency/template-title coincidences.
+
+### Fail-closed canonical merge engine
+
+`merge_duplicate_jobs.py` is dry-run by default and accepts explicit canonical Job IDs only. It never automatically merges every audit hit.
+
+Safety behavior:
+
+- group must be connected by **high-confidence** duplicate evidence;
+- conflicting normalized companies block the merge;
+- conflicting canonical salary bundles block the merge rather than silently choosing one;
+- survivor is chosen automatically by canonical richness: structured salary, PLZ/geography, description depth, listing count, then stable lower-ID tie-break;
+- richer description/company and non-conflicting salary bundle are preserved;
+- all `JobListing` rows are moved to the survivor, preserving independent source lifecycle/raw payloads;
+- locations are unioned and obvious equivalent city/PLZ rows deduplicated/enriched;
+- canonical hash is cleared because merged identity must not retain a stale pre-merge hash;
+- conflicting/non-uniform fit score is cleared for future recomputation;
+- absorbed canonical Jobs are deleted only after listings/locations have been transferred;
+- `--apply` is required for mutation.
+
+CI #369 passed Ruff, Compile and the full test suite for the refined dedupe + merge-plan state.
 
 ## Immediate work order
 
-1. Pull the latest branch and run tests.
-2. Fail-closed purge/reset StepStone once; if the purge reports a shared canonical Job it will abort rather than damage it.
-3. Re-run StepStone: expected 5/5, 5 requests, 0 details, no CSS title/company-as-location pollution, and `4973` preserved as PLZ.
-4. Re-run willhaben once: expected 5/5, 5 requests, 0 details, with sane per-query `source_reported` counts rather than ~213k each.
-5. Resolve locations and inspect StepStone/willhaben stats + rejection audit + source health.
-6. If those are clean, stop acquisition micro-polishing for now.
-7. Next primary work: quantify/collapse obvious cross-board duplicates, introduce normalized role/domain/task/method/tool concepts, then candidate can/want fit and German profile/recommendation UI.
+1. Pull current `bootstrap/austria-mvp`.
+2. Run only the refined read-only audit:
+   `python scripts/job_duplicate_audit.py --include-medium --limit 100`.
+3. Inspect the new high/medium groups including listing IDs/URLs and description similarity.
+4. Do **not** bulk merge all candidates.
+5. For each clearly safe connected group, run `scripts/merge_duplicate_jobs.py <ids...>` in dry-run mode first.
+6. Apply only groups whose dry-run reports `safe=yes` and no salary/company/evidence blockers.
+7. Re-run duplicate audit after approved merges; canonical count should fall while `already_multi_listing_canonical_jobs` rises.
+8. Once obvious duplicates are collapsed, shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
