@@ -5,8 +5,8 @@ from decimal import Decimal
 
 from app.sources.base import RawProperty
 
-PROPERTY_MIN_PRICE_EUR = Decimal("30000")
-PROPERTY_MAX_PRICE_EUR = Decimal("150000")
+PROPERTY_MIN_PRICE_EUR = Decimal(30000)
+PROPERTY_MAX_PRICE_EUR = Decimal(150000)
 PROPERTY_ACQUISITION_POLICY = "property-budget-2026-08-28-v1"
 
 
