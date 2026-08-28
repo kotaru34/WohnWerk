@@ -6,13 +6,25 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from geoalchemy2 import Geometry
 from sqlalchemy import and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.admin import AdminDependency
+from app.admin import AdminDependency, CsrfDependency, _csrf_token
+from app.candidate_activity import (
+    CandidatePropertyState,
+    is_new_unviewed,
+    load_property_states,
+    mark_job_viewed,
+    mark_property_viewed,
+    novelty_baseline,
+    property_curation_condition,
+    set_property_favorite,
+    set_property_hidden,
+)
 from app.config import get_settings
 from app.database import get_db
 from app.geo import radius_metres
@@ -24,10 +36,13 @@ from app.house_filters import (
     save_house_filters,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
+from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
 from app.matching import PropertyDistanceMatch, SpatialJobMatch
 from app.models import JobLocation, ListingStatus, Property, PropertyListing, Source
 from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
+from app.property_areas import usable_area_property_condition
+from app.property_images import cached_image_urls, local_image_path
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
@@ -38,6 +53,11 @@ templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 DbDependency = Annotated[Session, Depends(get_db)]
 HOUSE_PAGE_SIZE = 36
 NEARBY_HOUSE_PAGE_SIZE = 40
+HOUSE_VIEWS = {
+    "alle": "Alle",
+    "favoriten": "Favoriten",
+    "ausgeblendet": "Ausgeblendet",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,17 +66,12 @@ class PropertySourceView:
     url: str
     display_area_m2: Decimal | None = None
     usable_area_m2: Decimal | None = None
-    primary_image_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PropertyView:
     property: Property
     sources: tuple[PropertySourceView, ...]
-
-    @property
-    def image_url(self) -> str | None:
-        return next((item.primary_image_url for item in self.sources if item.primary_image_url), None)
 
     @property
     def neutral_area_m2(self) -> Decimal | None:
@@ -114,6 +129,13 @@ class NearbyHouseView:
     road_duration_minutes: float | None = None
 
 
+def _profile_or_503(db: Session):
+    profile = get_seed_profile(db)
+    if profile is None:
+        raise HTTPException(status_code=503, detail="Kandidatenprofil ist noch nicht initialisiert.")
+    return profile
+
+
 def _payload_decimal(value: object | None) -> Decimal | None:
     if value is None:
         return None
@@ -121,14 +143,6 @@ def _payload_decimal(value: object | None) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         return None
-
-
-def _payload_image(payload: dict) -> str | None:
-    for key in ("primary_image_url", "image_url", "thumbnail_url"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.startswith(("https://", "http://")):
-            return value
-    return None
 
 
 def _property_sources(
@@ -168,8 +182,10 @@ def _property_sources(
                     if source_name == "immmo.at"
                     else None
                 ),
-                usable_area_m2=_payload_decimal(payload.get("detail_usable_area_m2")),
-                primary_image_url=_payload_image(payload),
+                usable_area_m2=(
+                    _payload_decimal(payload.get("detail_usable_area_m2"))
+                    or _payload_decimal(payload.get("explicit_usable_area_m2"))
+                ),
             )
         )
     return {key: tuple(value) for key, value in output.items()}
@@ -178,6 +194,22 @@ def _property_sources(
 def _property_views(db: Session, rows: list[Property]) -> list[PropertyView]:
     sources = _property_sources(db, {row.id for row in rows})
     return [PropertyView(property=row, sources=sources.get(row.id, ())) for row in rows]
+
+
+def _property_ui_state(db: Session, profile, rows: list[Property]):
+    property_ids = {row.id for row in rows}
+    states = load_property_states(db, profile.id, property_ids)
+    baseline = novelty_baseline(db, profile)
+    new_ids = {
+        row.id
+        for row in rows
+        if is_new_unviewed(
+            first_seen_at=row.first_seen_at,
+            baseline=baseline,
+            viewed_at=states.get(row.id, CandidatePropertyState()).viewed_at,
+        )
+    }
+    return states, new_ids, cached_image_urls(db, property_ids)
 
 
 def _eur_label(value: Decimal | None) -> str:
@@ -219,6 +251,9 @@ def _property_filter_conditions(filters: HouseFilters) -> list:
         conditions.append(Property.living_area_m2 >= filters.wohn_von)
     if filters.wohn_bis is not None:
         conditions.append(Property.living_area_m2 <= filters.wohn_bis)
+    usable_condition = usable_area_property_condition(filters.nutz_von, filters.nutz_bis)
+    if usable_condition is not None:
+        conditions.append(usable_condition)
     if filters.grund_von is not None:
         conditions.append(Property.plot_area_m2 >= filters.grund_von)
     if filters.grund_bis is not None:
@@ -237,10 +272,12 @@ def _properties_within_radius_for_job_stmt(
     job_id: int,
     radius_km: float,
     house_filters: HouseFilters | None = None,
+    profile_id: int | None = None,
 ):
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
     filters = house_filters or HouseFilters()
+    curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -278,6 +315,7 @@ def _properties_within_radius_for_job_stmt(
         )
         .where(
             *_product_property_conditions(),
+            *curation,
             Property.location.is_not(None),
             *_property_filter_conditions(filters),
         )
@@ -458,6 +496,24 @@ def _route_jobs_from_property(
     return refined
 
 
+def _safe_return_to(value: str) -> str:
+    if value.startswith("/houses") or value.startswith("/jobs"):
+        return value
+    return "/houses"
+
+
+@router.get("/media/properties/{property_id}", include_in_schema=False)
+def property_image(
+    property_id: int,
+    _: AdminDependency,
+    db: DbDependency,
+):
+    path = local_image_path(db, property_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Vorschaubild nicht gefunden.")
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=86400"})
+
+
 @router.get("/houses", include_in_schema=False)
 def houses_page(
     request: Request,
@@ -468,10 +524,16 @@ def houses_page(
     preis_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     wohn_von: Annotated[Decimal | None, Query(ge=0)] = None,
     wohn_bis: Annotated[Decimal | None, Query(ge=0)] = None,
+    nutz_von: Annotated[Decimal | None, Query(ge=0)] = None,
+    nutz_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     grund_von: Annotated[Decimal | None, Query(ge=0)] = None,
     grund_bis: Annotated[Decimal | None, Query(ge=0)] = None,
+    ansicht: Annotated[str, Query()] = "alle",
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
+    profile = _profile_or_503(db)
+    if ansicht not in HOUSE_VIEWS:
+        raise HTTPException(status_code=400, detail="Ungültige Häuseransicht.")
     filters = resolve_house_filters(
         request,
         ort=ort,
@@ -479,10 +541,16 @@ def houses_page(
         preis_bis=preis_bis,
         wohn_von=wohn_von,
         wohn_bis=wohn_bis,
+        nutz_von=nutz_von,
+        nutz_bis=nutz_bis,
         grund_von=grund_von,
         grund_bis=grund_bis,
     )
-    conditions = [*_product_property_conditions(), *_property_filter_conditions(filters)]
+    conditions = [
+        *_product_property_conditions(),
+        property_curation_condition(profile.id, ansicht),
+        *_property_filter_conditions(filters),
+    ]
 
     total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
     page_count = max(1, math.ceil(total / HOUSE_PAGE_SIZE))
@@ -498,23 +566,89 @@ def houses_page(
             .limit(HOUSE_PAGE_SIZE)
         )
     )
+    states, new_ids, image_urls = _property_ui_state(db, profile, rows)
+    stats = {
+        "favoriten": int(
+            db.scalar(
+                select(func.count())
+                .select_from(Property)
+                .where(
+                    *_product_property_conditions(),
+                    property_curation_condition(profile.id, "favoriten"),
+                )
+            )
+            or 0
+        ),
+        "ausgeblendet": int(
+            db.scalar(
+                select(func.count())
+                .select_from(Property)
+                .where(
+                    *_product_property_conditions(),
+                    property_curation_condition(profile.id, "ausgeblendet"),
+                )
+            )
+            or 0
+        ),
+    }
     response = templates.TemplateResponse(
         request=request,
         name="houses.html",
         context={
             "rows": _property_views(db, rows),
+            "states": states,
+            "new_ids": new_ids,
+            "image_urls": image_urls,
             "total": total,
             "page": seite,
             "page_count": page_count,
             "filters": filters,
+            "house_views": HOUSE_VIEWS,
+            "selected_view": ansicht,
+            "stats": stats,
             "system_price_min": PROPERTY_MIN_PRICE_EUR,
             "system_price_max": PROPERTY_MAX_PRICE_EUR,
             "eur_label": _eur_label,
             "area_label": _area_label,
+            "csrf_token": _csrf_token(),
         },
     )
     save_house_filters(response, filters)
     return response
+
+
+@router.post("/houses/{property_id}/favorite", include_in_schema=False)
+def update_property_favorite(
+    property_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    favorite: Annotated[str, Form()],
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    try:
+        set_property_favorite(db, profile, property_id, favorite=favorite == "1")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Immobilie nicht gefunden.") from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
+@router.post("/houses/{property_id}/hidden", include_in_schema=False)
+def update_property_hidden(
+    property_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    hidden: Annotated[str, Form()],
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    try:
+        set_property_hidden(db, profile, property_id, hidden=hidden == "1")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Immobilie nicht gefunden.") from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
 
 
 @router.get("/houses/{property_id}", include_in_schema=False)
@@ -525,15 +659,18 @@ def house_detail(
     db: DbDependency,
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
 ):
+    profile = _profile_or_503(db)
     property_row = db.scalar(
         select(Property).where(
             Property.id == property_id,
-            Property.status == ListingStatus.ACTIVE,
-            product_visible_property_condition(),
+            *_product_property_conditions(),
+            property_curation_condition(profile.id, "alle"),
         )
     )
     if property_row is None:
         raise HTTPException(status_code=404, detail="Immobilie nicht gefunden.")
+    mark_property_viewed(db, profile, property_id)
+    states, _new_ids, image_urls = _property_ui_state(db, profile, [property_row])
     view = _property_views(db, [property_row])[0]
     jobs = _nearby_jobs(db, property_id, radius_km)
     return templates.TemplateResponse(
@@ -541,11 +678,14 @@ def house_detail(
         name="house_detail.html",
         context={
             "house": view,
+            "house_state": states.get(property_id, CandidatePropertyState()),
+            "image_url": image_urls.get(property_id),
             "jobs": jobs,
             "radius_km": radius_km,
             "eur_label": _eur_label,
             "area_label": _area_label,
             "annual_salary_label": annual_salary_label,
+            "csrf_token": _csrf_token(),
         },
     )
 
@@ -559,12 +699,20 @@ def job_detail(
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
+    profile = _profile_or_503(db)
     fit = next((row for row in _visible_fit_rows(db) if row.job.id == job_id), None)
     if fit is None:
         raise HTTPException(status_code=404, detail="Stelle nicht gefunden.")
+    mark_job_viewed(db, profile, job_id)
+    fit = next((row for row in _visible_fit_rows(db) if row.job.id == job_id), fit)
 
     filters = load_house_filters(request)
-    base = _properties_within_radius_for_job_stmt(job_id, radius_km, filters)
+    base = _properties_within_radius_for_job_stmt(
+        job_id,
+        radius_km,
+        filters,
+        profile_id=profile.id,
+    )
     total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
     page_count = max(1, math.ceil(total / NEARBY_HOUSE_PAGE_SIZE))
     if seite > page_count and total:
@@ -618,6 +766,7 @@ def job_detail(
     property_ids = {item.property_id for item in spatial}
     properties = list(db.scalars(select(Property).where(Property.id.in_(property_ids))))
     property_views = {item.property.id: item for item in _property_views(db, properties)}
+    states, new_ids, image_urls = _property_ui_state(db, profile, properties)
     houses = [
         NearbyHouseView(
             spatial=item,
@@ -643,6 +792,9 @@ def job_detail(
         context={
             "fit": fit,
             "houses": houses,
+            "states": states,
+            "new_ids": new_ids,
+            "image_urls": image_urls,
             "radius_km": radius_km,
             "total": total,
             "page": seite,
@@ -654,6 +806,7 @@ def job_detail(
             "eur_label": _eur_label,
             "area_label": _area_label,
             "annual_salary_label": annual_salary_label,
+            "csrf_token": _csrf_token(),
         },
     )
     save_house_filters(response, filters)
