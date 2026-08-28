@@ -39,6 +39,7 @@
     .job h3 { margin: 3px 0 7px; font-size: 1rem; }
     .badges { display: flex; flex-wrap: wrap; gap: 6px; font-size: .8rem; }
     .badge { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 7px; }
+    .hard { border-color: color-mix(in srgb, #d33 60%, transparent); background: color-mix(in srgb, #d33 10%, Canvas); }
     .distance { text-align: right; }
     .distance strong { display: block; font-size: 1.1rem; }
     .distance .air { font-size: .78rem; opacity: .65; margin-top: 4px; }
@@ -92,8 +93,8 @@
 
   <div class="nearby-head">
     <div>
-      <h2>Passende Stellen im Umkreis</h2>
-      <div class="semantics">Umkreis nach Luftlinie zwischen aufgelösten PLZ-/Ortszentren; Straßenzeit wird zusätzlich berechnet, wenn Routing verfügbar ist.</div>
+      <h2>Stellen im Umkreis</h2>
+      <div class="semantics">Alle aktuellen, nicht ausgeblendeten Stellen mit auflösbarer Position innerhalb des gewählten Luftlinien-Radius. Passung und Unvereinbarkeit bleiben sichtbar; Straßenzeit wird zusätzlich berechnet, wenn Routing verfügbar ist.</div>
     </div>
     <form class="radius" method="get" action="/houses/{{ house.property.id }}">
       <label>Umkreis (km)
@@ -109,8 +110,13 @@
       {% set salary = annual_salary_label(row.job) %}
       <article class="job">
         <div>
-          <div class="score">{{ row.result.score }} <small>/100</small></div>
-          <div class="company">Passung</div>
+          {% if row.result.score is not none %}
+            <div class="score">{{ row.result.score }} <small>/100</small></div>
+            <div class="company">Passung</div>
+          {% else %}
+            <div class="score">–</div>
+            <div class="company">Unbewertet</div>
+          {% endif %}
         </div>
         <div>
           <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
@@ -119,6 +125,7 @@
             {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
             {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
             {% if row.favorite %}<span class="badge">Favorit</span>{% endif %}
+            {% if row.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ row.hard_labels|join(', ') }}</span>{% endif %}
           </div>
         </div>
         <div class="distance">
@@ -133,7 +140,7 @@
         </div>
       </article>
     {% else %}
-      <div class="empty">Keine passende geolokalisierte Stelle innerhalb von {{ radius_km|round|int }} km gefunden.</div>
+      <div class="empty">Keine aktuelle geolokalisierte Stelle innerhalb von {{ radius_km|round|int }} km gefunden.</div>
     {% endfor %}
   </div>
 </main>
