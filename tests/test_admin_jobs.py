@@ -122,7 +122,7 @@ def test_admin_jobs_live_ranking_filters_and_labels(monkeypatch) -> None:
         with TestClient(app) as client:
             page = client.get("/admin/jobs")
             assert page.status_code == 200
-            assert "Stellenranking" in page.text
+            assert "Passende Stellen" in page.text
             assert "Mechanical Design Engineer" in page.text
             assert "Elektronik-Entwicklungsingenieur" not in page.text
             assert "Verborgene Maschinenbau-Stelle" not in page.text
