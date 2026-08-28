@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from decimal import Decimal
 
 from sqlalchemy import delete, select
@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.jobs.concept_catalog import (
     CONCEPT_SEEDS,
     EXTRACTOR_VERSION,
+    ConceptMatch,
     ConceptSeed,
     JobTextSnapshot,
     extract_concepts,
@@ -38,6 +39,19 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=20,
         help="Maximum unmatched job titles to print in the summary (default: 20).",
+    )
+    parser.add_argument(
+        "--audit-concept",
+        action="append",
+        default=[],
+        metavar="KIND:SLUG",
+        help="Print matching jobs/evidence for a concept; may be repeated.",
+    )
+    parser.add_argument(
+        "--audit-limit",
+        type=int,
+        default=20,
+        help="Maximum jobs printed per audited concept (default: 20).",
     )
     return parser.parse_args()
 
@@ -135,7 +149,7 @@ def _database_catalog(session: Session) -> tuple[ConceptSeed, ...]:
 def _extract(
     jobs: list[Job],
     catalog: tuple[ConceptSeed, ...],
-) -> dict[int, list]:
+) -> dict[int, list[ConceptMatch]]:
     return {
         job.id: extract_concepts(
             JobTextSnapshot(job_id=job.id, title=job.title, description=job.description),
@@ -145,15 +159,35 @@ def _extract(
     }
 
 
+def _concept_key(match: ConceptMatch) -> tuple[str, str]:
+    return match.kind.value, match.slug
+
+
+def _parse_audit_concepts(values: list[str]) -> list[tuple[str, str]]:
+    parsed: list[tuple[str, str]] = []
+    valid_kinds = {kind.value for kind in ConceptKind}
+    for value in values:
+        kind, separator, slug = value.partition(":")
+        if not separator or kind not in valid_kinds or not slug:
+            raise ValueError(
+                f"invalid --audit-concept {value!r}; expected KIND:SLUG with kind in "
+                f"{','.join(sorted(valid_kinds))}"
+            )
+        parsed.append((kind, slug))
+    return parsed
+
+
 def _print_summary(
     jobs: list[Job],
-    matches_by_job: dict[int, list],
+    matches_by_job: dict[int, list[ConceptMatch]],
     unmatched_limit: int,
+    audit_concepts: list[tuple[str, str]],
+    audit_limit: int,
 ) -> None:
     matched_jobs = [job for job in jobs if matches_by_job[job.id]]
     evidence_count = sum(len(matches) for matches in matches_by_job.values())
     concept_keys = {
-        (match.kind.value, match.slug)
+        _concept_key(match)
         for matches in matches_by_job.values()
         for match in matches
     }
@@ -162,11 +196,15 @@ def _print_summary(
         for matches in matches_by_job.values()
         for match in matches
     )
-    by_concept: Counter[tuple[str, str]] = Counter(
-        (match.kind.value, match.slug)
-        for matches in matches_by_job.values()
-        for match in matches
-    )
+    jobs_by_kind: dict[str, set[int]] = defaultdict(set)
+    jobs_by_concept: dict[tuple[str, str], set[int]] = defaultdict(set)
+    fields_by_concept: Counter[tuple[str, str, str]] = Counter()
+    for job_id, matches in matches_by_job.items():
+        for match in matches:
+            key = _concept_key(match)
+            jobs_by_kind[match.kind.value].add(job_id)
+            jobs_by_concept[key].add(job_id)
+            fields_by_concept[(*key, match.field)] += 1
 
     print(f"extractor_version={EXTRACTOR_VERSION}")
     print(f"relevant_active_jobs={len(jobs)}")
@@ -175,11 +213,21 @@ def _print_summary(
     print(f"distinct_concepts_matched={len(concept_keys)}")
     print(f"evidence_rows={evidence_count}")
     for kind in ("role", "domain", "task", "method", "tool"):
+        print(f"jobs_{kind}={len(jobs_by_kind[kind])}")
         print(f"evidence_{kind}={by_kind[kind]}")
 
+    ranked_concepts = sorted(
+        concept_keys,
+        key=lambda key: (-len(jobs_by_concept[key]), key[0], key[1]),
+    )
     print("top_concepts:")
-    for (kind, slug), count in by_concept.most_common(30):
-        print(f"  {kind}:{slug} jobs_or_fields={count}")
+    for kind, slug in ranked_concepts[:40]:
+        key = (kind, slug)
+        print(
+            f"  {kind}:{slug} jobs={len(jobs_by_concept[key])} "
+            f"title={fields_by_concept[(*key, 'title')]} "
+            f"description={fields_by_concept[(*key, 'description')]}"
+        )
 
     unmatched = [job for job in jobs if not matches_by_job[job.id]]
     if unmatched:
@@ -187,11 +235,31 @@ def _print_summary(
         for job in unmatched[: max(0, unmatched_limit)]:
             print(f"  job={job.id} title={job.title}")
 
+    if audit_concepts:
+        jobs_by_id = {job.id: job for job in jobs}
+        print("audited_concepts:")
+        for key in audit_concepts:
+            matching_job_ids = sorted(jobs_by_concept.get(key, set()))
+            print(f"  {key[0]}:{key[1]} jobs={len(matching_job_ids)}")
+            for job_id in matching_job_ids[: max(0, audit_limit)]:
+                evidence = [
+                    match
+                    for match in matches_by_job[job_id]
+                    if _concept_key(match) == key
+                ]
+                evidence_label = ", ".join(
+                    f"{match.field}:{match.alias!r}" for match in evidence
+                )
+                print(
+                    f"    job={job_id} title={jobs_by_id[job_id].title} "
+                    f"evidence={evidence_label}"
+                )
+
 
 def _persist(
     session: Session,
     jobs: list[Job],
-    matches_by_job: dict[int, list],
+    matches_by_job: dict[int, list[ConceptMatch]],
 ) -> None:
     _seed_vocabulary(session)
     catalog = _database_catalog(session)
@@ -232,10 +300,17 @@ def _persist(
 
 def main() -> None:
     args = parse_args()
+    audit_concepts = _parse_audit_concepts(args.audit_concept)
     with SessionLocal() as session:
         jobs = _relevant_active_jobs(session)
         matches_by_job = _extract(jobs, CONCEPT_SEEDS)
-        _print_summary(jobs, matches_by_job, args.unmatched_limit)
+        _print_summary(
+            jobs,
+            matches_by_job,
+            args.unmatched_limit,
+            audit_concepts,
+            args.audit_limit,
+        )
 
         if not args.apply:
             print("mode=dry-run no database changes")
