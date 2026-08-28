@@ -208,7 +208,10 @@ def _same_source_location_blockers(
             if left_locations & right_locations:
                 continue
             source_labels = ",".join(
-                sorted(source_names.get(source_id, f"source:{source_id}") for source_id in shared_sources)
+                sorted(
+                    source_names.get(source_id, f"source:{source_id}")
+                    for source_id in shared_sources
+                )
             )
             blockers.append(
                 "same-source explicit locations conflict; "
@@ -393,7 +396,7 @@ def apply_merge(
             )
             if existing is not None:
                 _enrich_location(existing, location)
-                session.delete(location)
+                job.locations.remove(location)
                 locations_deduplicated += 1
             else:
                 location.job = survivor
