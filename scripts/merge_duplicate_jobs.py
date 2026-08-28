@@ -5,6 +5,7 @@ import argparse
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.jobs.candidate_job_store import merge_candidate_job_states
 from app.jobs.merge import apply_merge, build_merge_plan, load_merge_group
 from app.models import Source
 
@@ -80,6 +81,13 @@ def main() -> None:
         if not plan.safe:
             raise SystemExit("Refusing merge: plan is not fail-closed safe")
 
+        # Keep candidate curation in the same transaction as the canonical merge. If the
+        # merge raises, the Session context rolls these uncommitted state moves back too.
+        merge_candidate_job_states(
+            session,
+            survivor_id=plan.survivor_id,
+            absorbed_ids=plan.absorbed_ids,
+        )
         result = apply_merge(session, jobs, source_names=source_names)
         print()
         print("mode=apply")
