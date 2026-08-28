@@ -16,21 +16,21 @@ from app.crawling.shards import sync_source_shards
 from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
-from app.property_acquisition import filter_property_items_by_budget
+from app.property_acquisition import annotate_property_items_by_budget
 from app.sources.base import PropertySource, RawProperty, SourceFetchError
 
 
-def _budget_filter_with_cursor(
+def _annotate_budget_with_cursor(
     items: list[RawProperty],
     cursor: dict,
-) -> tuple[list[RawProperty], dict]:
-    accepted, counts = filter_property_items_by_budget(items)
+) -> dict:
+    counts = annotate_property_items_by_budget(items)
     next_cursor = dict(cursor)
-    next_cursor["acquisition_budget_accepted"] = counts["accepted"]
-    next_cursor["acquisition_budget_price_unknown"] = counts["price_unknown"]
-    next_cursor["acquisition_budget_price_below_min"] = counts["price_below_min"]
-    next_cursor["acquisition_budget_price_above_max"] = counts["price_above_max"]
-    return accepted, next_cursor
+    next_cursor["product_visible"] = counts["accepted"]
+    next_cursor["product_price_unknown"] = counts["price_unknown"]
+    next_cursor["product_price_below_min"] = counts["price_below_min"]
+    next_cursor["product_price_above_max"] = counts["price_above_max"]
+    return next_cursor
 
 
 async def run_property_source(
@@ -40,7 +40,12 @@ async def run_property_source(
     adapter: PropertySource,
     reconciliation: bool = False,
 ) -> tuple[CrawlRun, CoverageSummary]:
-    """Run all enabled shards sequentially and account for incomplete coverage."""
+    """Run all enabled shards sequentially and account for incomplete coverage.
+
+    All parsed property observations are persisted for lifecycle and continuity. The
+    father-facing visibility budget is stored as source-observation metadata and must not
+    shrink `seen` coverage or make out-of-budget listings look disappeared.
+    """
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
     specs_by_key = {spec.key: spec for spec in specs}
@@ -69,22 +74,19 @@ async def run_property_source(
                 cursor=shard.cursor,
                 reconciliation=reconciliation,
             )
-            accepted_items, next_cursor = _budget_filter_with_cursor(
-                batch.items,
-                batch.next_cursor,
-            )
+            next_cursor = _annotate_budget_with_cursor(batch.items, batch.next_cursor)
             new_count, updated_count = ingest_properties(
                 session,
                 source=source,
                 run=run,
-                items=accepted_items,
+                items=batch.items,
             )
 
             now = datetime.now(UTC)
             shard_run.status = RunStatus.SUCCESS
             shard_run.finished_at = now
             shard_run.pages_fetched = batch.pages_fetched
-            shard_run.items_seen = len(accepted_items)
+            shard_run.items_seen = len(batch.items)
             shard_run.items_new = new_count
             shard_run.items_updated = updated_count
             shard_run.source_reported_count = batch.source_reported_count
@@ -93,7 +95,7 @@ async def run_property_source(
             shard_run.next_cursor = next_cursor
 
             shard.cursor = next_cursor
-            shard.last_item_count = len(accepted_items)
+            shard.last_item_count = len(batch.items)
             shard.last_success_at = now
             shard.consecutive_failures = 0
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
@@ -115,8 +117,9 @@ async def run_property_source(
                     raise RuntimeError(
                         f"Could not reload partial-run state for {source.name}/{spec.key}"
                     ) from exc
-                partial_items, partial_cursor = _budget_filter_with_cursor(
-                    cast(list[RawProperty], exc.partial_items),
+                partial_items = cast(list[RawProperty], exc.partial_items)
+                partial_cursor = _annotate_budget_with_cursor(
+                    partial_items,
                     exc.next_cursor,
                 )
                 partial_seen = len(partial_items)
