@@ -24,20 +24,44 @@ from app.sources.property.immmo_v2 import (
     _AnchorOccurrence,
     _is_title_text,
     _pagination_state,
-    _plot_area,
     _VisibleStreamParser,
 )
 from app.sources.property.immmo_v2 import ImmmoPropertySource as _ImmmoPropertySourceV2
 
+AREA_NUMBER_PATTERN = r"([\d.]+(?:,\d+)?)"
+AREA_PREFIX_PATTERN = r"(?:ca\.?\s*|rund\s+|knapp\s+)?"
+AREA_UNIT_PATTERN = r"\s*m(?:²|2)\b"
+LIVING_AREA_LABEL_PATTERN = r"(?:Wohnfläche|Wohn[\s/-]*Nutzfläche)"
+PLOT_AREA_LABEL_PATTERN = r"(?:Grundstücksfläche|Grundstück|Grund)"
+
 LIVING_AREA_PATTERNS = (
     re.compile(
-        r"\bWohn(?:[-\s]?nutz)?fläche\b\s*(?:von|:)?\s*"
-        r"(?:ca\.?\s*|rund\s+|knapp\s+)?([\d.]+(?:,\d+)?)\s*m(?:²|2)\b",
+        rf"\b{LIVING_AREA_LABEL_PATTERN}\b\s*(?:von|:)?\s*"
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}",
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:ca\.?\s*|rund\s+|knapp\s+)?([\d.]+(?:,\d+)?)\s*m(?:²|2)\s+"
-        r"Wohn(?:[-\s]?nutz)?fläche\b",
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
+        rf"(?:gewichtete\s+)?{LIVING_AREA_LABEL_PATTERN}\b",
+        re.IGNORECASE,
+    ),
+)
+
+# Prefer value-before-label plot evidence. IMMMO card text can contain several area labels
+# from one downstream provider, and production audits showed that a later label-first value
+# may refer to a different metric. A nearby "386 m² Grund" or "793 m² Grundstück" is
+# stronger evidence for plot area than a subsequent generic metadata pair.
+PLOT_AREA_VALUE_FIRST_PATTERNS = (
+    re.compile(
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
+        rf"(?:groß(?:en|es|e)?\s+)?{PLOT_AREA_LABEL_PATTERN}\b",
+        re.IGNORECASE,
+    ),
+)
+PLOT_AREA_LABEL_FIRST_PATTERNS = (
+    re.compile(
+        rf"\bGrundstücksfläche\b\s*(?:von|:)?\s*"
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}",
         re.IGNORECASE,
     ),
 )
@@ -104,6 +128,15 @@ def _explicit_living_area(text: str) -> Decimal | None:
         match = pattern.search(text)
         if match is not None:
             return _decimal(match.group(1))
+    return None
+
+
+def _explicit_plot_area(text: str) -> Decimal | None:
+    for patterns in (PLOT_AREA_VALUE_FIRST_PATTERNS, PLOT_AREA_LABEL_FIRST_PATTERNS):
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match is not None:
+                return _decimal(match.group(1))
     return None
 
 
@@ -205,7 +238,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             display_area = None
 
         explicit_living_area = _explicit_living_area(card_text)
-        explicit_plot_area = _plot_area(card_text)
+        explicit_plot_area = _explicit_plot_area(card_text)
         area_semantics = _display_area_semantics(
             display_area=display_area,
             explicit_living_area=explicit_living_area,
@@ -253,7 +286,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v10",
+                "format": "immmo-search-discovery-v11",
                 "original_host": original_host,
                 "original_url_missing": original_url_missing,
                 "identity_stable": not original_url_missing,
