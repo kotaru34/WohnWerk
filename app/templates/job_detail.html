@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – {{ fit.job.title }}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1450px; margin: 0 auto; padding: 28px 22px 70px; }
+    a { color: inherit; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .back { display: inline-block; margin-bottom: 14px; opacity: .75; }
+    .job-head { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(220px, .45fr); gap: 20px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 14px; padding: 18px; }
+    .score { font-size: 2.2rem; font-weight: 760; line-height: 1; }
+    .score small { font-size: .75rem; opacity: .55; }
+    .coverage { font-size: .78rem; opacity: .68; margin-top: 8px; }
+    .company { opacity: .7; margin-bottom: 4px; }
+    h1 { margin: 0 0 9px; line-height: 1.2; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .badge { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; font-size: .82rem; }
+    .links { font-size: .9rem; line-height: 1.55; }
+    .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    .nearby-head h2 { margin: 0; }
+    .semantics { margin-top: 5px; font-size: .82rem; opacity: .65; max-width: 760px; }
+    .radius { display: flex; gap: 8px; align-items: end; }
+    .radius label { display: grid; gap: 4px; font-size: .8rem; opacity: .8; }
+    input { width: 90px; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 9px; background: Field; color: FieldText; }
+    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    .result-line { display: flex; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; }
+    .media { aspect-ratio: 16 / 9; background: color-mix(in srgb, CanvasText 7%, Canvas); display: grid; place-items: center; overflow: hidden; }
+    .media img { width: 100%; height: 100%; object-fit: cover; }
+    .placeholder { opacity: .42; font-size: .84rem; }
+    .body { padding: 13px; }
+    .location { font-size: .82rem; opacity: .68; }
+    h3 { margin: 4px 0 8px; font-size: .98rem; line-height: 1.35; }
+    .price { font-size: 1.2rem; font-weight: 750; margin: 8px 0; }
+    .facts { display: flex; flex-wrap: wrap; gap: 5px; font-size: .78rem; }
+    .fact { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 7px; }
+    .distance { margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); font-size: .84rem; }
+    .distance strong { display: block; font-size: 1.05rem; }
+    .pagination { margin-top: 24px; display: flex; justify-content: center; gap: 10px; align-items: center; }
+    .pagination a { text-decoration: none; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 8px; padding: 7px 10px; }
+    .empty { padding: 28px 0; opacity: .7; }
+    @media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 850px) { .job-head { grid-template-columns: 90px 1fr; } .links { grid-column: 2; } .nearby-head { flex-direction: column; align-items: start; } }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/houses">Häuser</a>
+    <a href="/jobs" class="active">Stellen</a>
+  </nav>
+
+  <a class="back" href="/jobs">← Zurück zu den Stellen</a>
+
+  {% set salary = annual_salary_label(fit.job) %}
+  <section class="job-head">
+    <div>
+      <div class="score">{{ fit.result.score }} <small>/100</small></div>
+      <div class="coverage">Passung · Bewertungsbasis {{ (fit.result.preference_coverage * 100)|round|int }} %</div>
+    </div>
+    <div>
+      <div class="company">{{ fit.job.company or 'Firma unbekannt' }}</div>
+      <h1>{{ fit.job.title }}</h1>
+      <div class="badges">
+        {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
+        {% for location in fit.locations %}<span class="badge">{{ location }}</span>{% endfor %}
+        {% if fit.favorite %}<span class="badge">Favorit</span>{% endif %}
+      </div>
+    </div>
+    <div class="links">
+      {% if fit.links %}
+        <strong>Stellenanzeige</strong><br>
+        {% for link in fit.links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="nearby-head">
+    <div>
+      <h2>Häuser im Umkreis</h2>
+      <div class="semantics">Alle aktiven geolokalisierten Immobilien innerhalb des gewählten Luftlinien-Radius. Die angezeigte Straßenzeit wird nur für die aktuelle Seite zusätzlich berechnet.</div>
+    </div>
+    <form class="radius" method="get" action="/jobs/{{ fit.job.id }}">
+      <label>Umkreis (km)
+        <input name="radius_km" type="number" min="5" max="100" step="5" value="{{ radius_km|round|int }}">
+      </label>
+      <button type="submit">Anzeigen</button>
+    </form>
+  </div>
+
+  <div class="result-line">
+    <strong>{{ total }} Immobilien im Umkreis</strong>
+    {% if page_count > 1 %}<span>Seite {{ page }} / {{ page_count }}</span>{% endif %}
+  </div>
+
+  <div class="grid">
+    {% for item in houses %}
+      {% set view = item.property %}
+      {% set house = view.property %}
+      <article class="house">
+        <a class="media" href="/houses/{{ house.id }}?radius_km={{ radius_km|round|int }}">
+          {% if view.image_url %}
+            <img src="{{ view.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          {% else %}
+            <span class="placeholder">Noch kein Vorschaubild gespeichert</span>
+          {% endif %}
+        </a>
+        <div class="body">
+          <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
+          <h3><a href="/houses/{{ house.id }}?radius_km={{ radius_km|round|int }}">{{ house.title }}</a></h3>
+          <div class="price">{{ eur_label(house.price_eur) }}</div>
+          <div class="facts">
+            {% if area_label(house.living_area_m2) %}
+              <span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>
+            {% elif area_label(view.neutral_area_m2) %}
+              <span class="fact">Fläche {{ area_label(view.neutral_area_m2) }}</span>
+            {% endif %}
+            {% if area_label(view.visible_plot_area_m2) %}<span class="fact">Grund {{ area_label(view.visible_plot_area_m2) }}</span>{% endif %}
+          </div>
+          <div class="distance">
+            {% if item.road_duration_minutes is not none %}
+              <strong>{{ item.road_duration_minutes|round|int }} min Fahrt · {{ '%.1f'|format(item.road_distance_km) }} km Straße</strong>
+            {% endif %}
+            Luftlinie {{ '%.1f'|format(item.spatial.distance_km) }} km
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty">Keine aktive Immobilie innerhalb von {{ radius_km|round|int }} km gefunden.</div>
+    {% endfor %}
+  </div>
+
+  {% if page_count > 1 %}
+    <nav class="pagination" aria-label="Seitennavigation">
+      {% if page > 1 %}<a href="/jobs/{{ fit.job.id }}?radius_km={{ radius_km }}&seite={{ page - 1 }}">Zurück</a>{% endif %}
+      <span>Seite {{ page }} / {{ page_count }}</span>
+      {% if page < page_count %}<a href="/jobs/{{ fit.job.id }}?radius_km={{ radius_km }}&seite={{ page + 1 }}">Weiter</a>{% endif %}
+    </nav>
+  {% endif %}
+</main>
+</body>
+</html>
