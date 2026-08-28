@@ -145,6 +145,7 @@ def main() -> None:
                 for scope, weight in DEFAULT_FIT_POLICY.scope_weights.items()
             )
         )
+        print(f"positive_evidence_budget={DEFAULT_FIT_POLICY.positive_evidence_budget:.2f}")
         print(f"relevant_active_jobs={len(jobs)}")
         print(f"jobs_scored={len(scored)}")
         print(f"jobs_unscored={len(jobs) - len(scored)}")
@@ -202,9 +203,17 @@ def main() -> None:
                 _print_job(job, result)
                 for item in result.contributions:
                     print(
-                        f"      {item.kind.value}:{item.slug} state={item.state.value} "
-                        f"evidence_weight={item.evidence_weight:.3f} "
-                        f"contribution={item.contribution:+.3f}"
+                        f"      contribution {item.kind.value}:{item.slug} "
+                        f"state={item.state.value} evidence_weight={item.evidence_weight:.3f} "
+                        f"value={item.contribution:+.3f}"
+                    )
+                print("      evidence:")
+                for item in evidence_by_job.get(job_id, []):
+                    state = PROFILE_PREFERENCES.get((item.kind, item.slug))
+                    state_label = state.value if state is not None else "unrated"
+                    print(
+                        f"        {item.kind.value}:{item.slug} scope={item.scope} "
+                        f"confidence={item.confidence:.2f} preference={state_label}"
                     )
 
         print("mode=read-only no database changes")
