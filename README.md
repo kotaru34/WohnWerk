@@ -1,27 +1,38 @@
 # WohnWerk
 
-Self-hosted Austrian home and job discovery/matching system.
+Austria-first, self-hosted property + job acquisition and recommendation system.
 
-WohnWerk collects Austrian houses for sale and job vacancies from multiple independent sources, normalizes and deduplicates them, ranks jobs for candidate fit, and matches homes and jobs by geographic radius using PostgreSQL/PostGIS.
+Current architecture keeps source lifecycle, canonical identity, normalized professional concepts, candidate preference/fit and geography as separate layers.
 
-## MVP scope
+## Current production state
 
-- Austria only
-- property and job discovery from source-specific adapters
-- coverage-first crawling with explicit shard/reconciliation state
-- Austrian PLZ reference data with PostGIS geography
-- house -> nearby jobs and job -> nearby houses
-- preserved source URLs and raw source payloads
-- local LAN web UI
-- optional external AI enrichment; core crawling and matching must work without AI
+- Properties: IMMMO + s REAL.
+- Jobs: supplementary ATS feeds plus low-impact Austrian broad-board frontiers.
+- Canonical job corpus: 156 relevant jobs after reviewed fail-closed dedupe.
+- Normalized job concepts: migration `0007_job_concepts` applied; 747 deterministic evidence rows across 156 jobs.
+- Evidence distinguishes title `primary` identity from description `context`.
 
-## Current live-data foundation
+## Current development stage
 
-- RTR Austrian PLZ import
-- BEV-derived PLZ centroids
-- coverage-aware crawl runs and source shards
-- generic OpenImmo full-feed property adapter
-- ImmoAds.at Austrian house-for-sale adapter with incremental and full reconciliation modes
-- operational source-health CLI
+Candidate concept preferences use four states:
 
-See `docs/architecture.md`, `docs/requirements.md`, and `docs/sources.md` for the current design.
+- `can_want`
+- `can_not_want`
+- `cannot_want`
+- `cannot_not_want`
+
+The current fit engine is versioned and read-only. Do not apply migration `0008_candidate_preferences` until the production ranking audit has been reviewed.
+
+Run:
+
+```bash
+python scripts/candidate_fit_audit.py --limit 25
+```
+
+For detailed contribution inspection:
+
+```bash
+python scripts/candidate_fit_audit.py --job-id <JOB_ID>
+```
+
+`HANDOFF.md` is the authoritative detailed checkpoint and work order.
