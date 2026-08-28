@@ -92,10 +92,12 @@ class FitPolicy:
     scope_weights: dict[str, float]
     kind_weights: dict[ConceptKind, float]
     positive_evidence_budget: float
+    hard_primary_incompatibility_cap: int
+    hard_incompatibility_kinds: frozenset[ConceptKind]
 
 
 DEFAULT_FIT_POLICY = FitPolicy(
-    version="candidate-fit-2026-08-28-v2",
+    version="candidate-fit-2026-08-28-v3",
     # Desire is intentionally slightly stronger than current capability: an aspirational
     # concept is mildly positive, while a known-but-unwanted concept is mildly negative.
     state_values={
@@ -116,6 +118,11 @@ DEFAULT_FIT_POLICY = FitPolicy(
     # Positive fit claims need corroboration. A single generic role/domain should not
     # saturate to 100; roughly role + domain + task is enough for full positive confidence.
     positive_evidence_budget=3.0,
+    # A primary role/domain that the candidate both cannot and does not want is a hard
+    # incompatibility. Transferable positive skills remain visible in contributions, but
+    # they must not turn the vacancy into a recommendation candidate.
+    hard_primary_incompatibility_cap=25,
+    hard_incompatibility_kinds=frozenset({ConceptKind.ROLE, ConceptKind.DOMAIN}),
 )
 
 
@@ -132,8 +139,16 @@ class FitContribution:
     kind: ConceptKind
     slug: str
     state: CandidatePreferenceState
+    scope: str
     evidence_weight: float
     contribution: float
+
+
+@dataclass(frozen=True, slots=True)
+class FitHardConstraint:
+    kind: ConceptKind
+    slug: str
+    state: CandidatePreferenceState
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +159,7 @@ class JobFitResult:
     total_weight: float
     preference_coverage: float
     contributions: tuple[FitContribution, ...]
+    hard_constraints: tuple[FitHardConstraint, ...]
 
 
 def score_job_concepts(
@@ -159,13 +175,13 @@ def score_job_concepts(
     evidence strength so context cannot become an extreme identity signal by itself.
 
     Positive scores additionally use a minimum evidence budget: one attractive generic
-    concept can move a job above neutral but cannot prove an exceptional fit alone. Negative
-    evidence is intentionally not given that optimism floor, so a primary hard incompatibility
-    can still veto a vacancy. Unrated concepts do not bias the signed score but reduce
-    preference coverage.
+    concept can move a job above neutral but cannot prove an exceptional fit alone. Primary
+    role/domain evidence rated cannot+not-want is exposed as a hard incompatibility and caps
+    the score even when transferable positive evidence exists. Context mentions never create
+    a hard incompatibility. Unrated concepts do not bias score but reduce preference coverage.
     """
 
-    strongest: dict[tuple[ConceptKind, str], tuple[float, float]] = {}
+    strongest: dict[tuple[ConceptKind, str], tuple[float, float, str]] = {}
     for item in evidence:
         scope_weight = policy.scope_weights.get(item.scope)
         if scope_weight is None:
@@ -177,14 +193,15 @@ def score_job_concepts(
         key = (item.kind, item.slug)
         current = strongest.get(key)
         if current is None or effective_weight > current[1]:
-            strongest[key] = (normalization_weight, effective_weight)
+            strongest[key] = (normalization_weight, effective_weight, item.scope)
 
-    total_weight = sum(normalization for normalization, _effective in strongest.values())
+    total_weight = sum(normalization for normalization, _effective, _scope in strongest.values())
     rated_weight = 0.0
     signed_total = 0.0
     contributions: list[FitContribution] = []
+    hard_constraints: list[FitHardConstraint] = []
 
-    for key, (normalization_weight, effective_weight) in strongest.items():
+    for key, (normalization_weight, effective_weight, scope) in strongest.items():
         state = preferences.get(key)
         if state is None:
             continue
@@ -196,10 +213,19 @@ def score_job_concepts(
                 kind=key[0],
                 slug=key[1],
                 state=state,
+                scope=scope,
                 evidence_weight=effective_weight,
                 contribution=contribution,
             )
         )
+        if (
+            scope == "primary"
+            and key[0] in policy.hard_incompatibility_kinds
+            and state == CandidatePreferenceState.CANNOT_NOT_WANT
+        ):
+            hard_constraints.append(
+                FitHardConstraint(kind=key[0], slug=key[1], state=state)
+            )
 
     coverage = rated_weight / total_weight if total_weight else 0.0
     if rated_weight == 0.0:
@@ -210,6 +236,7 @@ def score_job_concepts(
             total_weight=total_weight,
             preference_coverage=coverage,
             contributions=(),
+            hard_constraints=(),
         )
 
     normalization_denominator = rated_weight
@@ -217,8 +244,13 @@ def score_job_concepts(
         normalization_denominator = max(rated_weight, policy.positive_evidence_budget)
 
     signed_score = max(-1.0, min(1.0, signed_total / normalization_denominator))
+    if hard_constraints:
+        cap_signed_score = (policy.hard_primary_incompatibility_cap - 50.0) / 50.0
+        signed_score = min(signed_score, cap_signed_score)
+
     score = round(50.0 + 50.0 * signed_score)
     contributions.sort(key=lambda item: abs(item.contribution), reverse=True)
+    hard_constraints.sort(key=lambda item: (item.kind.value, item.slug))
     return JobFitResult(
         score=score,
         signed_score=signed_score,
@@ -226,4 +258,5 @@ def score_job_concepts(
         total_weight=total_weight,
         preference_coverage=coverage,
         contributions=tuple(contributions),
+        hard_constraints=tuple(hard_constraints),
     )
