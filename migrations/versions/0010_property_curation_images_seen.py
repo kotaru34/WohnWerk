@@ -1,13 +1,13 @@
 """Add property curation, local image cache and seen/new state.
 
-Revision ID: 0010_property_curation_images_seen
+Revision ID: 0010_property_activity
 Revises: 0009_candidate_job_preferences
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0010_property_curation_images_seen"
+revision = "0010_property_activity"
 down_revision = "0009_candidate_job_preferences"
 branch_labels = None
 depends_on = None
