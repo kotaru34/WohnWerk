@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from app.property_thumbnail_cache import _LinkedThumbnailParser, _comparison_url
+from app.property_thumbnail_cache import _comparison_url, _LinkedThumbnailParser
 from app.sources.base import RawProperty, SourceBatch, SourceShardSpec
 from app.sources.property.immmo_v3 import ImmmoPropertySource as _ImmmoPropertySource
 from app.sources.property.sreal_v2 import SRealPropertySource as _SRealPropertySource
