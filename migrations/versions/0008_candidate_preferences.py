@@ -54,6 +54,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("state", sa.String(length=32), nullable=False),
+        sa.Column("source", sa.String(length=20), nullable=False, server_default="manual"),
+        sa.Column("seed_version", sa.String(length=80)),
         sa.Column("note", sa.Text()),
         sa.Column(
             "created_at",
@@ -76,6 +78,10 @@ def upgrade() -> None:
             "state IN ('can_want', 'can_not_want', 'cannot_want', 'cannot_not_want')",
             name="ck_candidate_preference_state",
         ),
+        sa.CheckConstraint(
+            "source IN ('seed', 'manual')",
+            name="ck_candidate_preference_source",
+        ),
     )
     op.create_index(
         "ix_candidate_concept_preferences_profile_id",
@@ -92,9 +98,18 @@ def upgrade() -> None:
         "candidate_concept_preferences",
         ["profile_id", "state"],
     )
+    op.create_index(
+        "ix_candidate_preferences_profile_source",
+        "candidate_concept_preferences",
+        ["profile_id", "source"],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        "ix_candidate_preferences_profile_source",
+        table_name="candidate_concept_preferences",
+    )
     op.drop_index(
         "ix_candidate_preferences_profile_state",
         table_name="candidate_concept_preferences",
