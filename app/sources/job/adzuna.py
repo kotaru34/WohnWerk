@@ -9,7 +9,14 @@ from typing import Any
 
 import httpx
 
-from app.sources.base import JobSource, RawJob, RawJobLocation, SourceBatch, SourceFetchError, SourceShardSpec
+from app.sources.base import (
+    JobSource,
+    RawJob,
+    RawJobLocation,
+    SourceBatch,
+    SourceFetchError,
+    SourceShardSpec,
+)
 
 BASE_URL = "https://api.adzuna.com/v1/api"
 COUNTRY = "at"
@@ -60,7 +67,11 @@ def _location(item: dict[str, Any]) -> RawJobLocation | None:
 
     display_name = _string(value.get("display_name"))
     area = value.get("area")
-    area_parts = [part.strip() for part in area if isinstance(part, str) and part.strip()] if isinstance(area, list) else []
+    area_parts = (
+        [part.strip() for part in area if isinstance(part, str) and part.strip()]
+        if isinstance(area, list)
+        else []
+    )
 
     location_text = display_name or (", ".join(area_parts) if area_parts else None)
     if location_text is None:
@@ -90,7 +101,9 @@ def _location(item: dict[str, Any]) -> RawJobLocation | None:
 
 
 def parse_adzuna_job(item: dict[str, Any], *, query: AdzunaQuery) -> RawJob | None:
-    source_id = _string(item.get("id")) or (str(item["id"]) if item.get("id") is not None else None)
+    source_id = _string(item.get("id")) or (
+        str(item["id"]) if item.get("id") is not None else None
+    )
     title = _string(item.get("title"))
     redirect_url = _string(item.get("redirect_url"))
     if source_id is None or title is None or redirect_url is None:
@@ -117,6 +130,12 @@ def parse_adzuna_job(item: dict[str, Any], *, query: AdzunaQuery) -> RawJob | No
         "source_attribution": "Adzuna API",
     }
 
+    salary_provenance = None
+    salary_confidence = None
+    if salary_present:
+        salary_provenance = "ESTIMATED" if salary_predicted else "EXPLICIT"
+        salary_confidence = Decimal("0.500") if salary_predicted else Decimal("0.900")
+
     return RawJob(
         source_listing_id=f"adzuna:{source_id}",
         url=redirect_url,
@@ -131,8 +150,8 @@ def parse_adzuna_job(item: dict[str, Any], *, query: AdzunaQuery) -> RawJob | No
         # inventing annual/monthly semantics.
         salary_period=None,
         salary_payment_count=None,
-        salary_provenance=("ESTIMATED" if salary_predicted else "EXPLICIT") if salary_present else None,
-        salary_confidence=Decimal("0.500") if salary_predicted and salary_present else (Decimal("0.900") if salary_present else None),
+        salary_provenance=salary_provenance,
+        salary_confidence=salary_confidence,
         salary_is_minimum_only=True if salary_min is not None and salary_max is None else None,
         locations=[location] if location is not None else [],
         raw_payload=raw_payload,
@@ -270,7 +289,9 @@ class AdzunaJobSource(JobSource):
             items.append(item)
 
         reported = payload.get("count")
-        source_reported_count = reported if isinstance(reported, int) and reported >= 0 else None
+        source_reported_count = (
+            reported if isinstance(reported, int) and reported >= 0 else None
+        )
         return SourceBatch(
             items=items,
             next_cursor={
