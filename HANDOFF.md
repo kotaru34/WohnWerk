@@ -42,13 +42,28 @@ Important guards remain: generic Konstrukteur does not imply mechanical domain; 
 
 Normalization tuning is closed unless real ranking feedback exposes a generic semantic failure.
 
-## Candidate profile + intrinsic fit
+## Candidate profile + intrinsic fit — father-reviewed baseline
 
 Migration `0008_candidate_preferences` is applied. Profile slug `mechanical-project-engineer`, label `Maschinenbau / technische Projektleitung`.
 
 Fit policy remains `candidate-fit-2026-08-28-v3` with primary/context semantics, positive evidence budget 3.0 and primary role/domain `cannot_not_want` hard constraint capped at score 25. `Job.job_fit_score` is not source of truth; current UI recomputes live from persisted profile + persisted concept evidence.
 
-The old bootstrap validation baseline was 141 scored / 15 unscored / 13 hard-incompatible, mean 61.14 / median 63. This baseline is now **historical only**: on 2026-08-28 the candidate/father reviewed the concepts through the production UI, so persisted manual ratings are now the real source of truth and the ranking legitimately changed. Capture a new father-reviewed audit before geography composition; do not force results back to the old seed baseline.
+Historical bootstrap validation was 141 scored / 15 unscored / 13 hard-incompatible, mean 61.14 / median 63. Do not use that as the current target.
+
+On 2026-08-28 the real candidate/father reviewed the concept set in production. Current read-only persisted-profile audit:
+- persisted preferences: 50
+- source counts: manual 27 / seed 23
+- states: can_want 34 / cannot_not_want 10 / cannot_want 6
+- scored: 155 / unscored: 1
+- hard-incompatible: 38
+- score mean: 56.79
+- score median: 62.00
+- preference coverage mean: 0.974
+- preference coverage median: 1.000
+
+Current top includes #205, #214 and #223 at 100; #144=96; #251=94; #136=92. Service/building-services/electrical/electronics roles correctly move into the hard-incompatible tail according to the father-reviewed profile.
+
+The 27 manual / 23 seed split is intentional UI provenance: only explicit `source=manual` choices count as candidate-confirmed in the `Bewertet` review filter, although all persisted ratings still participate in scoring.
 
 ## Production UI / runtime
 
@@ -64,61 +79,62 @@ Protected German admin surfaces:
 
 Security: fail-closed Basic auth, configurable username, byte-safe password comparison, HMAC CSRF on every write form.
 
-## Father-reviewed UX slice — code ready, migration 0009 not yet production-applied
-
-Real WIP testing with the candidate/father produced three UX requirements. All are implemented and covered by CI #497 (Ruff + Compile + 220 tests green).
-
 ### Concepts
 
-`/admin/concepts` now has combined filters:
+`/admin/concepts` has combined filters:
 - type: Alle / Rolle / Fachgebiet / Aufgabe / Methode / Werkzeug
 - review status: Alle / Bewertet / Unbewertet
 
-Review semantics are deliberate:
+Review semantics:
 - `source=manual` = explicitly reviewed/confirmed by candidate -> Bewertet
 - `source=seed` = bootstrap default, still not candidate-confirmed -> Unbewertet/open
 - no row = Unbewertet/open
 
-Reviewed cards are visually quieter (~72% opacity, full on hover/focus). Open cards get a subtle accent border/background. Progress counts show candidate-confirmed vs still-open concepts. This prevents our historical seed assumptions from masquerading as father feedback.
+Reviewed cards are visually quieter; open cards get a subtle accent. Progress counts expose confirmed vs still-open concepts.
 
-### Job ranking clarity
+### Jobs
 
-`/admin/jobs` now labels the two numbers explicitly:
+`/admin/jobs` labels the two metrics explicitly:
 - **Passung N / 100** = intrinsic candidate/job fit
-- **Bewertungsbasis N %** = how much of the job's normalized concept evidence is covered by rated profile concepts
+- **Bewertungsbasis N %** = normalized job evidence covered by rated profile concepts
 
-The old ambiguous `Abdeckung` wording is removed.
+Cards use restrained score-band/tint styling. Filters include Passend / Favoriten / Alle / Unvereinbar / Unbewertet / Ausgeblendet.
 
-Cards retain the minimalist dark design but gain only a subtle left score-band and faint tint for excellent/good/medium/low/hard/unrated categories.
+Migration `0009_candidate_job_preferences` supplies sparse per-profile `favorite` / `hidden` state. Hidden jobs remain recoverable; favorites are independent. Future canonical merge OR-preserves curation state onto the survivor before donor deletion. The user confirmed the current father-feedback UI version is working in production after deployment cleanup.
 
-### Favorite / hide
+## PostGIS spatial matching — first read-only slice ready
 
-New candidate-specific curation state:
-- `favorite`
-- `hidden`
+Existing `Property.location` and `JobLocation.location` are `geography(POINT,4326)` with spatial indexes.
 
-These flags are independent and belong to `(CandidateProfile, Job)`, never to source lifecycle.
+Current location semantics are approximate by design:
+- properties receive resolved Austrian PLZ points from BEV-derived postal centroids
+- job locations use explicit resolved PLZ centroids when available
+- otherwise conservative locality centroids derived from RTR postal names + BEV postal centroids
+- unresolved/countrywide locations remain ungeocoded; no coordinates are invented
 
-New filters:
-- Passend
-- Favoriten
-- Alle
-- Unvereinbar
-- Unbewertet
-- Ausgeblendet
+New `app/matching.py` provides:
+- `geo_coverage()` for production coverage diagnostics
+- `nearest_properties_for_job_stmt()` / `nearest_properties_for_job()`
+- `load_spatial_candidate_matches()` combining current live father-reviewed fit with on-demand spatial selection
 
-Hidden jobs disappear from normal views but remain in DB and are recoverable under Ausgeblendet. Favorites have their own view. Sparse curation rows are deleted when both flags return to false.
+Spatial query semantics:
+- `ST_DWithin` constrains candidate pairs first so PostGIS can use spatial indexes
+- exact geography `ST_Distance` returns straight-line geodesic distance
+- multi-location jobs use a window to keep only the nearest job location per property
+- no permanent Job×Property pair table is created
+- hidden, hard-incompatible and unscored jobs are excluded before geography
+- favorite is curation only and does not boost intrinsic score
+- distance is explicitly **Luftlinie**, not road/travel time
 
-Migration `0009_candidate_job_preferences` creates `candidate_job_preferences`; it contains no automatic data changes and starts empty.
+Read-only CLI: `scripts/spatial_match_audit.py`.
 
-Future canonical merge safety is implemented in `candidate_job_store.merge_candidate_job_states()`: favorite/hidden are OR-preserved onto the merge survivor per candidate profile. The fail-closed `scripts/merge_duplicate_jobs.py --apply` uses this helper in the same transaction before deleting absorbed canonical jobs.
+CI #502 passed Ruff, Compile and the full test suite for the spatial service/audit slice.
 
-## Immediate production sequence
+## Immediate next steps
 
-1. Pull current branch.
-2. Apply `alembic upgrade head`; expected head becomes `0009_candidate_job_preferences`.
-3. Restart `wohnwerk.service`.
-4. Check `/admin/concepts`: if father explicitly clicked every concept, open count should be 0. Seed defaults that were never clicked correctly remain open.
-5. Check `/admin/jobs`: verify Passung/Bewertungsbasis wording, subtle score bands, favorite, hide, Favoriten and Ausgeblendet views.
-6. Run `python scripts/sync_candidate_profile.py` read-only and `python scripts/candidate_fit_audit.py --persisted-profile --limit 25` to capture the new father-reviewed profile/ranking baseline.
-7. Once that new baseline is checkpointed, implement PostGIS job↔property distance queries without a permanent NxM matrix, then compose final recommendation ranking from intrinsic fit + commute/distance + salary + property attributes.
+1. Pull current branch; no migration is required for the spatial slice.
+2. Run `python scripts/spatial_match_audit.py --radius-km 50 --jobs 10 --properties-per-job 5` against production.
+3. Inspect production geo coverage and actual nearest-house pairs. If coverage is healthy, treat centroid-level distance as the first geographic ranking signal.
+4. Add a German matching UI surface and property source links/filters around the validated spatial service.
+5. Compose final recommendation score from intrinsic fit + distance + source-backed salary + property price/area attributes.
+6. Only add road routing/travel-time estimation after centroid-distance matching is validated; never label Luftlinie as commute time.
