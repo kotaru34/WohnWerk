@@ -6,6 +6,10 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.ingestion.listing_identity import stable_external_identity
+from app.ingestion.property_continuity import (
+    PropertyContinuityObservation,
+    match_property_continuity,
+)
 from app.models import (
     CrawlRun,
     ListingStatus,
@@ -100,6 +104,83 @@ def _stable_identity_candidates(
     return resolved
 
 
+def _immmo_continuity_candidates(
+    session: Session,
+    *,
+    source: Source,
+    run: CrawlRun,
+    items: list[RawProperty],
+    existing_ids: set[str],
+) -> dict[str, tuple[PropertyListing, str]]:
+    """Reconnect IMMMO cards when the meta-search rotates their downstream provider URL.
+
+    IMMMO is a meta-search: the same house can point to different downstream portals on
+    consecutive scans. URL hashes therefore cannot be treated as durable source identity.
+    We only reconnect an unknown incoming card when a staged metadata fingerprint has a
+    unique one-to-one match among active IMMMO listings not yet seen in this crawl run.
+    Ambiguous developments fail closed and continue through the normal new-listing path.
+    """
+    if source.name != "immmo.at":
+        return {}
+
+    unknown_items = [
+        item
+        for item in items
+        if item.source_listing_id not in existing_ids and item.postal_code
+    ]
+    if not unknown_items:
+        return {}
+
+    postal_codes = {item.postal_code for item in unknown_items if item.postal_code}
+    incoming_ids = {item.source_listing_id for item in items}
+    candidates = list(
+        session.scalars(
+            select(PropertyListing)
+            .join(Property, Property.id == PropertyListing.property_id)
+            .where(
+                PropertyListing.source_id == source.id,
+                PropertyListing.status == ListingStatus.ACTIVE,
+                PropertyListing.last_seen_crawl_run_id.is_distinct_from(run.id),
+                PropertyListing.source_listing_id.notin_(incoming_ids),
+                Property.postal_code.in_(postal_codes),
+            )
+            .order_by(PropertyListing.id)
+        )
+    )
+    if not candidates:
+        return {}
+
+    previous = [
+        PropertyContinuityObservation(
+            token=listing.id,
+            postal_code=listing.property.postal_code,
+            title=listing.property.title,
+            price_eur=listing.property.price_eur,
+            living_area_m2=listing.property.living_area_m2,
+        )
+        for listing in candidates
+    ]
+    current = [
+        PropertyContinuityObservation(
+            token=item.source_listing_id,
+            postal_code=item.postal_code,
+            title=item.title,
+            price_eur=item.price_eur,
+            living_area_m2=item.living_area_m2,
+        )
+        for item in unknown_items
+    ]
+    candidates_by_id = {listing.id: listing for listing in candidates}
+
+    result: dict[str, tuple[PropertyListing, str]] = {}
+    for match in match_property_continuity(previous, current):
+        listing = candidates_by_id.get(int(match.previous_token))
+        if listing is None:
+            continue
+        result[str(match.current_token)] = (listing, match.strategy)
+    return result
+
+
 def _delete_orphan_properties(session: Session, property_ids: set[int]) -> None:
     if not property_ids:
         return
@@ -128,8 +209,9 @@ def ingest_properties(
 
     Sparse discovery updates are enrichment-only. Cross-source identity is reused when
     either the canonical URL is exactly equal or a provider exposes an unambiguous stable
-    object ID (currently s REAL detail IDs). Fuzzy/content deduplication remains a separate
-    later stage and is never guessed here.
+    object ID (currently s REAL detail IDs). IMMMO additionally gets conservative
+    one-to-one continuity matching because its meta-search may rotate the downstream portal
+    for the same house. General fuzzy/content deduplication is never guessed here.
     """
     if not items:
         return 0, 0
@@ -152,6 +234,13 @@ def ingest_properties(
             )
         )
     }
+    continuity_candidates = _immmo_continuity_candidates(
+        session,
+        source=source,
+        run=run,
+        items=items,
+        existing_ids=set(existing),
+    )
 
     urls = {item.url for item in items}
     exact_url_properties: dict[str, Property] = {}
@@ -178,6 +267,23 @@ def ingest_properties(
         postal = known_postal.get(item.postal_code or "")
         listing = existing.get(item.source_listing_id)
         payload = _listing_payload(item, postal_resolved=postal is not None)
+
+        if listing is None:
+            continuity = continuity_candidates.get(item.source_listing_id)
+            if continuity is not None:
+                listing, strategy = continuity
+                previous_source_listing_id = listing.source_listing_id
+                previous_url = listing.url
+                listing.source_listing_id = item.source_listing_id
+                existing.pop(previous_source_listing_id, None)
+                existing[item.source_listing_id] = listing
+                payload["wohnwerk_continuity"] = {
+                    "strategy": strategy,
+                    "previous_source_listing_id": previous_source_listing_id,
+                    "previous_url": previous_url,
+                    "matched_at": now.isoformat(),
+                }
+
         stable_identity = stable_external_identity(item.url)
 
         if listing is None:
