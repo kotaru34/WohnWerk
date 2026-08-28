@@ -104,41 +104,26 @@ Guardrails:
 
 ### Production migration + persist completed
 
-Migration `0007_job_concepts` was applied successfully from `0006_job_source_tenants` and is currently installed in production.
+Migration `0007_job_concepts` is applied in production.
 
-Production `normalize_job_concepts.py --apply` result:
-- `relevant_active_jobs=156`
-- `jobs_with_concepts=156`
-- `jobs_without_concepts=0`
-- `distinct_concepts_matched=49`
-- `evidence_rows=747`
-- `evidence_primary=219`
-- `evidence_context=528`
-- jobs/evidence by kind:
-  - role `115 / 229`
-  - domain `125 / 268`
-  - task `86 / 176`
-  - method `11 / 11`
-  - tool `38 / 63`
-
-Persisted DB audit confirmed exactly:
-- `persisted_evidence_rows=747`
-- `persisted_jobs=156`
-- `persisted_primary=219`
-- `persisted_context=528`
+Persisted state:
+- `156/156` relevant jobs matched
+- `49` distinct concepts
+- `747` evidence rows
+- `219 primary / 528 context`
 - `invalid_scope_values=-`
-- only deterministic version present: `concept-seed-2026-08-28-v2 rows=747`
+- only `concept-seed-2026-08-28-v2` deterministic evidence present
 
-Targeted persisted checks also matched dry-run:
+Targeted persisted checks:
 - `domain:electrical-engineering`: 40 jobs, primary=4, context=38
 - `role:mechanical-technician`: 23 jobs, primary=21, context=8
 - `role:designer-engineer`: 48 jobs, primary=44, context=32
 
-Normalization is now considered production-established. Do not continue synonym polishing without a demonstrated fit/precision problem.
+Normalization is production-established. Do not continue broad synonym polishing without a demonstrated fit/precision problem.
 
 ## Candidate concept preferences / fit — current primary work
 
-New files:
+Files:
 - `app/jobs/candidate_fit.py` — ORM preference models + pure versioned scoring engine
 - `app/jobs/candidate_profile_seed.py` — conservative initial profile seed
 - `migrations/versions/0008_candidate_preferences.py`
@@ -154,71 +139,91 @@ New files:
 - `cannot_want`
 - `cannot_not_want`
 
-DB migration `0008` includes a check constraint for these four states. Absence of a preference row means **unrated**; uncertain concepts are not forced into a guessed state.
+Migration `0008` has a four-state DB check constraint. Absence of a preference row means **unrated**; uncertain concepts are not guessed.
 
 `CandidateProfile` makes the architecture profile-aware rather than hardcoding one candidate.
 
-### Fit policy v1
-
-Current dry-run policy: `candidate-fit-2026-08-28-v1`.
-
-State values:
-- can + want = `+1.00`
-- can + not want = `-0.20`
-- cannot + want = `+0.20`
-- cannot + not want = `-1.00`
-
-Kind weights:
-- role `1.15`
-- domain `1.25`
-- task `1.00`
-- method/tool `0.75`
-
-Scope amplitude:
-- primary `1.00`
-- context `0.35`
-
-Important math guard: normalization uses the unscoped evidence strength while contribution amplitude uses scope. Therefore context attenuation cannot cancel out in numerator/denominator. A pure primary `cannot_not_want` domain can reach score 0, while the same concept present only as description context is only moderately negative (about 32–33), not an extreme identity signal.
-
-Repeated title/description evidence for the same concept collapses to the strongest signal. Unrated concepts do not bias score but reduce `preference_coverage`.
-
-`Job.job_fit_score` already exists historically but is **not** the source of truth and is not mutated by the current audit. It may later be used only as a materialized/cache value after policy validation.
+`Job.job_fit_score` exists historically but is not the source of truth and is not mutated by current audits. It may later be materialized/cache only.
 
 ### Initial profile seed
 
 Seed version: `candidate-profile-2026-08-28-v1`.
 
-It intentionally rates only established concepts and leaves uncertain tool/role/domain concepts unrated. It includes positive mechanical/product/project/task evidence and explicit negative pure electrical domain. Generic cross-domain `designer-engineer` is intentionally not rated positive by itself; domain/task evidence must establish specialization.
+It rates only established profile facts. Positive concepts include mechanical engineering/design, development/project roles, automotive/special vehicle/rail/special machinery, product development, project/requirements/supplier/testing/assembly/calculation/documentation tasks, FEM and FMEA. `domain:electrical-engineering` is explicit `cannot_not_want`. Generic cross-domain `designer-engineer` remains unrated.
 
-### Safety / tests
+### First production fit audit — policy v1
 
-Regression tests cover:
-- primary mechanical evidence dominating conflicting electrical context;
-- pure primary electrical `cannot_not_want` scoring at the bottom;
-- context-only negative evidence being attenuated rather than normalized back to an extreme;
-- unrated concepts lowering coverage without biasing signed score;
-- repeated evidence collapsing to the strongest signal;
-- middle states remaining directionally distinct;
-- no rated evidence returning no score.
+Read-only audit on all 156 jobs using `candidate-fit-2026-08-28-v1` produced:
+- rated concepts: 23
+- jobs scored: 136
+- jobs unscored: 20
+- score mean: 75.71
+- score median: 73.00
+- preference coverage mean: 0.592
+- preference coverage median: 0.521
 
-CI #423 passed Ruff, Compile and the full suite after the context-normalization fix.
+The audit exposed two distinct correctness issues:
+
+1. **Positive saturation bug.** A single positive generic role/domain could normalize to score 100. This caused many weakly evidenced jobs to rank as perfect fits, including development-engineer-only and Maschinenbautechniker jobs whose only rated positive signal was mechanical domain.
+
+2. **Targeted taxonomy gap.** Obvious electrical/electronics identity titles such as `Elektronik-Entwicklungsingenieur`, `Head of Electronics`, `EMC Engineer`, `Hardware Engineer` do not yet necessarily have primary electrical-domain evidence. This is a narrow demonstrated normalization problem, not a reason to reopen broad synonym polishing.
+
+Useful v1 observations:
+- true primary electrical title `Konstrukteur*in Elektrotechnik` scored 0 as intended;
+- context-only electrical mentions landed around 32–56 depending on positive context, confirming primary/context attenuation works;
+- `Entwicklungsingenieur Elektrotechnik` landed around 48 because primary negative electrical domain and primary positive generic development role nearly cancel;
+- `Elektronik-Entwicklungsingenieur ... Produktentwicklung` falsely reached 100 because electrical/electronics identity was missing from normalization and two generic positives saturated the score.
+
+### Fit policy v2 — current code
+
+Current dry-run policy: `candidate-fit-2026-08-28-v2`.
+
+State values remain:
+- can + want = `+1.00`
+- can + not want = `-0.20`
+- cannot + want = `+0.20`
+- cannot + not want = `-1.00`
+
+Kind weights remain:
+- role `1.15`
+- domain `1.25`
+- task `1.00`
+- method/tool `0.75`
+
+Scope amplitude remains:
+- primary `1.00`
+- context `0.35`
+
+New rule: **positive evidence budget = 3.0**. Positive fit is normalized against at least 3.0 evidence weight, so one generic positive cannot claim an exceptional fit. Approximate behavior:
+- one primary role -> score ~69
+- one primary domain -> ~71
+- primary role + domain -> ~90
+- role + domain + task can reach 100
+
+Negative evidence intentionally has no optimism floor: a primary `cannot_not_want` domain can still veto to 0. Context-only hard-negative remains attenuated around 32 rather than becoming an extreme identity signal.
+
+Audit `--job-id` output now prints all persisted evidence for that job, including unrated concepts, so the next pass can distinguish scorer problems from missing normalization evidence.
+
+Regression tests cover positive saturation, corroborating multi-concept fit, primary hard-negative veto, context attenuation, unrated coverage and duplicate-evidence collapse.
+
+CI #428 passed Ruff, Compile and the full suite for policy v2 and expanded audit evidence.
 
 ## Immediate work order
 
 1. Pull latest `bootstrap/austria-mvp`.
 2. **Do not apply migration 0008 yet.**
-3. Run only the read-only live fit audit:
+3. Run policy-v2 read-only ranking plus detailed suspicious-job evidence:
 
-   `python scripts/candidate_fit_audit.py --limit 25`
+   `python scripts/candidate_fit_audit.py --limit 25 --job-id 259 --job-id 15 --job-id 21 --job-id 89 --job-id 128 --job-id 254 --job-id 28`
 
 4. Inspect:
-   - `jobs_scored/jobs_unscored`
-   - score mean/median
-   - preference coverage mean/median
-   - top 25 and bottom 25 titles/companies
-   - printed concept drivers for obvious false positives/negatives
-5. If useful, rerun selected suspicious jobs with repeatable `--job-id ID` for full contribution detail.
-6. Tune fit policy/profile seed only from actual ranking evidence.
-7. Once ranking semantics are healthy, apply migration 0008 and persist the profile/preferences.
-8. Then build German admin UI for concept/profile rating and recompute materialized `Job.job_fit_score` from persisted profile state.
-9. After intrinsic fit is stable, combine with PostGIS house/job distance, salary and final recommendation ranking.
+   - score mean/median and whether false 100s collapse;
+   - top/bottom ordering;
+   - full rated/unrated evidence for electronics/electrical examples;
+   - whether #259/#15/#21 clearly demonstrate a missing title-domain concept rather than a weighting issue.
+5. If confirmed, make one narrow extractor v3 refinement for explicit electrical/electronics identity wording; do not broadly expand synonyms.
+6. Recompute/persist deterministic concept evidence only after a read-only v3 audit.
+7. Re-run fit audit.
+8. Once ranking semantics are healthy, apply migration 0008 and persist profile preferences.
+9. Then build German admin UI for four-state concept/profile rating and materialized fit recompute.
+10. After intrinsic fit is stable, combine with PostGIS house/job distance, salary and final recommendation ranking.
