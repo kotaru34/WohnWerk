@@ -11,6 +11,8 @@ def _job(
     title: str,
     company: str,
     city: str | None = None,
+    location_text: str | None = None,
+    source_id: int | None = None,
     description: str | None = None,
     salary_min: Decimal | None = None,
 ) -> Job:
@@ -31,9 +33,10 @@ def _job(
         first_seen_at=now,
         last_seen_at=now,
     )
+    listing_source_id = source_id if source_id is not None else job_id
     job.listings = [
         JobListing(
-            source_id=job_id,
+            source_id=listing_source_id,
             source_listing_id=f"listing-{job_id}",
             url=f"https://example.invalid/{job_id}",
             status=ListingStatus.ACTIVE,
@@ -42,11 +45,11 @@ def _job(
             last_seen_at=now,
         )
     ]
-    if city:
+    if city or location_text:
         job.locations = [
             JobLocation(
                 city=city,
-                location_text=city,
+                location_text=location_text or city,
                 remote=False,
             )
         ]
@@ -116,3 +119,61 @@ def test_merge_plan_blocks_conflicting_salary_bundles() -> None:
 
     assert plan.safe is False
     assert "conflicting canonical salary bundles across merge group" in plan.blockers
+
+
+def test_merge_plan_blocks_same_source_explicit_location_conflict() -> None:
+    description = (
+        "Mechanical product development CAD construction supplier coordination testing "
+        "commissioning validation documentation project support manufacturing assemblies"
+    )
+    left = _job(
+        10,
+        title="Junior Konstrukteur Maschinenbau - dein Design, unsere Zukunft!",
+        company="Example GmbH",
+        location_text="Wien, Österreich",
+        source_id=99,
+        description=description,
+    )
+    right = _job(
+        20,
+        title="Junior Konstrukteur Maschinenbau – dein Design, unsere Zukunft!",
+        company="Example GmbH",
+        city="Wels",
+        location_text="Wels, Oberösterreich, Österreich",
+        source_id=99,
+        description=description,
+    )
+
+    plan = build_merge_plan([left, right], source_names={99: "jobs.at"})
+
+    assert plan.safe is False
+    assert any("same-source explicit locations conflict" in blocker for blocker in plan.blockers)
+
+
+def test_merge_plan_allows_same_source_equivalent_explicit_locations() -> None:
+    description = (
+        "Mechanical product development CAD construction supplier coordination testing "
+        "commissioning validation documentation project support manufacturing assemblies"
+    )
+    left = _job(
+        10,
+        title="Entwicklungsingenieur Maschinenbau bei Example",
+        company="Example GmbH",
+        city="Nebelberg",
+        location_text="Nebelberg",
+        source_id=99,
+        description=description,
+    )
+    right = _job(
+        20,
+        title="Entwicklungsingenieur Maschinenbau at Example",
+        company="Example GmbH",
+        city="Nebelberg",
+        location_text="Nebelberg",
+        source_id=99,
+        description=description,
+    )
+
+    plan = build_merge_plan([left, right], source_names={99: "stepstone.at"})
+
+    assert plan.safe is True
