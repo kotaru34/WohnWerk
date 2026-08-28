@@ -27,6 +27,8 @@ from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
 from app.matching import PropertyDistanceMatch, SpatialJobMatch
 from app.models import JobLocation, ListingStatus, Property, PropertyListing, Source
+from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
+from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
 
@@ -43,6 +45,7 @@ class PropertySourceView:
     label: str
     url: str
     display_area_m2: Decimal | None = None
+    usable_area_m2: Decimal | None = None
     primary_image_url: str | None = None
 
 
@@ -67,6 +70,22 @@ class PropertyView:
         if len(values) != 1:
             return None
         return next(iter(values))
+
+    @property
+    def visible_usable_area_m2(self) -> Decimal | None:
+        values = {
+            item.usable_area_m2
+            for item in self.sources
+            if item.usable_area_m2 is not None
+        }
+        if len(values) != 1:
+            return None
+        usable = next(iter(values))
+        living = self.property.living_area_m2
+        if living is None:
+            return usable
+        tolerance = max(Decimal(1), max(abs(living), abs(usable)) * Decimal("0.01"))
+        return None if abs(living - usable) <= tolerance else usable
 
     @property
     def visible_plot_area_m2(self) -> Decimal | None:
@@ -149,6 +168,7 @@ def _property_sources(
                     if source_name == "immmo.at"
                     else None
                 ),
+                usable_area_m2=_payload_decimal(payload.get("detail_usable_area_m2")),
                 primary_image_url=_payload_image(payload),
             )
         )
@@ -173,7 +193,6 @@ def _area_label(value: Decimal | None) -> str | None:
 
 
 def _visible_fit_rows(db: Session) -> list[JobFitView]:
-    """Return every current relevant job except explicit candidate-hidden rows."""
     return [
         row
         for row in load_live_job_fit(db, profile_slug=PROFILE_SLUG)
@@ -207,6 +226,13 @@ def _property_filter_conditions(filters: HouseFilters) -> list:
     return conditions
 
 
+def _product_property_conditions() -> list:
+    return [
+        Property.status == ListingStatus.ACTIVE,
+        product_visible_property_condition(),
+    ]
+
+
 def _properties_within_radius_for_job_stmt(
     job_id: int,
     radius_km: float,
@@ -214,12 +240,7 @@ def _properties_within_radius_for_job_stmt(
 ):
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
-    filters = house_filters or HouseFilters(
-        preis_von=None,
-        preis_bis=None,
-        wohn_von=None,
-        grund_von=None,
-    )
+    filters = house_filters or HouseFilters()
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -256,7 +277,7 @@ def _properties_within_radius_for_job_stmt(
             ),
         )
         .where(
-            Property.status == ListingStatus.ACTIVE,
+            *_product_property_conditions(),
             Property.location.is_not(None),
             *_property_filter_conditions(filters),
         )
@@ -312,7 +333,11 @@ def _nearby_jobs(db: Session, property_id: int, radius_km: float) -> list[Nearby
                 ),
             ),
         )
-        .where(Property.id == property_id, Property.location.is_not(None))
+        .where(
+            Property.id == property_id,
+            Property.location.is_not(None),
+            product_visible_property_condition(),
+        )
         .subquery("jobs_near_property")
     )
     rows = list(
@@ -457,7 +482,7 @@ def houses_page(
         grund_von=grund_von,
         grund_bis=grund_bis,
     )
-    conditions = [Property.status == ListingStatus.ACTIVE, *_property_filter_conditions(filters)]
+    conditions = [*_product_property_conditions(), *_property_filter_conditions(filters)]
 
     total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
     page_count = max(1, math.ceil(total / HOUSE_PAGE_SIZE))
@@ -482,6 +507,8 @@ def houses_page(
             "page": seite,
             "page_count": page_count,
             "filters": filters,
+            "system_price_min": PROPERTY_MIN_PRICE_EUR,
+            "system_price_max": PROPERTY_MAX_PRICE_EUR,
             "eur_label": _eur_label,
             "area_label": _area_label,
         },
@@ -502,6 +529,7 @@ def house_detail(
         select(Property).where(
             Property.id == property_id,
             Property.status == ListingStatus.ACTIVE,
+            product_visible_property_condition(),
         )
     )
     if property_row is None:
@@ -621,6 +649,8 @@ def job_detail(
             "page_count": page_count,
             "house_filters": filters,
             "house_filter_summary": house_filter_summary(filters),
+            "system_price_min": PROPERTY_MIN_PRICE_EUR,
+            "system_price_max": PROPERTY_MAX_PRICE_EUR,
             "eur_label": _eur_label,
             "area_label": _area_label,
             "annual_salary_label": annual_salary_label,
