@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.jobs.concepts import ConceptKind
 
-EXTRACTOR_VERSION = "concept-seed-2026-08-28-v2"
+EXTRACTOR_VERSION = "concept-seed-2026-08-28-v3"
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -280,7 +280,33 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.DOMAIN,
         "electrical-engineering",
         "Elektrotechnik",
-        ("Elektrotechnik", "Electrical Engineering", "Electrical Engineer"),
+        (
+            "Elektrotechnik",
+            "Electrical Engineering",
+            "Electrical Engineer",
+            "Elektrokonstrukteur",
+            "Elektro Konstrukteur",
+            "Elektro-Konstrukteur",
+            "E-Konstrukteur",
+            "Electrical Design Engineer",
+            "Electrical Designer",
+            "EMC Engineer",
+            "EMV Ingenieur",
+            "EMV-Ingenieur",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.DOMAIN,
+        "electronics",
+        "Elektronik / Hardware",
+        (
+            "Elektronik",
+            "Electronics",
+            "Electronics Engineer",
+            "Hardware Engineer",
+            "Hardware Design Engineer",
+            "Hardware Engineering",
+        ),
     ),
     ConceptSeed(
         ConceptKind.TASK,
