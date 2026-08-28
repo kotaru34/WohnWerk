@@ -79,14 +79,12 @@ User directive is authoritative for source behavior:
 - inspect only the first result page initially;
 - deduplicate IDs before any details;
 - open details only when actually needed and title looks relevant;
-- keep requests sequential and slow enough to avoid hammering the service;
+- keep requests sequential and low-rate;
 - no pagination/reconciliation unless later justified by a concrete need;
 - terms-of-service text is advisory for source prioritization, not an architecture blocker by itself;
 - do not perform technical anti-bot bypasses.
 
-Consumer job boards are therefore valid low-impact sources when normal public pages work without bypasses.
-
-## karriere.at frontier — restored
+## karriere.at frontier — production #40
 
 Files:
 
@@ -94,27 +92,20 @@ Files:
 - `scripts/run_karriere_at_jobs.py`
 - `tests/test_karriere_at_job_source.py`
 
-Behavior:
+Production #40 after restoring the source:
 
-- five focused first-page searches;
-- numeric `/jobs/<id>` stable identity;
-- cross-query dedupe;
-- cheap title prefilter before details;
-- max 8 detail pages/query;
-- sequential global delay (0.65 s default);
-- no reconciliation; always coverage-incomplete.
+- 5/5 shards, 0 failed;
+- 35 HTTP requests total;
+- 30 seen / 30 new;
+- source-reported search counts sum to 435;
+- all 30 passed discovery v14;
+- 34 relevant locations, 27 geo-resolved, 7 unresolved;
+- 27 structured salaries, 15 annualized;
+- no source/rate-limit errors.
 
-Historical production #38:
+Interpretation: stable and useful. Do not deepen traversal yet.
 
-- 5/5 shards, 35 HTTP requests total;
-- 30 relevant jobs / 30 new;
-- no source or rate-limit failures;
-- 27 structured salaries;
-- 27 geo-resolved relevant locations.
-
-The 30 prototype rows were later purged during a temporary strategy detour. Purge was safe: `shared_jobs=0`, so no shared canonical Jobs were damaged. The runner is now restored and will re-enable/repopulate the source on the next run.
-
-## jobs.at frontier — restored and broadened
+## jobs.at broad frontier — production #41
 
 Files:
 
@@ -122,33 +113,32 @@ Files:
 - `scripts/run_jobs_at_jobs.py`
 - `tests/test_jobs_at_job_source.py`
 
-Historical production #39:
+Broad searches:
 
-- 5/5 shards, 11 HTTP requests total;
-- 6 relevant jobs / 6 new;
-- no source failures;
-- 4 structured salaries.
+- Maschinenbau
+- Konstrukteur
+- CAD Konstrukteur
+- Mechanischer Konstrukteur
+- SolidWorks
 
-Those 6 prototype rows were also safely purged with `shared_jobs=0` and no shared canonical damage.
+Production #41:
 
-The restored runner now uses broader human-style searches while keeping the same tiny request budget:
+- 5/5 shards, 0 failed;
+- only 18 HTTP requests;
+- 13 seen / 13 new;
+- all 13 passed discovery v14;
+- 14 relevant locations, 7 geo-resolved;
+- 12 structured salaries + 1 salary text;
+- 3 salaries annualized.
 
-- `Maschinenbau`
-- `Konstrukteur`
-- `CAD Konstrukteur`
-- `Mechanischer Konstrukteur`
-- `SolidWorks`
+This is materially better than old #39 (6 jobs / 11 requests) while remaining light.
 
-Each shard still reads one search page and opens at most 8 detail pages after title filtering. No reconciliation.
+Observed cleanup items:
 
-Run #39 also exposed two future cleanup items:
+- `E-Plan Konstrukteur` and `E-Planer` are acquisition-level electrical candidates. They can remain in the broad corpus; future candidate fit will push pure electrical roles down. If detail-request saving becomes worthwhile, extend the cheap prefilter to `E-Plan` spelling.
+- structured location such as `AT, Österreich` is weak; prefer a more specific visible source location when available, but never invent a PLZ.
 
-- title prefilter should reject `E-Plan` spelling, not only `Eplan`;
-- generic structured locations such as `AT, Österreich` can be less useful than a visible page location; prefer the more specific source-backed location when available.
-
-These are parser improvements, not reasons to stop the source.
-
-## StepStone Austria — new search-card-only frontier
+## StepStone Austria — production #42 + parser fix
 
 Files:
 
@@ -156,30 +146,68 @@ Files:
 - `scripts/run_stepstone_at_jobs.py`
 - `tests/test_stepstone_at_job_source.py`
 
-This is even lighter than karriere/jobs.at:
+Design:
 
 - five search pages total;
-- **zero detail-page requests**;
-- search cards already provide title, company, location/PLZ and a substantial snippet;
-- stable numeric ID parsed from `/stellenangebote--...--<id>-inline.html`;
-- explicit `1030 Wien`-style locations preserve `postal_code=1030`;
-- regional labels remain non-postal and are not fabricated into PLZ;
-- cross-query ID dedupe;
+- zero detail-page requests;
+- stable numeric ID from `/stellenangebote--...--<id>-inline.html`;
+- search cards provide title/company/location and often a useful snippet;
+- explicit PLZ preserved when present;
 - always coverage-incomplete / no disappearance authority.
 
-Current searches:
+Production #42 exposed one concrete source-markup variant:
+
+- 3/5 shards succeeded;
+- 3 jobs inserted;
+- `entwicklungsingenieur-maschinenbau` and `konstrukteur-maschinenbau` failed with PostgreSQL `StringDataRightTruncation` on a `VARCHAR(500)` field.
+
+Root cause: some StepStone result cards wrap most/all card content inside the job `<a>`. The first parser joined all anchor text and accidentally made title = title + company + location + description.
+
+Fix now committed and covered by regression test:
+
+- first anchor text node is title;
+- remaining anchor text becomes normal card tail;
+- source title/company/location have conservative length sanity guards;
+- long description remains `Text` rather than contaminating short fields;
+- regression fixture includes a whole-card anchor with >500-char description and explicit `6330 Kufstein`.
+
+CI #338 passed Ruff, Compile and full tests after the fix.
+
+**Next production action for StepStone:** rerun only `python scripts/run_stepstone_at_jobs.py`; do not rerun karriere/jobs.at just for this fix.
+
+## willhaben Jobs — implemented, awaiting first live probe
+
+Files:
+
+- `app/sources/job/willhaben_jobs.py`
+- `scripts/run_willhaben_jobs.py`
+- `tests/test_willhaben_job_source.py`
+
+Current frontier:
 
 - Konstrukteur Maschinenbau
-- Maschinenbauingenieur
-- Mechanical Engineer
-- Entwicklungsingenieur Maschinenbau
-- Projektingenieur Maschinenbau
+- Maschinenbau
+- Konstrukteur
+- CAD Zeichner
+- Entwicklungsingenieur:in
 
-CI #335 passed Ruff, Compile and the full test suite for this implementation.
+Behavior:
+
+- five first-page search requests total;
+- zero detail-page requests;
+- stable numeric ID from `/jobs/job/<slug>/<id>`;
+- search card parses title, company, publication label and location;
+- strips displayed company suffix ` Jobs`;
+- understands multi-employment metadata such as `Teilzeit, Vollzeit, Wien, 01. Bezirk...` without throwing away location components;
+- explicit `9020 Klagenfurt...` preserves PLZ;
+- whole-card-inside-anchor variant is handled like StepStone so long snippets cannot become titles;
+- always coverage-incomplete / no disappearance authority.
+
+First live probe should be exactly five requests and zero details.
 
 ## Broad API aggregators — supplementary bonus layer
 
-Adzuna Austria and Jooble Austria adapters were also implemented during the source-strategy detour. Keep them: they are useful extra corpus sources, but they do **not** replace the large human-facing boards.
+Adzuna Austria and Jooble Austria remain implemented as extra corpus sources, not replacements for human-facing boards.
 
 ### Adzuna
 
@@ -199,26 +227,20 @@ Adzuna Austria and Jooble Austria adapters were also implemented during the sour
 - salary kept as source text when period semantics are unclear;
 - coverage-incomplete.
 
-Adzuna + Jooble + purge safety passed CI #330.
-
 ## Prototype purge utility
 
 `scripts/purge_job_source_listings.py` remains as a general maintenance tool, but **do not purge karriere.at or jobs.at again** under the current strategy.
 
-The production purge already completed safely:
-
-- karriere.at: 30 listings / 30 exclusive Jobs / shared_jobs=0 / deleted_jobs=30.
-- jobs.at: 6 listings / 6 exclusive Jobs / shared_jobs=0 / deleted_jobs=6.
+Historical temporary purge completed safely with `shared_jobs=0`; production #40/#41 have since repopulated both sources.
 
 ## Immediate production work order
 
 1. Pull current branch and run tests.
-2. Run `python scripts/run_karriere_at_jobs.py` once; no reconciliation.
-3. Run `python scripts/run_jobs_at_jobs.py` once with the restored broad queries; no reconciliation.
-4. Run `python scripts/run_stepstone_at_jobs.py` once; this should make exactly five search-page requests and zero detail requests.
-5. Run location resolution.
-6. Inspect stats/rejection audit/source health for all three boards.
-7. Fix only generic parser issues exposed by those live runs (especially jobs.at E-Plan/location specificity and StepStone card parsing).
-8. Then add willhaben Jobs using the same low-impact first-page model.
-9. Keep Adzuna/Jooble and ATS feeds as supplementary independent sources.
-10. At hundreds→thousands relevant jobs, move on to normalized concepts, German profile review, candidate fit and house/job recommendations.
+2. Rerun StepStone only: `python scripts/run_stepstone_at_jobs.py`.
+3. Run willhaben once: `python scripts/run_willhaben_jobs.py`.
+4. Resolve locations.
+5. Inspect stats/rejection audit/source health for StepStone + willhaben.
+6. Fix only generic parser issues exposed by those two live probes.
+7. Keep karriere.at/jobs.at running as stable low-impact frontiers; no reconciliation.
+8. Keep Adzuna/Jooble and ATS feeds as supplementary independent sources.
+9. Once broad corpus reaches hundreds→thousands relevant jobs, shift primary effort to normalized concepts, German profile review, candidate fit and house/job recommendations.
