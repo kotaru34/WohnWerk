@@ -7,10 +7,10 @@ from fastapi import APIRouter, Form, HTTPException, status
 from fastapi.responses import RedirectResponse
 
 from app.admin import (
+    JOB_FILTERS,
     AdminDependency,
     CsrfDependency,
     DbDependency,
-    JOB_FILTERS,
     jobs_page,
 )
 from app.jobs.candidate_job_store import set_job_favorite, set_job_hidden
