@@ -6,9 +6,8 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import Request, Response
 
-# v2 intentionally invalidates the earlier cookie whose defaults pre-filled the family
-# budget/area constraints. Filters now begin empty and only persist explicit user choices.
-COOKIE_NAME = "wohnwerk_house_filters_v2"
+# v3 adds explicit Nutzfläche filters while keeping every filter empty by default.
+COOKIE_NAME = "wohnwerk_house_filters_v3"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 FILTER_QUERY_KEYS = frozenset(
     {
@@ -17,6 +16,8 @@ FILTER_QUERY_KEYS = frozenset(
         "preis_bis",
         "wohn_von",
         "wohn_bis",
+        "nutz_von",
+        "nutz_bis",
         "grund_von",
         "grund_bis",
     }
@@ -30,6 +31,8 @@ class HouseFilters:
     preis_bis: Decimal | None = None
     wohn_von: Decimal | None = None
     wohn_bis: Decimal | None = None
+    nutz_von: Decimal | None = None
+    nutz_bis: Decimal | None = None
     grund_von: Decimal | None = None
     grund_bis: Decimal | None = None
 
@@ -40,6 +43,8 @@ class HouseFilters:
             "preis_bis": _decimal_text(self.preis_bis),
             "wohn_von": _decimal_text(self.wohn_von),
             "wohn_bis": _decimal_text(self.wohn_bis),
+            "nutz_von": _decimal_text(self.nutz_von),
+            "nutz_bis": _decimal_text(self.nutz_bis),
             "grund_von": _decimal_text(self.grund_von),
             "grund_bis": _decimal_text(self.grund_bis),
         }
@@ -76,6 +81,8 @@ def _from_mapping(payload: dict[str, object]) -> HouseFilters:
         preis_bis=_safe_decimal(payload.get("preis_bis")),
         wohn_von=_safe_decimal(payload.get("wohn_von")),
         wohn_bis=_safe_decimal(payload.get("wohn_bis")),
+        nutz_von=_safe_decimal(payload.get("nutz_von")),
+        nutz_bis=_safe_decimal(payload.get("nutz_bis")),
         grund_von=_safe_decimal(payload.get("grund_von")),
         grund_bis=_safe_decimal(payload.get("grund_bis")),
     )
@@ -102,6 +109,8 @@ def resolve_house_filters(
     preis_bis: Decimal | None,
     wohn_von: Decimal | None,
     wohn_bis: Decimal | None,
+    nutz_von: Decimal | None,
+    nutz_bis: Decimal | None,
     grund_von: Decimal | None,
     grund_bis: Decimal | None,
 ) -> HouseFilters:
@@ -118,6 +127,8 @@ def resolve_house_filters(
         preis_bis=preis_bis,
         wohn_von=wohn_von,
         wohn_bis=wohn_bis,
+        nutz_von=nutz_von,
+        nutz_bis=nutz_bis,
         grund_von=grund_von,
         grund_bis=grund_bis,
     )
@@ -151,6 +162,10 @@ def house_filter_summary(filters: HouseFilters) -> str:
         parts.append(f"Wohnfläche ab {filters.wohn_von:,.0f} m²".replace(",", "."))
     if filters.wohn_bis is not None:
         parts.append(f"Wohnfläche bis {filters.wohn_bis:,.0f} m²".replace(",", "."))
+    if filters.nutz_von is not None:
+        parts.append(f"Nutzfläche ab {filters.nutz_von:,.0f} m²".replace(",", "."))
+    if filters.nutz_bis is not None:
+        parts.append(f"Nutzfläche bis {filters.nutz_bis:,.0f} m²".replace(",", "."))
     if filters.grund_von is not None:
         parts.append(f"Grundstück ab {filters.grund_von:,.0f} m²".replace(",", "."))
     if filters.grund_bis is not None:
