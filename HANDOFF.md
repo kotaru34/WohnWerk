@@ -61,38 +61,10 @@ Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit s
 
 ## Stable low-impact broad boards
 
-### karriere.at — production #40
-
-- 5/5 shards, 35 HTTP requests;
-- 30 relevant jobs;
-- 34 relevant locations, 27 geo-resolved;
-- 27 structured salaries, 15 annualized.
-
-### jobs.at — production #41
-
-Broad searches: Maschinenbau, Konstrukteur, CAD Konstrukteur, Mechanischer Konstrukteur, SolidWorks.
-
-- 5/5 shards, 18 HTTP requests;
-- 13 relevant jobs;
-- 14 relevant locations, 7 geo-resolved;
-- 12 structured salaries + 1 salary text.
-
-### StepStone Austria — clean production #45
-
-- 5/5 shards, 0 failed;
-- exactly 5 HTTP requests, zero details;
-- 37 relevant jobs;
-- 37 locations, 27 geo-resolved;
-- 2 source PLZ resolved;
-- no CSS/title/location pollution remains.
-
-### willhaben Jobs — production #46
-
-- 5/5 shards, 0 failed;
-- exactly 5 HTTP requests, zero details;
-- 18 relevant jobs;
-- sane source_reported=448;
-- 17 locations, 15 geo-resolved.
+- karriere.at #40: 30 relevant jobs, 35 requests, 27 structured salaries.
+- jobs.at #41: 13 relevant jobs, 18 requests, 12 structured salaries + 1 salary text.
+- StepStone #45: 37 relevant jobs, exactly 5 requests, zero details, 27 geo-resolved.
+- willhaben #46: 18 relevant jobs, exactly 5 requests, zero details, source_reported=448.
 
 Acquisition micro-polishing is paused intentionally.
 
@@ -116,11 +88,11 @@ Final refined read-only audit before mutation:
 - `duplicate_candidates_high=8`
 - `duplicate_candidates_medium=8`
 
-Dry-run then exposed one important false-safe case: teampool jobs 163/168 are same-source, near-identical title/body variants, but explicit locations disagree (`Wien` vs `Wels`). Merge safety was tightened before applying anything.
+Dry-run exposed one false-safe case: teampool jobs 163/168 are same-source near-identical title/body variants but explicit locations disagree (`Wien` vs `Wels`). Merge safety was tightened before mutation.
 
 ### First applied merge batch
 
-The following seven explicit groups were applied successfully:
+Seven explicit groups were applied successfully:
 
 - 131/225 — PEISCHL Fahrzeugbau, karriere.at + StepStone, survivor 131.
 - 136/240 — Global Hydro, karriere.at + StepStone, survivor 136.
@@ -128,7 +100,7 @@ The following seven explicit groups were applied successfully:
 - 157/227 — Trenkwalder E-Plan, jobs.at + StepStone, survivor 157.
 - 159/206 — APS Group, jobs.at + willhaben, survivor 159.
 - 165/208 — Trenkwalder Klagenfurt, jobs.at + willhaben, survivor 165.
-- 251/252 — Oberaigner StepStone German/English card variants, survivor 251.
+- 251/252 — Oberaigner StepStone German/English variants, survivor 251.
 
 Observed post-merge state matched the prediction exactly:
 
@@ -137,89 +109,55 @@ Observed post-merge state matched the prediction exactly:
 
 No bulk merge was used; every group was explicit and fail-closed.
 
-### Post-merge audit before audit/ORM cleanup
+### Post-merge unresolved candidates
 
-The immediate post-merge read-only audit showed:
+Immediate post-merge audit had one raw high edge and six medium edges.
 
-- `duplicate_candidates_high=1`
-- `duplicate_candidates_medium=6`
-
-The one remaining high edge was teampool 163/168. It was not merged because the merge engine correctly reported:
+The raw high edge is teampool 163/168, but merge safety correctly blocks it:
 
 `same-source explicit locations conflict; jobs=163,168 sources=jobs.at left=city:wien right=city:wels`
 
-Remaining medium cases include:
+Remaining medium cases include TSMG 3/4, Austro Holding 34/228, Trenkwalder generic `Konstrukteur` edges around 164/165/169, and Anton Paar 67/68. Leave all untouched absent stronger evidence.
 
-- TSMG 3/4 — same Lever source, same normalized title/location, weak description overlap 0.307;
-- Austro Holding 34/228 — SmartRecruiters ↔ StepStone Mechanical Engineer, generic title, weak evidence;
-- Trenkwalder generic `Konstrukteur` edges involving 164/165/169;
-- Anton Paar 67/68 — same SmartRecruiters source, DE/EN-ish service-engineer titles but distinct IDs and weak body overlap.
-
-Leave all of these untouched absent stronger evidence.
-
-## Current duplicate evidence policy
-
-Rules are deliberately conservative:
+## Current duplicate evidence and merge policy
 
 - known different normalized companies are a hard conflict;
 - gender suffixes normalize away;
 - Klagenfurt naming variants canonicalize together;
 - generic titles are conservative;
-- descriptions use token-containment similarity so snippets can match full descriptions;
-- audit prints source listing IDs/URLs, description similarity, generic-title and shared-source flags;
+- descriptions use token-containment similarity;
 - cross-board exact company/title/location is strong syndication evidence;
 - same-source different listing IDs are possible parallel openings;
-- same-source non-generic needs `description_similarity >= 0.82` for high evidence;
-- same-source generic/template needs `description_similarity >= 0.95`;
-- otherwise pairs remain medium.
-
-## Fail-closed canonical merge engine
-
-`merge_duplicate_jobs.py` is dry-run by default and accepts explicit canonical Job IDs only.
-
-Safety behavior:
-
-- group must be connected by high-confidence evidence;
-- conflicting normalized companies block merge;
-- conflicting canonical salary bundles block merge;
-- same-source explicit location disagreement blocks merge even if title/body evidence is strong;
-- sparse location text such as `Wien, Österreich` is conservatively reduced to its explicit first locality only for this merge-safety check;
-- countrywide/remote-only labels do not invent a locality;
+- same-source non-generic needs description similarity >=0.82 for high evidence;
+- same-source generic/template needs >=0.95;
+- conflicting normalized companies or salary bundles block merge;
+- same-source explicit location disagreement blocks merge;
 - survivor is chosen by canonical richness;
-- richer description/company and non-conflicting salary bundle are preserved;
-- all JobListing rows move to the survivor with source lifecycle/raw payloads preserved;
-- locations are unioned and equivalent rows deduplicated/enriched;
-- stale canonical hash is cleared;
-- conflicting/non-uniform fit score is cleared for recomputation;
-- absorbed Jobs are deleted only after transfers;
-- `--apply` is required.
+- JobListings/raw payloads and non-conflicting richer canonical data are preserved;
+- locations are unioned/deduplicated;
+- stale canonical hash and ambiguous fit score are cleared;
+- `--apply` is always required.
 
-### ORM warning cleanup after first merge batch
+### ORM warning cleanup
 
-The first applied batch exposed SQLAlchemy warnings when equivalent `JobLocation` rows were deduplicated:
+The first applied batch exposed `SAWarning` on deduplicated `JobLocation` rows. Root cause was a double-delete path: explicit `session.delete(location)` followed by deletion of the absorbed parent whose relationship already has `cascade="all, delete-orphan"`.
 
-`DELETE statement on table 'job_locations' expected to delete 1 row(s); 0 were matched`
-
-Root cause: the merge code explicitly called `session.delete(location)` and then deleted the absorbed parent Job whose `locations` relationship already uses `cascade="all, delete-orphan"`; ORM therefore attempted a second delete for the same child row.
-
-Current fix removes duplicate locations from the absorbed relationship and lets delete-orphan own the deletion. This avoids the double-delete path without changing merge semantics.
+Current code removes the duplicate child from the absorbed relationship and lets delete-orphan own the deletion. Merge semantics are unchanged; the warning path is removed.
 
 ### Audit/merge-safety alignment
 
-The audit previously reported raw duplicate evidence only, so teampool 163/168 could still appear as `high` even though destructive merge safety blocked it.
-
-Current audit now runs the same fail-closed merge plan for every raw high-evidence pair and splits output into:
+Audit now runs the same fail-closed merge plan for every raw high-evidence pair and reports three classes:
 
 - `duplicate_candidates_high` — high evidence and merge-plan safe;
-- `duplicate_candidates_blocked` — high evidence but unsafe to merge, with explicit blockers;
-- `duplicate_candidates_medium` — unresolved evidence only.
+- `duplicate_candidates_blocked` — high evidence but unsafe, with blockers;
+- `duplicate_candidates_medium` — unresolved evidence.
 
-On the current production corpus the expected next read-only audit is:
+Expected next production audit on the already-merged corpus:
 
 - `relevant_canonical_jobs=156`
 - `already_multi_listing_canonical_jobs=7`
 - `duplicate_candidates_high=0`
-- `duplicate_candidates_blocked=1` (teampool 163/168 Wien/Wels)
+- `duplicate_candidates_blocked=1` — teampool 163/168 Wien/Wels
 - `duplicate_candidates_medium=6`
 
 CI #382 passed Ruff, Compile and the full test suite for the ORM-delete cleanup and audit/merge-safety alignment.
@@ -230,5 +168,4 @@ CI #382 passed Ruff, Compile and the full test suite for the ORM-delete cleanup 
 2. Run only `python scripts/job_duplicate_audit.py --include-medium --limit 100`.
 3. Confirm expected `156 / 7 / high=0 / blocked=1 / medium=6` state.
 4. Do not merge blocked or medium pairs.
-5. Once confirmed, consider canonical dedupe sufficiently closed for this corpus.
-6. Shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
+5. Then consider canonical dedupe closed for the current corpus and move to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
