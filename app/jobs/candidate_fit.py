@@ -4,7 +4,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -47,6 +57,10 @@ class CandidateConceptPreference(Base):
     __table_args__ = (
         UniqueConstraint(
             "profile_id", "concept_id", name="uq_candidate_preference_profile_concept"
+        ),
+        CheckConstraint(
+            "state IN ('can_want', 'can_not_want', 'cannot_want', 'cannot_not_want')",
+            name="ck_candidate_preference_state",
         ),
         Index("ix_candidate_preferences_profile_state", "profile_id", "state"),
     )
@@ -137,37 +151,43 @@ def score_job_concepts(
     """Score normalized job evidence against one candidate profile.
 
     Repeated title/description evidence for the same concept is collapsed to its strongest
-    signal. Unrated concepts do not bias the signed score but do reduce preference coverage.
+    signal. Scope attenuates contribution amplitude, while normalization uses the unscoped
+    evidence strength so context cannot become an extreme identity signal by itself.
+    Unrated concepts do not bias the signed score but do reduce preference coverage.
     """
 
-    strongest: dict[tuple[ConceptKind, str], float] = {}
+    strongest: dict[tuple[ConceptKind, str], tuple[float, float]] = {}
     for item in evidence:
         scope_weight = policy.scope_weights.get(item.scope)
         if scope_weight is None:
             continue
         kind_weight = policy.kind_weights[item.kind]
-        signal_weight = kind_weight * scope_weight * max(0.0, min(1.0, item.confidence))
+        confidence = max(0.0, min(1.0, item.confidence))
+        normalization_weight = kind_weight * confidence
+        effective_weight = normalization_weight * scope_weight
         key = (item.kind, item.slug)
-        strongest[key] = max(strongest.get(key, 0.0), signal_weight)
+        current = strongest.get(key)
+        if current is None or effective_weight > current[1]:
+            strongest[key] = (normalization_weight, effective_weight)
 
-    total_weight = sum(strongest.values())
+    total_weight = sum(normalization for normalization, _effective in strongest.values())
     rated_weight = 0.0
     signed_total = 0.0
     contributions: list[FitContribution] = []
 
-    for key, evidence_weight in strongest.items():
+    for key, (normalization_weight, effective_weight) in strongest.items():
         state = preferences.get(key)
         if state is None:
             continue
-        rated_weight += evidence_weight
-        contribution = evidence_weight * policy.state_values[state]
+        rated_weight += normalization_weight
+        contribution = effective_weight * policy.state_values[state]
         signed_total += contribution
         contributions.append(
             FitContribution(
                 kind=key[0],
                 slug=key[1],
                 state=state,
-                evidence_weight=evidence_weight,
+                evidence_weight=effective_weight,
                 contribution=contribution,
             )
         )
