@@ -16,6 +16,13 @@ from app.admin import AdminDependency
 from app.config import get_settings
 from app.database import get_db
 from app.geo import radius_metres
+from app.house_filters import (
+    HouseFilters,
+    house_filter_summary,
+    load_house_filters,
+    resolve_house_filters,
+    save_house_filters,
+)
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
 from app.matching import PropertyDistanceMatch, SpatialJobMatch
@@ -174,9 +181,45 @@ def _visible_fit_rows(db: Session) -> list[JobFitView]:
     ]
 
 
-def _properties_within_radius_for_job_stmt(job_id: int, radius_km: float):
+def _property_filter_conditions(filters: HouseFilters) -> list:
+    conditions = []
+    normalized_location = filters.ort.strip()
+    if normalized_location:
+        like = f"%{normalized_location}%"
+        conditions.append(
+            or_(
+                Property.postal_code.ilike(like),
+                Property.city.ilike(like),
+            )
+        )
+    if filters.preis_von is not None:
+        conditions.append(Property.price_eur >= filters.preis_von)
+    if filters.preis_bis is not None:
+        conditions.append(Property.price_eur <= filters.preis_bis)
+    if filters.wohn_von is not None:
+        conditions.append(Property.living_area_m2 >= filters.wohn_von)
+    if filters.wohn_bis is not None:
+        conditions.append(Property.living_area_m2 <= filters.wohn_bis)
+    if filters.grund_von is not None:
+        conditions.append(Property.plot_area_m2 >= filters.grund_von)
+    if filters.grund_bis is not None:
+        conditions.append(Property.plot_area_m2 <= filters.grund_bis)
+    return conditions
+
+
+def _properties_within_radius_for_job_stmt(
+    job_id: int,
+    radius_km: float,
+    house_filters: HouseFilters | None = None,
+):
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
+    filters = house_filters or HouseFilters(
+        preis_von=None,
+        preis_bis=None,
+        wohn_von=None,
+        grund_von=None,
+    )
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -215,6 +258,7 @@ def _properties_within_radius_for_job_stmt(job_id: int, radius_km: float):
         .where(
             Property.status == ListingStatus.ACTIVE,
             Property.location.is_not(None),
+            *_property_filter_conditions(filters),
         )
         .subquery("catalog_property_job_candidates")
     )
@@ -403,28 +447,17 @@ def houses_page(
     grund_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
-    conditions = [Property.status == ListingStatus.ACTIVE]
-    normalized_location = ort.strip()
-    if normalized_location:
-        like = f"%{normalized_location}%"
-        conditions.append(
-            or_(
-                Property.postal_code.ilike(like),
-                Property.city.ilike(like),
-            )
-        )
-    if preis_von is not None:
-        conditions.append(Property.price_eur >= preis_von)
-    if preis_bis is not None:
-        conditions.append(Property.price_eur <= preis_bis)
-    if wohn_von is not None:
-        conditions.append(Property.living_area_m2 >= wohn_von)
-    if wohn_bis is not None:
-        conditions.append(Property.living_area_m2 <= wohn_bis)
-    if grund_von is not None:
-        conditions.append(Property.plot_area_m2 >= grund_von)
-    if grund_bis is not None:
-        conditions.append(Property.plot_area_m2 <= grund_bis)
+    filters = resolve_house_filters(
+        request,
+        ort=ort,
+        preis_von=preis_von,
+        preis_bis=preis_bis,
+        wohn_von=wohn_von,
+        wohn_bis=wohn_bis,
+        grund_von=grund_von,
+        grund_bis=grund_bis,
+    )
+    conditions = [Property.status == ListingStatus.ACTIVE, *_property_filter_conditions(filters)]
 
     total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
     page_count = max(1, math.ceil(total / HOUSE_PAGE_SIZE))
@@ -440,7 +473,7 @@ def houses_page(
             .limit(HOUSE_PAGE_SIZE)
         )
     )
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="houses.html",
         context={
@@ -448,19 +481,13 @@ def houses_page(
             "total": total,
             "page": seite,
             "page_count": page_count,
-            "filters": {
-                "ort": ort,
-                "preis_von": preis_von,
-                "preis_bis": preis_bis,
-                "wohn_von": wohn_von,
-                "wohn_bis": wohn_bis,
-                "grund_von": grund_von,
-                "grund_bis": grund_bis,
-            },
+            "filters": filters,
             "eur_label": _eur_label,
             "area_label": _area_label,
         },
     )
+    save_house_filters(response, filters)
+    return response
 
 
 @router.get("/houses/{property_id}", include_in_schema=False)
@@ -508,7 +535,8 @@ def job_detail(
     if fit is None:
         raise HTTPException(status_code=404, detail="Stelle nicht gefunden.")
 
-    base = _properties_within_radius_for_job_stmt(job_id, radius_km)
+    filters = load_house_filters(request)
+    base = _properties_within_radius_for_job_stmt(job_id, radius_km, filters)
     total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
     page_count = max(1, math.ceil(total / NEARBY_HOUSE_PAGE_SIZE))
     if seite > page_count and total:
@@ -581,7 +609,7 @@ def job_detail(
         if item.property_id in property_views
     ]
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request=request,
         name="job_detail.html",
         context={
@@ -591,8 +619,12 @@ def job_detail(
             "total": total,
             "page": seite,
             "page_count": page_count,
+            "house_filters": filters,
+            "house_filter_summary": house_filter_summary(filters),
             "eur_label": _eur_label,
             "area_label": _area_label,
             "annual_salary_label": annual_salary_label,
         },
     )
+    save_house_filters(response, filters)
+    return response
