@@ -37,9 +37,15 @@
     button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
     .semantics { margin: 10px 0 16px; font-size: .82rem; opacity: .65; }
     .jobs { display: grid; gap: 10px; }
-    .job { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(180px, .4fr); gap: 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; padding: 14px; transition: background .15s ease, border-color .15s ease; }
-    .job.unviewed { border-color: color-mix(in srgb, AccentColor 34%, CanvasText 18%); }
-    .job.viewed { background: color-mix(in srgb, CanvasText 2%, Canvas); }
+    .job { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(180px, .4fr); gap: 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-left-width: 4px; border-radius: 12px; padding: 14px; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
+    .job.unviewed { box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 12%, transparent); }
+    .job.viewed h3, .job.viewed .company { opacity: .86; }
+    .job.fit-excellent { border-left-color: #649474; background: color-mix(in srgb, #649474 5%, Canvas); }
+    .job.fit-good { border-left-color: #738ba3; background: color-mix(in srgb, #738ba3 4%, Canvas); }
+    .job.fit-medium { border-left-color: #9b8d69; background: color-mix(in srgb, #9b8d69 3%, Canvas); }
+    .job.fit-low { border-left-color: #8a7770; background: color-mix(in srgb, #8a7770 2%, Canvas); }
+    .job.fit-hard { border-left-color: #a35f5f; background: color-mix(in srgb, #a35f5f 7%, Canvas); opacity: .62; }
+    .job.fit-unrated { border-left-color: color-mix(in srgb, CanvasText 24%, transparent); }
     .score { font-size: 1.8rem; font-weight: 760; }
     .score small { font-size: .7rem; opacity: .55; }
     .company { font-size: .85rem; opacity: .7; }
@@ -133,7 +139,20 @@
     {% for item in jobs %}
       {% set row = item.fit %}
       {% set salary = annual_salary_label(row.job) %}
-      <article class="job {{ 'viewed' if row.viewed else 'unviewed' }}">
+      {% if row.result.hard_constraints %}
+        {% set fit_class = 'fit-hard' %}
+      {% elif row.result.score is none %}
+        {% set fit_class = 'fit-unrated' %}
+      {% elif row.result.score >= 85 %}
+        {% set fit_class = 'fit-excellent' %}
+      {% elif row.result.score >= 70 %}
+        {% set fit_class = 'fit-good' %}
+      {% elif row.result.score >= 50 %}
+        {% set fit_class = 'fit-medium' %}
+      {% else %}
+        {% set fit_class = 'fit-low' %}
+      {% endif %}
+      <article class="job {{ fit_class }} {{ 'viewed' if row.viewed else 'unviewed' }}">
         <div>
           {% if row.result.score is not none %}
             <div class="score">{{ row.result.score }} <small>/100</small></div>
