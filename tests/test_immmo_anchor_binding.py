@@ -48,3 +48,29 @@ def test_matching_title_anchor_remains_authoritative() -> None:
     assert item.url == "https://portal.example/house"
     assert item.raw_payload["original_url_missing"] is False
     assert item.raw_payload["identity_stable"] is True
+
+
+def test_structured_facts_from_another_postal_code_fail_closed() -> None:
+    html = """
+    <html><body>
+      <p>1 bis 12 von 1</p>
+      <h3>Haus kaufen in 1160 Wien</h3>
+      <a href="https://portal.example/investment">
+        KAPITALANLAGE DER BESONDEREN ART - Mitten in Wien
+      </a>
+      <div>€ 229.000,-</div>
+      <div>6890 Lustenau / 96m²</div>
+    </body></html>
+    """
+
+    page = parse_immmo_search_page(
+        html,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Wien",
+    )
+
+    item = page.items[0]
+    assert item.postal_code == "1160"
+    assert item.city == "Wien"
+    assert item.price_eur is None
+    assert item.raw_payload["display_area_m2"] is None
+    assert item.raw_payload["price_semantics"] == "unknown"
