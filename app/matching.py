@@ -6,8 +6,10 @@ from decimal import Decimal
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
+from app.candidate_activity import property_curation_condition
 from app.geo import radius_metres
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
+from app.jobs.candidate_profile_store import get_profile
 from app.jobs.fit_store import JobFitView, load_live_job_fit, relevant_active_jobs
 from app.models import JobLocation, ListingStatus, Property
 from app.property_visibility import product_visible_property_condition
@@ -68,6 +70,7 @@ def nearest_properties_for_job_stmt(
     radius_km: float,
     *,
     limit: int = 25,
+    profile_id: int | None = None,
 ):
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
@@ -76,6 +79,7 @@ def nearest_properties_for_job_stmt(
 
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     distance_km = (distance_m / 1000.0).label("distance_km")
+    curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
 
     candidates = (
         select(
@@ -115,6 +119,7 @@ def nearest_properties_for_job_stmt(
             Property.status == ListingStatus.ACTIVE,
             Property.location.is_not(None),
             product_visible_property_condition(),
+            *curation,
         )
         .subquery("property_job_location_candidates")
     )
@@ -146,9 +151,15 @@ def nearest_properties_for_job(
     radius_km: float,
     *,
     limit: int = 25,
+    profile_id: int | None = None,
 ) -> list[PropertyDistanceMatch]:
     rows = session.execute(
-        nearest_properties_for_job_stmt(job_id, radius_km, limit=limit)
+        nearest_properties_for_job_stmt(
+            job_id,
+            radius_km,
+            limit=limit,
+            profile_id=profile_id,
+        )
     ).mappings()
     return [
         PropertyDistanceMatch(
@@ -251,6 +262,10 @@ def load_spatial_candidate_matches(
     if properties_per_job <= 0:
         raise ValueError("properties_per_job must be greater than zero")
 
+    profile = get_profile(session, profile_slug)
+    if profile is None or not profile.enabled:
+        raise ValueError(f"candidate profile is unavailable: {profile_slug}")
+
     eligible = [
         row
         for row in load_live_job_fit(session, profile_slug=profile_slug)
@@ -275,6 +290,7 @@ def load_spatial_candidate_matches(
                     row.job.id,
                     radius_km,
                     limit=properties_per_job,
+                    profile_id=profile.id,
                 )
             ),
         )
