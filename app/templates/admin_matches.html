@@ -128,8 +128,12 @@
               <div class="house-meta">
                 <strong>{{ eur_label(house.price_eur) }}</strong>
                 <span>{{ house.property_location_label }}</span>
-                {% if area_label(house.living_area_m2) %}<span>Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% endif %}
-                {% if area_label(house.plot_area_m2) %}<span>Grund {{ area_label(house.plot_area_m2) }}</span>{% endif %}
+                {% if area_label(house.living_area_m2) %}
+                  <span>Wohnfläche {{ area_label(house.living_area_m2) }}</span>
+                {% elif area_label(item.neutral_area_m2) %}
+                  <span>Fläche {{ area_label(item.neutral_area_m2) }} <span class="subtle">(Typ nicht eindeutig)</span></span>
+                {% endif %}
+                {% if area_label(item.visible_plot_area_m2) %}<span>Grund {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
               </div>
 
               {% if routing_mode == 'road' and item.road_duration_minutes is not none %}
