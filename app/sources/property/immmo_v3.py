@@ -87,7 +87,7 @@ def _anchor_matches_title(anchor_text: str, expected_title: str) -> bool:
     expected = _clean_text(expected_title).casefold()
     if len(expected) < 8:
         return False
-    return expected in anchor or anchor in expected
+    return expected in anchor
 
 
 def _choose_card_anchor(
