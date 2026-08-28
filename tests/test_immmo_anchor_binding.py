@@ -7,7 +7,9 @@ def test_unrelated_external_anchor_is_not_bound_to_card() -> None:
       <p>1 bis 12 von 1</p>
       <h3>Haus kaufen in 1160 Wien</h3>
       <div>KAPITALANLAGE DER BESONDEREN ART - Mitten in Wien</div>
-      <a href="https://www.immobilienscout24.at/expose/6579d6eabfd5ce3bcce77d0a">Mehr</a>
+      <a href="https://www.immobilienscout24.at/expose/6579d6eabfd5ce3bcce77d0a">
+        Reihenhaus - bis zu Wohnbauförderung möglich
+      </a>
       <div>€ 229.000,-</div>
       <div>1160 Wien / 96m²</div>
     </body></html>
