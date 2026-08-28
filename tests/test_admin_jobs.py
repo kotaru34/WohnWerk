@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.admin import require_admin
+from app.admin import require_admin, require_csrf
 from app.database import get_db
 from app.jobs.candidate_fit import (
     CandidatePreferenceState,
@@ -64,6 +64,7 @@ def _views() -> list[JobFitView]:
     mechanical = Job(id=144, title="Mechanical Design Engineer", company="eXperts")
     electrical = Job(id=259, title="Elektronik-Entwicklungsingenieur", company="BORA")
     unrated = Job(id=999, title="Unklare technische Stelle", company="Beispiel GmbH")
+    hidden = Job(id=1000, title="Verborgene Maschinenbau-Stelle", company="Archiv GmbH")
     return [
         JobFitView(
             job=mechanical,
@@ -72,6 +73,7 @@ def _views() -> list[JobFitView]:
             links=(JobSourceLink(label="karriere.at", url="https://example.test/144"),),
             drivers=(JobFitDriverView(label_de="Maschinenbau", contribution=1.25),),
             hard_labels=(),
+            favorite=True,
         ),
         JobFitView(
             job=electrical,
@@ -89,10 +91,19 @@ def _views() -> list[JobFitView]:
             drivers=(),
             hard_labels=(),
         ),
+        JobFitView(
+            job=hidden,
+            result=_result(80, coverage=0.8),
+            locations=("Salzburg",),
+            links=(),
+            drivers=(),
+            hard_labels=(),
+            hidden=True,
+        ),
     ]
 
 
-def test_admin_jobs_live_ranking_filters(monkeypatch) -> None:
+def test_admin_jobs_live_ranking_filters_and_labels(monkeypatch) -> None:
     engine, session = _session_with_profile()
 
     def override_db():
@@ -108,8 +119,13 @@ def test_admin_jobs_live_ranking_filters(monkeypatch) -> None:
             assert "Stellenranking" in page.text
             assert "Mechanical Design Engineer" in page.text
             assert "Elektronik-Entwicklungsingenieur" not in page.text
-            assert "Unklare technische Stelle" not in page.text
+            assert "Verborgene Maschinenbau-Stelle" not in page.text
+            assert "Passung" in page.text
             assert "100" in page.text
+            assert "/ 100" in page.text
+            assert "Bewertungsbasis" in page.text
+            assert "Abdeckung" not in page.text
+            assert "Favorit" in page.text
             assert "Maschinenbau" in page.text
             assert "8010 Graz" in page.text
 
@@ -124,10 +140,62 @@ def test_admin_jobs_live_ranking_filters(monkeypatch) -> None:
             assert "Unklare technische Stelle" in unrated.text
             assert "Mechanical Design Engineer" not in unrated.text
 
+            favorites = client.get("/admin/jobs?ansicht=favoriten")
+            assert favorites.status_code == 200
+            assert "Mechanical Design Engineer" in favorites.text
+            assert "Elektronik-Entwicklungsingenieur" not in favorites.text
+
+            hidden = client.get("/admin/jobs?ansicht=ausgeblendet")
+            assert hidden.status_code == 200
+            assert "Verborgene Maschinenbau-Stelle" in hidden.text
+            assert "Wieder einblenden" in hidden.text
+
             search = client.get("/admin/jobs?ansicht=alle&suche=graz")
             assert search.status_code == 200
             assert "Mechanical Design Engineer" in search.text
             assert "Elektronik-Entwicklungsingenieur" not in search.text
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        engine.dispose()
+
+
+def test_admin_job_curation_posts(monkeypatch) -> None:
+    engine, session = _session_with_profile()
+    calls: list[tuple[str, int, bool]] = []
+
+    def override_db():
+        yield session
+
+    monkeypatch.setattr(
+        "app.admin.set_job_favorite",
+        lambda _db, _profile, job_id, *, favorite: calls.append(("favorite", job_id, favorite)),
+    )
+    monkeypatch.setattr(
+        "app.admin.set_job_hidden",
+        lambda _db, _profile, job_id, *, hidden: calls.append(("hidden", job_id, hidden)),
+    )
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            favorite = client.post(
+                "/admin/jobs/144/favorite",
+                data={"favorite": "1", "return_view": "alle", "return_search": "Graz"},
+                follow_redirects=False,
+            )
+            assert favorite.status_code == 303
+            assert favorite.headers["location"] == "/admin/jobs?ansicht=alle&suche=Graz#job-144"
+
+            hidden = client.post(
+                "/admin/jobs/144/hidden",
+                data={"hidden": "1", "return_view": "passend"},
+                follow_redirects=False,
+            )
+            assert hidden.status_code == 303
+
+        assert calls == [("favorite", 144, True), ("hidden", 144, True)]
     finally:
         app.dependency_overrides.clear()
         session.close()
