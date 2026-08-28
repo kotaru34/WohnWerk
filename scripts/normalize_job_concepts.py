@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
+from collections import Counter
 from decimal import Decimal
 
 from sqlalchemy import delete, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import SessionLocal
 from app.jobs.concept_catalog import (
@@ -16,7 +16,7 @@ from app.jobs.concept_catalog import (
     extract_concepts,
     normalize_concept_text,
 )
-from app.jobs.concepts import JobConcept, JobConceptAlias, JobConceptEvidence
+from app.jobs.concepts import ConceptKind, JobConcept, JobConceptAlias, JobConceptEvidence
 from app.models import Job, JobListing, ListingStatus
 
 
@@ -48,7 +48,7 @@ def _gate_accepted(listing: JobListing) -> bool:
     return isinstance(gate, dict) and gate.get("accepted") is True
 
 
-def _relevant_active_jobs(session) -> list[Job]:
+def _relevant_active_jobs(session: Session) -> list[Job]:
     jobs = list(
         session.scalars(
             select(Job)
@@ -67,7 +67,7 @@ def _relevant_active_jobs(session) -> list[Job]:
     ]
 
 
-def _seed_vocabulary(session) -> None:
+def _seed_vocabulary(session: Session) -> None:
     existing = {
         (concept.kind, concept.slug): concept
         for concept in session.scalars(select(JobConcept))
@@ -111,7 +111,7 @@ def _seed_vocabulary(session) -> None:
     session.flush()
 
 
-def _database_catalog(session) -> tuple[ConceptSeed, ...]:
+def _database_catalog(session: Session) -> tuple[ConceptSeed, ...]:
     concepts = list(
         session.scalars(
             select(JobConcept)
@@ -122,7 +122,7 @@ def _database_catalog(session) -> tuple[ConceptSeed, ...]:
     )
     return tuple(
         ConceptSeed(
-            kind=concept.kind,
+            kind=ConceptKind(concept.kind),
             slug=concept.slug,
             label_de=concept.label_de,
             aliases=tuple(alias.alias for alias in concept.aliases if alias.enabled),
@@ -132,7 +132,10 @@ def _database_catalog(session) -> tuple[ConceptSeed, ...]:
     )
 
 
-def _extract(jobs: list[Job], catalog: tuple[ConceptSeed, ...]):
+def _extract(
+    jobs: list[Job],
+    catalog: tuple[ConceptSeed, ...],
+) -> dict[int, list]:
     return {
         job.id: extract_concepts(
             JobTextSnapshot(job_id=job.id, title=job.title, description=job.description),
@@ -142,7 +145,11 @@ def _extract(jobs: list[Job], catalog: tuple[ConceptSeed, ...]):
     }
 
 
-def _print_summary(jobs: list[Job], matches_by_job, unmatched_limit: int) -> None:
+def _print_summary(
+    jobs: list[Job],
+    matches_by_job: dict[int, list],
+    unmatched_limit: int,
+) -> None:
     matched_jobs = [job for job in jobs if matches_by_job[job.id]]
     evidence_count = sum(len(matches) for matches in matches_by_job.values())
     concept_keys = {
@@ -181,7 +188,11 @@ def _print_summary(jobs: list[Job], matches_by_job, unmatched_limit: int) -> Non
             print(f"  job={job.id} title={job.title}")
 
 
-def _persist(session, jobs: list[Job], matches_by_job) -> None:
+def _persist(
+    session: Session,
+    jobs: list[Job],
+    matches_by_job: dict[int, list],
+) -> None:
     _seed_vocabulary(session)
     catalog = _database_catalog(session)
     matches_by_job.clear()
