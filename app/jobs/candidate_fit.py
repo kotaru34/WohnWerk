@@ -91,10 +91,11 @@ class FitPolicy:
     state_values: dict[CandidatePreferenceState, float]
     scope_weights: dict[str, float]
     kind_weights: dict[ConceptKind, float]
+    positive_evidence_budget: float
 
 
 DEFAULT_FIT_POLICY = FitPolicy(
-    version="candidate-fit-2026-08-28-v1",
+    version="candidate-fit-2026-08-28-v2",
     # Desire is intentionally slightly stronger than current capability: an aspirational
     # concept is mildly positive, while a known-but-unwanted concept is mildly negative.
     state_values={
@@ -112,6 +113,9 @@ DEFAULT_FIT_POLICY = FitPolicy(
         ConceptKind.METHOD: 0.75,
         ConceptKind.TOOL: 0.75,
     },
+    # Positive fit claims need corroboration. A single generic role/domain should not
+    # saturate to 100; roughly role + domain + task is enough for full positive confidence.
+    positive_evidence_budget=3.0,
 )
 
 
@@ -153,7 +157,12 @@ def score_job_concepts(
     Repeated title/description evidence for the same concept is collapsed to its strongest
     signal. Scope attenuates contribution amplitude, while normalization uses the unscoped
     evidence strength so context cannot become an extreme identity signal by itself.
-    Unrated concepts do not bias the signed score but do reduce preference coverage.
+
+    Positive scores additionally use a minimum evidence budget: one attractive generic
+    concept can move a job above neutral but cannot prove an exceptional fit alone. Negative
+    evidence is intentionally not given that optimism floor, so a primary hard incompatibility
+    can still veto a vacancy. Unrated concepts do not bias the signed score but reduce
+    preference coverage.
     """
 
     strongest: dict[tuple[ConceptKind, str], tuple[float, float]] = {}
@@ -203,7 +212,11 @@ def score_job_concepts(
             contributions=(),
         )
 
-    signed_score = max(-1.0, min(1.0, signed_total / rated_weight))
+    normalization_denominator = rated_weight
+    if signed_total > 0.0:
+        normalization_denominator = max(rated_weight, policy.positive_evidence_budget)
+
+    signed_score = max(-1.0, min(1.0, signed_total / normalization_denominator))
     score = round(50.0 + 50.0 * signed_score)
     contributions.sort(key=lambda item: abs(item.contribution), reverse=True)
     return JobFitResult(
