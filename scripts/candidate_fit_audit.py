@@ -10,14 +10,24 @@ from sqlalchemy.orm import selectinload
 from app.database import SessionLocal
 from app.jobs.candidate_fit import DEFAULT_FIT_POLICY, FitEvidence, JobFitResult, score_job_concepts
 from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES, PROFILE_SEED_VERSION
-from app.jobs.concept_catalog import EXTRACTOR_VERSION
-from app.jobs.concepts import ConceptKind, JobConcept, JobConceptEvidence
+from app.jobs.concept_catalog import (
+    CONCEPT_SEEDS,
+    EXTRACTOR_VERSION,
+    JobTextSnapshot,
+    extract_concepts,
+)
+from app.jobs.concepts import (
+    ConceptKind,
+    JobConcept,
+    JobConceptEvidence,
+    concept_evidence_semantics,
+)
 from app.models import Job, JobListing, ListingStatus
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Read-only candidate fit audit from persisted normalized concept evidence."
+        description="Read-only candidate fit audit from normalized concept evidence."
     )
     parser.add_argument(
         "--limit", type=int, default=20, help="Top/bottom jobs to print (default: 20)."
@@ -28,6 +38,14 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="Print full scored concept contribution detail for a Job ID; may be repeated.",
+    )
+    parser.add_argument(
+        "--preview-current-extractor",
+        action="store_true",
+        help=(
+            "Compute evidence in memory from the current seed extractor instead of requiring "
+            "that extractor version to already be persisted. Read-only."
+        ),
     )
     return parser.parse_args()
 
@@ -57,7 +75,7 @@ def _relevant_active_jobs(session) -> list[Job]:
     ]
 
 
-def _evidence_by_job(session, job_ids: set[int]) -> dict[int, list[FitEvidence]]:
+def _persisted_evidence_by_job(session, job_ids: set[int]) -> dict[int, list[FitEvidence]]:
     result: dict[int, list[FitEvidence]] = defaultdict(list)
     if not job_ids:
         return result
@@ -84,11 +102,33 @@ def _evidence_by_job(session, job_ids: set[int]) -> dict[int, list[FitEvidence]]
     return result
 
 
-def _seed_validation(session) -> tuple[int, list[str]]:
-    concepts = {
-        (ConceptKind(concept.kind), concept.slug)
-        for concept in session.scalars(select(JobConcept).where(JobConcept.enabled.is_(True)))
-    }
+def _preview_evidence_by_job(jobs: list[Job]) -> dict[int, list[FitEvidence]]:
+    result: dict[int, list[FitEvidence]] = defaultdict(list)
+    for job in jobs:
+        matches = extract_concepts(
+            JobTextSnapshot(job_id=job.id, title=job.title, description=job.description)
+        )
+        for match in matches:
+            scope, confidence = concept_evidence_semantics(match.kind, match.field)
+            result[job.id].append(
+                FitEvidence(
+                    kind=match.kind,
+                    slug=match.slug,
+                    scope=scope.value,
+                    confidence=confidence,
+                )
+            )
+    return result
+
+
+def _seed_validation(session, *, preview: bool) -> tuple[int, list[str]]:
+    if preview:
+        concepts = {(seed.kind, seed.slug) for seed in CONCEPT_SEEDS}
+    else:
+        concepts = {
+            (ConceptKind(concept.kind), concept.slug)
+            for concept in session.scalars(select(JobConcept).where(JobConcept.enabled.is_(True)))
+        }
     missing = [
         f"{kind.value}:{slug}"
         for kind, slug in PROFILE_PREFERENCES
@@ -118,8 +158,16 @@ def main() -> None:
     with SessionLocal() as session:
         jobs = _relevant_active_jobs(session)
         jobs_by_id = {job.id: job for job in jobs}
-        evidence_by_job = _evidence_by_job(session, set(jobs_by_id))
-        ratings_count, missing_seed = _seed_validation(session)
+        if args.preview_current_extractor:
+            evidence_by_job = _preview_evidence_by_job(jobs)
+            evidence_mode = "preview_current_extractor"
+        else:
+            evidence_by_job = _persisted_evidence_by_job(session, set(jobs_by_id))
+            evidence_mode = "persisted_current_extractor"
+
+        ratings_count, missing_seed = _seed_validation(
+            session, preview=args.preview_current_extractor
+        )
         results = {
             job.id: score_job_concepts(evidence_by_job.get(job.id, []), PROFILE_PREFERENCES)
             for job in jobs
@@ -129,6 +177,7 @@ def main() -> None:
         print(f"profile_seed_version={PROFILE_SEED_VERSION}")
         print(f"fit_policy_version={DEFAULT_FIT_POLICY.version}")
         print(f"extractor_version={EXTRACTOR_VERSION}")
+        print(f"evidence_mode={evidence_mode}")
         print(f"rated_concepts={ratings_count}")
         print(f"missing_seed_concepts={','.join(missing_seed) if missing_seed else '-'}")
         print(
@@ -149,6 +198,11 @@ def main() -> None:
         print(f"relevant_active_jobs={len(jobs)}")
         print(f"jobs_scored={len(scored)}")
         print(f"jobs_unscored={len(jobs) - len(scored)}")
+        if not args.preview_current_extractor and not any(evidence_by_job.values()):
+            print(
+                "warning=no persisted evidence for current extractor; "
+                "use --preview-current-extractor or persist normalization first"
+            )
         if scored:
             print(f"score_mean={mean(result.score for result in scored if result.score is not None):.2f}")
             print(
