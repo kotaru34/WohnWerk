@@ -6,7 +6,9 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import Request, Response
 
-COOKIE_NAME = "wohnwerk_house_filters_v1"
+# v2 intentionally invalidates the earlier cookie whose defaults pre-filled the family
+# budget/area constraints. Filters now begin empty and only persist explicit user choices.
+COOKIE_NAME = "wohnwerk_house_filters_v2"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 FILTER_QUERY_KEYS = frozenset(
     {
@@ -24,11 +26,11 @@ FILTER_QUERY_KEYS = frozenset(
 @dataclass(frozen=True, slots=True)
 class HouseFilters:
     ort: str = ""
-    preis_von: Decimal | None = Decimal(30000)
-    preis_bis: Decimal | None = Decimal(150000)
-    wohn_von: Decimal | None = Decimal(90)
+    preis_von: Decimal | None = None
+    preis_bis: Decimal | None = None
+    wohn_von: Decimal | None = None
     wohn_bis: Decimal | None = None
-    grund_von: Decimal | None = Decimal(300)
+    grund_von: Decimal | None = None
     grund_bis: Decimal | None = None
 
     def as_cookie_payload(self) -> dict[str, str | None]:
@@ -43,7 +45,8 @@ class HouseFilters:
         }
 
 
-BASE_HOUSE_FILTERS = HouseFilters()
+EMPTY_HOUSE_FILTERS = HouseFilters()
+BASE_HOUSE_FILTERS = EMPTY_HOUSE_FILTERS
 
 
 def _decimal_text(value: Decimal | None) -> str | None:
@@ -81,13 +84,13 @@ def _from_mapping(payload: dict[str, object]) -> HouseFilters:
 def load_house_filters(request: Request) -> HouseFilters:
     raw = request.cookies.get(COOKIE_NAME)
     if not raw:
-        return BASE_HOUSE_FILTERS
+        return EMPTY_HOUSE_FILTERS
     try:
         payload = json.loads(raw)
     except (TypeError, ValueError):
-        return BASE_HOUSE_FILTERS
+        return EMPTY_HOUSE_FILTERS
     if not isinstance(payload, dict):
-        return BASE_HOUSE_FILTERS
+        return EMPTY_HOUSE_FILTERS
     return _from_mapping(payload)
 
 
@@ -103,7 +106,7 @@ def resolve_house_filters(
     grund_bis: Decimal | None,
 ) -> HouseFilters:
     if request.query_params.get("filter_reset") == "1":
-        return BASE_HOUSE_FILTERS
+        return EMPTY_HOUSE_FILTERS
 
     explicitly_submitted = any(key in request.query_params for key in FILTER_QUERY_KEYS)
     if not explicitly_submitted:
@@ -152,4 +155,4 @@ def house_filter_summary(filters: HouseFilters) -> str:
         parts.append(f"Grundstück ab {filters.grund_von:,.0f} m²".replace(",", "."))
     if filters.grund_bis is not None:
         parts.append(f"Grundstück bis {filters.grund_bis:,.0f} m²".replace(",", "."))
-    return " · ".join(parts) if parts else "Kein zusätzlicher Hausfilter"
+    return " · ".join(parts) if parts else "Keine zusätzlichen Filter"
