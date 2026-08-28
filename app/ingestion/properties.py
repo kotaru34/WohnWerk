@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.listing_identity import stable_external_identity
 from app.ingestion.property_continuity import (
     PropertyContinuityObservation,
+    continuity_area_m2,
     match_property_continuity,
 )
 from app.models import (
@@ -154,7 +155,10 @@ def _immmo_continuity_candidates(
             postal_code=listing.property.postal_code,
             title=listing.property.title,
             price_eur=listing.property.price_eur,
-            living_area_m2=listing.property.living_area_m2,
+            living_area_m2=continuity_area_m2(
+                listing.raw_payload,
+                listing.property.living_area_m2,
+            ),
         )
         for listing in candidates
     ]
@@ -164,7 +168,7 @@ def _immmo_continuity_candidates(
             postal_code=item.postal_code,
             title=item.title,
             price_eur=item.price_eur,
-            living_area_m2=item.living_area_m2,
+            living_area_m2=continuity_area_m2(item.raw_payload, item.living_area_m2),
         )
         for item in unknown_items
     ]
