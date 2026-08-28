@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from app.ingestion.property_continuity import (
     PropertyContinuityObservation,
+    continuity_area_m2,
     match_property_continuity,
 )
 
@@ -21,6 +22,17 @@ def observation(
         price_eur=Decimal(price) if price is not None else None,
         living_area_m2=Decimal(area) if area is not None else None,
     )
+
+
+def test_continuity_prefers_raw_display_area_over_semantic_living_area() -> None:
+    assert continuity_area_m2(
+        {"display_area_m2": "748"},
+        Decimal("130"),
+    ) == Decimal("748")
+
+
+def test_continuity_legacy_rows_fall_back_to_historical_living_area() -> None:
+    assert continuity_area_m2({}, Decimal("212.02")) == Decimal("212.02")
 
 
 def test_exact_metadata_reconnects_rotated_provider_identity() -> None:
