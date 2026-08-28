@@ -7,8 +7,8 @@ from sqlalchemy.pool import NullPool
 import app.candidate_activity
 import app.jobs.candidate_fit
 import app.jobs.concepts
-import app.models  # noqa: F401
-import app.property_images
+import app.models
+import app.property_images  # noqa: F401
 from app.config import get_settings
 from app.database import Base
 
