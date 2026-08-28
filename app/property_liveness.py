@@ -126,30 +126,29 @@ async def _probe_one(
         return PropertyLivenessProbe("dead", None, "unsafe_or_missing_url")
 
     try:
-        async with semaphore:
-            async with client.stream("GET", safe) as response:
-                final_url = _safe_http_url(str(response.url))
-                if final_url is None:
-                    return PropertyLivenessProbe(
-                        "unknown",
-                        response.status_code,
-                        "unsafe_redirect",
-                        str(response.url),
-                    )
+        async with semaphore, client.stream("GET", safe) as response:
+            final_url = _safe_http_url(str(response.url))
+            if final_url is None:
+                return PropertyLivenessProbe(
+                    "unknown",
+                    response.status_code,
+                    "unsafe_redirect",
+                    str(response.url),
+                )
 
-                chunks: list[bytes] = []
-                total = 0
-                async for chunk in response.aiter_bytes():
-                    if total >= body_limit:
-                        break
-                    remaining = body_limit - total
-                    chunks.append(chunk[:remaining])
-                    total += min(len(chunk), remaining)
-                    if total >= body_limit:
-                        break
-                body = _decode_body(b"".join(chunks), response.encoding)
-                state, reason = assess_property_page(response.status_code, body)
-                return PropertyLivenessProbe(state, response.status_code, reason, final_url)
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes():
+                if total >= body_limit:
+                    break
+                remaining = body_limit - total
+                chunks.append(chunk[:remaining])
+                total += min(len(chunk), remaining)
+                if total >= body_limit:
+                    break
+            body = _decode_body(b"".join(chunks), response.encoding)
+            state, reason = assess_property_page(response.status_code, body)
+            return PropertyLivenessProbe(state, response.status_code, reason, final_url)
     except httpx.HTTPError as exc:
         return PropertyLivenessProbe(
             "unknown",
