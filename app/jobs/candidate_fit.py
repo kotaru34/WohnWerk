@@ -28,6 +28,11 @@ class CandidatePreferenceState(StrEnum):
     CANNOT_NOT_WANT = "cannot_not_want"
 
 
+class CandidatePreferenceSource(StrEnum):
+    SEED = "seed"
+    MANUAL = "manual"
+
+
 class CandidateProfile(Base):
     """Candidate-specific preference profile kept separate from job normalization."""
 
@@ -62,7 +67,12 @@ class CandidateConceptPreference(Base):
             "state IN ('can_want', 'can_not_want', 'cannot_want', 'cannot_not_want')",
             name="ck_candidate_preference_state",
         ),
+        CheckConstraint(
+            "source IN ('seed', 'manual')",
+            name="ck_candidate_preference_source",
+        ),
         Index("ix_candidate_preferences_profile_state", "profile_id", "state"),
+        Index("ix_candidate_preferences_profile_source", "profile_id", "source"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -73,6 +83,10 @@ class CandidateConceptPreference(Base):
         ForeignKey("job_concepts.id", ondelete="CASCADE"), index=True, nullable=False
     )
     state: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(20), default=CandidatePreferenceSource.MANUAL.value, nullable=False
+    )
+    seed_version: Mapped[str | None] = mapped_column(String(80))
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
