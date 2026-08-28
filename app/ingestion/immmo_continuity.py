@@ -8,8 +8,8 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.ingestion.property_continuity import (
-    PropertyContinuityObservation,
     PropertyContinuityMatch,
+    PropertyContinuityObservation,
     match_property_continuity,
 )
 from app.models import (
