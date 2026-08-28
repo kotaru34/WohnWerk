@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.jobs.candidate_fit import CandidatePreferenceState
 from app.jobs.concepts import ConceptKind
 
-PROFILE_SEED_VERSION = "candidate-profile-2026-08-28-v1"
+PROFILE_SEED_VERSION = "candidate-profile-2026-08-28-v2"
 PROFILE_SLUG = "mechanical-project-engineer"
 PROFILE_LABEL_DE = "Maschinenbau / technische Projektleitung"
 
@@ -21,6 +21,7 @@ PROFILE_PREFERENCES: dict[tuple[ConceptKind, str], CandidatePreferenceState] = {
     (ConceptKind.DOMAIN, "rail-vehicles"): CandidatePreferenceState.CAN_WANT,
     (ConceptKind.DOMAIN, "special-machinery"): CandidatePreferenceState.CAN_WANT,
     (ConceptKind.DOMAIN, "electrical-engineering"): CandidatePreferenceState.CANNOT_NOT_WANT,
+    (ConceptKind.DOMAIN, "electronics"): CandidatePreferenceState.CANNOT_NOT_WANT,
     (ConceptKind.TASK, "mechanical-design"): CandidatePreferenceState.CAN_WANT,
     (ConceptKind.TASK, "product-development"): CandidatePreferenceState.CAN_WANT,
     (ConceptKind.TASK, "requirements-engineering"): CandidatePreferenceState.CAN_WANT,
