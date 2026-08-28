@@ -25,6 +25,7 @@ from app.jobs.admin_store import (
 from app.jobs.candidate_fit import CandidatePreferenceState
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.concepts import ConceptKind
+from app.jobs.fit_store import annual_salary_label, load_live_job_fit
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 security = HTTPBasic(auto_error=False)
@@ -43,6 +44,12 @@ STATE_LABELS = {
     CandidatePreferenceState.CAN_NOT_WANT: "Kann ich / möchte ich nicht",
     CandidatePreferenceState.CANNOT_WANT: "Kann ich nicht / möchte ich",
     CandidatePreferenceState.CANNOT_NOT_WANT: "Kann ich nicht / möchte ich nicht",
+}
+JOB_FILTERS = {
+    "passend": "Passend",
+    "alle": "Alle",
+    "unvereinbar": "Unvereinbar",
+    "unbewertet": "Unbewertet",
 }
 
 CredentialsDependency = Annotated[HTTPBasicCredentials | None, Depends(security)]
@@ -157,6 +164,63 @@ def concepts_page(
     )
 
 
+@router.get("/jobs")
+def jobs_page(
+    request: Request,
+    _: AdminDependency,
+    db: DbDependency,
+    ansicht: Annotated[str, Query()] = "passend",
+    suche: Annotated[str, Query()] = "",
+):
+    profile = _profile_or_503(db)
+    if ansicht not in JOB_FILTERS:
+        raise HTTPException(status_code=400, detail="Ungültige Stellenansicht.")
+
+    all_rows = load_live_job_fit(db, profile_slug=profile.slug)
+    stats = {
+        "gesamt": len(all_rows),
+        "bewertet": sum(row.result.score is not None for row in all_rows),
+        "unvereinbar": sum(bool(row.result.hard_constraints) for row in all_rows),
+        "unbewertet": sum(row.result.score is None for row in all_rows),
+    }
+
+    rows = all_rows
+    if ansicht == "passend":
+        rows = [
+            row
+            for row in rows
+            if row.result.score is not None and not row.result.hard_constraints
+        ]
+    elif ansicht == "unvereinbar":
+        rows = [row for row in rows if row.result.hard_constraints]
+    elif ansicht == "unbewertet":
+        rows = [row for row in rows if row.result.score is None]
+
+    normalized_search = suche.strip().casefold()
+    if normalized_search:
+        rows = [
+            row
+            for row in rows
+            if normalized_search in row.job.title.casefold()
+            or normalized_search in (row.job.company or "").casefold()
+            or any(normalized_search in location.casefold() for location in row.locations)
+        ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_jobs.html",
+        context={
+            "profile": profile,
+            "rows": rows,
+            "stats": stats,
+            "job_filters": JOB_FILTERS,
+            "selected_filter": ansicht,
+            "search": suche,
+            "annual_salary_label": annual_salary_label,
+        },
+    )
+
+
 @router.post("/concepts/{concept_id}/preference")
 def set_preference(
     concept_id: int,
@@ -225,7 +289,7 @@ def toggle_alias(
     try:
         set_alias_enabled(db, alias_id, enabled=enabled == "1")
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Alias nicht gefunden.") from exc
+        raise HTTPException(status_code=404, detail="Synonym nicht gefunden.") from exc
     return _redirect(concept_id, kind=return_kind, aliases_changed=True)
 
 
@@ -241,7 +305,7 @@ def remove_alias(
     try:
         delete_manual_alias(db, alias_id)
     except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Alias nicht gefunden.") from exc
+        raise HTTPException(status_code=404, detail="Synonym nicht gefunden.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Standard-Synonyme können nur deaktiviert werden.") from exc
     return _redirect(concept_id, kind=return_kind, aliases_changed=True)
