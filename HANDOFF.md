@@ -46,7 +46,7 @@ Acquisition micro-polishing is paused intentionally.
 
 Current discovery gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is closed unless a genuinely generic bug appears.
 
-Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is `cannot + not want`; this affects candidate fit, not broad acquisition.
+Candidate is fundamentally mechanical/Maschinenbau, not electrical/electronics. Fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical/electronics work is `cannot + not want`; this affects candidate fit, not broad acquisition.
 
 ## Canonical job dedupe — closed
 
@@ -59,11 +59,9 @@ Final production audit:
 
 Blocked teampool 163/168 remains split because source locations conflict (`Wien` vs `Wels`). Medium TSMG/Austro Holding/Trenkwalder/Anton Paar candidates remain untouched.
 
-Merge is explicit-ID, dry-run by default and fail-closed on company/salary/evidence/same-source location conflicts. Source listings/raw payloads survive canonical merge. Audit and destructive safety use the same merge plan.
-
 Canonical dedupe is intentionally closed for the current corpus.
 
-## Normalized job concepts — production established
+## Normalized job concepts
 
 Dimensions: `role / domain / task / method / tool`.
 
@@ -74,8 +72,6 @@ Files:
 - `scripts/normalize_job_concepts.py`
 - `scripts/job_concept_persisted_audit.py`
 - `tests/test_job_concepts.py`
-
-Current deterministic extractor: `concept-seed-2026-08-28-v2`.
 
 Evidence semantics:
 - title -> `primary / 1.00`
@@ -91,22 +87,49 @@ Guardrails:
 - deterministic recompute replaces prior `concept-seed-*` evidence only;
 - DB-enabled aliases drive applied extraction.
 
+### Production persisted state — v2
+
 Migration `0007_job_concepts` is applied in production.
 
-Persisted state:
+Persisted extractor remains `concept-seed-2026-08-28-v2`:
 - `156/156` relevant jobs matched
 - `49` distinct concepts
 - `747` evidence rows
 - `219 primary / 528 context`
 - `invalid_scope_values=-`
-- only `concept-seed-2026-08-28-v2` deterministic evidence present
+- only v2 deterministic evidence is persisted
 
 Targeted persisted checks:
 - `domain:electrical-engineering`: 40 jobs, primary=4, context=38
 - `role:mechanical-technician`: 23 jobs, primary=21, context=8
 - `role:designer-engineer`: 48 jobs, primary=44, context=32
 
-Normalization is production-established. Do not broadly polish synonyms again without a demonstrated ranking/precision problem.
+### Extractor v3 — code/preview only, not yet persisted
+
+Current code extractor: `concept-seed-2026-08-28-v3`.
+
+V3 is intentionally narrow and was added only because live fit ranking demonstrated missing identity evidence:
+- new neutral `domain:electronics`;
+- `Elektronik`, `Electronics`, `Hardware Engineer`, `Hardware Design Engineer` -> electronics;
+- explicit `E-Konstrukteur`, `Elektrokonstrukteur`, `Electrical Design Engineer`, `EMC Engineer`, `EMV-Ingenieur` -> electrical-engineering;
+- EPLAN tool alone still does **not** imply electrical domain.
+
+Read-only v3 concept preview on all 156 jobs:
+- `jobs_with_concepts=156`
+- `distinct_concepts_matched=50`
+- `evidence_rows=780`
+- `228 primary / 552 context`
+- `domain:electronics`: 27 jobs, primary=6, context=24
+- `domain:electrical-engineering`: 40 jobs, primary=7, context=38
+
+Examples now correctly primary-classified:
+- `Head of Electronics` -> electronics primary
+- `Elektronik-Entwicklungsingenieur` -> electronics primary
+- `Staff Hardware Engineer` / `Hardware Design Engineer` -> electronics primary
+- `EMC Engineer` -> electrical-engineering primary
+- `E-Konstrukteur` -> electrical-engineering primary
+
+V3 is not persisted yet. Use `candidate_fit_audit.py --preview-current-extractor` for read-only fit evaluation until explicitly approved.
 
 ## Candidate concept preferences / fit — current primary work
 
@@ -121,78 +144,82 @@ Four states: `can_want / can_not_want / cannot_want / cannot_not_want`.
 
 Absence of a preference row means **unrated**. Candidate profiles are first-class. `Job.job_fit_score` is not source of truth and remains untouched by audits.
 
-Initial seed: `candidate-profile-2026-08-28-v1`, with 23 rated concepts. Generic `designer-engineer` and uncertain tools/roles/domains remain unrated. `domain:electrical-engineering` is explicit `cannot_not_want`.
+Current seed: `candidate-profile-2026-08-28-v2`, 24 rated concepts. `domain:electrical-engineering` and `domain:electronics` are `cannot_not_want`. Generic `designer-engineer` and uncertain tools/roles/domains remain unrated.
 
-### First production fit audit — policy v1
+### Fit policy evolution
 
-Read-only audit on all 156 jobs using `candidate-fit-2026-08-28-v1`:
-- `jobs_scored=136`
-- `jobs_unscored=20`
-- `score_mean=75.71`
-- `score_median=73.00`
-- `preference_coverage_mean=0.592`
-- `preference_coverage_median=0.521`
+Policy v1 exposed a positive-saturation bug: one positive generic role/domain could normalize to 100.
 
-Two distinct issues were demonstrated:
+Policy v2 (`candidate-fit-2026-08-28-v2`) added:
+- state values: can+want `+1.00`, can+not-want `-0.20`, cannot+want `+0.20`, cannot+not-want `-1.00`;
+- kind weights: role `1.15`, domain `1.25`, task `1.00`, method/tool `0.75`;
+- scope amplitude: primary `1.00`, context `0.35`;
+- positive evidence budget `3.0`, so one attractive concept cannot saturate.
 
-1. **Positive saturation bug:** one positive generic role/domain could normalize to 100. This made development-engineer-only and mechanical-domain-only jobs appear perfect.
-2. **Narrow taxonomy gap:** obvious electrical/electronics identity titles such as `Elektronik-Entwicklungsingenieur`, `Head of Electronics`, `EMC Engineer`, `Hardware Engineer` do not necessarily have primary electrical-domain evidence.
-
-Examples from v1:
-- `Konstrukteur*in Elektrotechnik` -> 0, correct hard-negative primary electrical identity.
-- context-only electrical mentions -> about 32–56 depending on positive context, showing scope attenuation works.
-- `Entwicklungsingenieur Elektrotechnik` -> about 48 because primary negative electrical and primary positive generic development nearly cancel.
-- `Elektronik-Entwicklungsingenieur ... Produktentwicklung` -> false 100 because electrical/electronics identity is missing and two generic positives saturated.
-
-### Fit policy v2 — current code
-
-Current policy: `candidate-fit-2026-08-28-v2`.
-
-State values:
-- can + want = `+1.00`
-- can + not want = `-0.20`
-- cannot + want = `+0.20`
-- cannot + not want = `-1.00`
-
-Kind weights:
-- role `1.15`
-- domain `1.25`
-- task `1.00`
-- method/tool `0.75`
-
-Scope amplitude:
-- primary `1.00`
-- context `0.35`
-
-New rule: **positive evidence budget = 3.0**. Positive fit normalizes against at least 3.0 evidence weight so one attractive generic concept cannot saturate.
-
-Approximate behavior:
+Approximate positive behavior:
 - one primary role -> ~69
 - one primary domain -> ~71
 - primary role + domain -> ~90
 - role + domain + task can reach 100
 
-Negative evidence intentionally has no optimism floor: a primary `cannot_not_want` domain can still veto to 0. Context-only hard-negative stays attenuated around 32.
+V2 live v3-extractor preview produced:
+- `jobs_scored=141`, `jobs_unscored=15`
+- mean `62.41`, median `63.00`
+- top ranking became cleanly mechanical: Mechanical Design/Product Development, Fahrzeugbau, Maschinenbau/KFZ, Konstrukteur Maschinenbau, etc.
+- false electronics/electrical jobs moved down strongly.
 
-`candidate_fit_audit.py --job-id` now prints every persisted concept for the job, including `unrated`, not only scored drivers. This allows the next pass to distinguish weighting problems from missing taxonomy evidence.
+However one remaining semantics problem was demonstrated: `Elektronik-Entwicklungsingenieur ... Produktentwicklung` still scored 63 because primary `electronics=cannot_not_want` was only one weighted vote against positive transferable role/task evidence.
 
-Regression tests cover positive saturation, corroborating multi-concept fit, primary hard-negative veto, context attenuation, unrated coverage and duplicate-evidence collapse.
+### Fit policy v3 — current code
 
-CI #428 passed Ruff, Compile and the full suite for policy v2 and expanded audit evidence.
+Current policy: `candidate-fit-2026-08-28-v3`.
+
+New rule: **primary hard incompatibility**.
+
+If a primary evidence concept is:
+- kind `role` or `domain`, and
+- candidate state `cannot_not_want`,
+
+then `JobFitResult` exposes it as a `hard_constraint` and score is capped at `25`.
+
+Important semantics:
+- transferable positive contributions are still preserved and visible;
+- context-only `cannot_not_want` never creates a hard constraint;
+- pure primary incompatible jobs can still naturally score 0;
+- future recommender can filter `hard_constraints` independently of score instead of inferring rejection from a numeric threshold.
+
+`candidate_fit_audit.py` now prints:
+- `jobs_hard_incompatible`
+- hard constraint kinds and cap
+- `hard_incompatible=yes/no` per job
+- exact `hard_constraints=` labels
+- contribution scope in detailed job audits.
+
+Regression tests cover:
+- primary hard-incompatible domain with positive transferable role/task is capped at 25;
+- pure primary incompatible domain remains 0;
+- context-only incompatible domain remains attenuated and does not become hard;
+- positive corroboration budget;
+- multi-concept positive fit;
+- unrated coverage;
+- duplicate evidence collapsing to strongest signal.
+
+CI #442 passed Ruff, Compile and the full suite for policy v3/hard constraints.
 
 ## Immediate work order
 
 1. Pull latest `bootstrap/austria-mvp`.
 2. **Do not apply migration 0008 yet.**
-3. Run read-only policy-v2 ranking plus detailed suspicious-job evidence:
-
-   `python scripts/candidate_fit_audit.py --limit 25 --job-id 259 --job-id 15 --job-id 21 --job-id 89 --job-id 128 --job-id 254 --job-id 28`
-
-4. Inspect score distribution/top/bottom plus full evidence for those IDs.
-5. Verify whether #259/#15/#21/#89/#128 demonstrate a missing explicit electrical/electronics identity concept rather than another scoring problem.
-6. If confirmed, make one narrow extractor v3 refinement for explicit electrical/electronics title wording. Do not broadly reopen vocabulary work.
-7. Dry-run v3 normalization, then persist deterministic evidence if clean.
-8. Re-run fit audit.
-9. Once fit semantics are healthy, apply migration 0008 and persist candidate preferences.
-10. Build German admin UI for four-state concept/profile rating and materialized fit recompute.
-11. Then combine intrinsic fit with PostGIS house/job distance, salary and final recommendation ranking.
+3. **Do not persist v3 normalization yet.**
+4. Run one final read-only v3 fit preview with `--preview-current-extractor`.
+5. Verify:
+   - mechanical top ranking remains stable;
+   - explicit primary electrical/electronics vacancies are `hard_incompatible=yes`;
+   - #259/#254/#28/#72/#73 are <=25;
+   - context-only electrical/electronics mentions are not hard-incompatible;
+   - hard-incompatible count is plausible for the corpus.
+6. If clean, persist v3 with `normalize_job_concepts.py --apply` and immediately run persisted concept audit.
+7. Re-run fit audit from persisted v3 evidence and confirm it matches preview.
+8. Apply migration `0008_candidate_preferences` and persist candidate profile/preferences.
+9. Build German admin UI for four-state concept/profile rating and recomputable/materialized fit.
+10. Then combine intrinsic fit with PostGIS house/job distance, salary and final recommendation ranking.
