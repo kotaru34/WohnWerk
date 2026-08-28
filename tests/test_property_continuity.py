@@ -27,8 +27,8 @@ def observation(
 def test_continuity_prefers_raw_display_area_over_semantic_living_area() -> None:
     assert continuity_area_m2(
         {"display_area_m2": "748"},
-        Decimal("130"),
-    ) == Decimal("748")
+        Decimal(130),
+    ) == Decimal(748)
 
 
 def test_continuity_legacy_rows_fall_back_to_historical_living_area() -> None:
