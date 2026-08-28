@@ -17,7 +17,13 @@ from app.jobs.concept_catalog import (
     extract_concepts,
     normalize_concept_text,
 )
-from app.jobs.concepts import ConceptKind, JobConcept, JobConceptAlias, JobConceptEvidence
+from app.jobs.concepts import (
+    ConceptKind,
+    JobConcept,
+    JobConceptAlias,
+    JobConceptEvidence,
+    concept_evidence_semantics,
+)
 from app.models import Job, JobListing, ListingStatus
 
 
@@ -198,13 +204,16 @@ def _print_summary(
     )
     jobs_by_kind: dict[str, set[int]] = defaultdict(set)
     jobs_by_concept: dict[tuple[str, str], set[int]] = defaultdict(set)
-    fields_by_concept: Counter[tuple[str, str, str]] = Counter()
+    scopes_by_concept: Counter[tuple[str, str, str]] = Counter()
+    scope_totals: Counter[str] = Counter()
     for job_id, matches in matches_by_job.items():
         for match in matches:
             key = _concept_key(match)
+            scope, _confidence = concept_evidence_semantics(match.kind, match.field)
             jobs_by_kind[match.kind.value].add(job_id)
             jobs_by_concept[key].add(job_id)
-            fields_by_concept[(*key, match.field)] += 1
+            scopes_by_concept[(*key, scope.value)] += 1
+            scope_totals[scope.value] += 1
 
     print(f"extractor_version={EXTRACTOR_VERSION}")
     print(f"relevant_active_jobs={len(jobs)}")
@@ -212,6 +221,8 @@ def _print_summary(
     print(f"jobs_without_concepts={len(jobs) - len(matched_jobs)}")
     print(f"distinct_concepts_matched={len(concept_keys)}")
     print(f"evidence_rows={evidence_count}")
+    print(f"evidence_primary={scope_totals['primary']}")
+    print(f"evidence_context={scope_totals['context']}")
     for kind in ("role", "domain", "task", "method", "tool"):
         print(f"jobs_{kind}={len(jobs_by_kind[kind])}")
         print(f"evidence_{kind}={by_kind[kind]}")
@@ -225,8 +236,8 @@ def _print_summary(
         key = (kind, slug)
         print(
             f"  {kind}:{slug} jobs={len(jobs_by_concept[key])} "
-            f"title={fields_by_concept[(*key, 'title')]} "
-            f"description={fields_by_concept[(*key, 'description')]}"
+            f"primary={scopes_by_concept[(*key, 'primary')]} "
+            f"context={scopes_by_concept[(*key, 'context')]}"
         )
 
     unmatched = [job for job in jobs if not matches_by_job[job.id]]
@@ -247,12 +258,15 @@ def _print_summary(
                     for match in matches_by_job[job_id]
                     if _concept_key(match) == key
                 ]
-                evidence_label = ", ".join(
-                    f"{match.field}:{match.alias!r}" for match in evidence
-                )
+                evidence_parts = []
+                for match in evidence:
+                    scope, confidence = concept_evidence_semantics(match.kind, match.field)
+                    evidence_parts.append(
+                        f"{match.field}/{scope.value}/{confidence:.2f}:{match.alias!r}"
+                    )
                 print(
                     f"    job={job_id} title={jobs_by_id[job_id].title} "
-                    f"evidence={evidence_label}"
+                    f"evidence={', '.join(evidence_parts)}"
                 )
 
 
@@ -284,14 +298,16 @@ def _persist(
         for match in matches:
             concept = concepts[(match.kind.value, match.slug)]
             alias = aliases[(concept.id, match.normalized_alias)]
+            scope, confidence = concept_evidence_semantics(match.kind, match.field)
             session.add(
                 JobConceptEvidence(
                     job_id=match.job_id,
                     concept_id=concept.id,
                     alias_id=alias.id,
                     field=match.field,
+                    scope=scope.value,
                     matched_text=match.alias,
-                    confidence=Decimal(str(match.confidence)),
+                    confidence=Decimal(str(confidence)),
                     extractor_version=EXTRACTOR_VERSION,
                 )
             )
