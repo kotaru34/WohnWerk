@@ -46,6 +46,25 @@ AREA_SEMANTICS_FIXTURE = """
 </body></html>
 """
 
+AMBIGUOUS_AREA_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 3</p>
+<h3>Haus kaufen in 2620 Neunkirchen</h3>
+<a href="https://www.immobilienscout24.at/expose/example-1">WOHNEN, wo RUHE zu Hause ist | ca. 386m² Grund | ca. 126m² gew. NFL</a>
+<div>€ 399.000,-</div>
+<div>2620 Neunkirchen / 126,53m² / 4 Zimmer</div>
+<div>Grundstücksfläche: 126 m²</div>
+<h3>Bauernhaus kaufen in 7433 Mariasdorf</h3>
+<a href="https://www.immobilienscout24.at/expose/example-2">EIN ZUHAUSE mit GESCHICHTE | 472 m² Grundstücksfläche | ca. 240 m² NFL</a>
+<div>€ 249.000,-</div>
+<div>7433 Mariasdorf / 240m² / 5 Zimmer</div>
+<h3>Landhaus kaufen in 6370 Reith bei Kitzbühel</h3>
+<a href="https://www.immobilienscout24.at/expose/example-3">Privates Landhaus mit Kaiserblick / 793 m² Grundstück / 257 m² Wohn-/Nutzfläche</a>
+<div>€ 3.900.000,-</div>
+<div>6370 Reith bei Kitzbühel / 793m² / 8 Zimmer</div>
+</body></html>
+"""
+
 
 def _parse_fixture():
     return parse_immmo_search_page(
@@ -126,3 +145,45 @@ def test_explicit_living_area_wins_when_primary_display_is_plot_area() -> None:
     assert farmhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
     assert farmhouse.raw_payload["explicit_living_area_m2"] == "130"
     assert farmhouse.raw_payload["explicit_plot_area_m2"] == "748"
+
+
+def test_plot_value_before_label_beats_conflicting_label_first_metadata() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
+    )
+    house = next(item for item in page.items if item.postal_code == "2620")
+
+    assert house.living_area_m2 is None
+    assert house.plot_area_m2 == Decimal(386)
+    assert house.raw_payload["display_area_m2"] == "126.53"
+    assert house.raw_payload["display_area_semantics"] == "unknown"
+    assert house.raw_payload["explicit_plot_area_m2"] == "386"
+
+
+def test_generic_nutzflaeche_is_not_claimed_as_living_area() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Burgenland",
+    )
+    farmhouse = next(item for item in page.items if item.postal_code == "7433")
+
+    assert farmhouse.living_area_m2 is None
+    assert farmhouse.plot_area_m2 == Decimal(472)
+    assert farmhouse.raw_payload["display_area_m2"] == "240"
+    assert farmhouse.raw_payload["display_area_semantics"] == "unknown"
+
+
+def test_wohn_slash_nutzflaeche_is_explicit_living_area() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Tirol",
+    )
+    landhouse = next(item for item in page.items if item.postal_code == "6370")
+
+    assert landhouse.living_area_m2 == Decimal(257)
+    assert landhouse.plot_area_m2 == Decimal(793)
+    assert landhouse.raw_payload["display_area_m2"] == "793"
+    assert landhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
+    assert landhouse.raw_payload["explicit_living_area_m2"] == "257"
+    assert landhouse.raw_payload["explicit_plot_area_m2"] == "793"
