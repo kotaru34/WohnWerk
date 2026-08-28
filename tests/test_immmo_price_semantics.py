@@ -56,3 +56,30 @@ def test_numeric_search_summary_price_remains_authoritative() -> None:
     assert item.raw_payload["price_semantics"] == "summary_numeric"
     assert item.raw_payload["source_price_eur"] == "149000"
     assert property_budget_decision(item.price_eur).accepted is True
+
+
+def test_purchase_price_wins_over_later_investment_amounts() -> None:
+    html = """
+    <html><body>
+      <p>1 bis 12 von 1</p>
+      <h3>Haus kaufen in 1160 Wien</h3>
+      <a href="https://www.immobilienscout24.at/expose/6579d6eabfd5ce3bcce77d0a">
+        KAPITALANLAGE DER BESONDEREN ART - Mitten in Wien
+      </a>
+      <div>€ 229.000,-</div>
+      <div>1160 Wien / 96m²</div>
+      <div>Jahresertrag / Investitionskennzahl: € 95.936,-</div>
+      <div>Provision 3,6 %</div>
+    </body></html>
+    """
+
+    page = parse_immmo_search_page(
+        html,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Wien",
+    )
+
+    item = page.items[0]
+    assert item.price_eur == Decimal(229000)
+    assert item.raw_payload["price_semantics"] == "summary_numeric"
+    assert item.raw_payload["source_price_eur"] == "229000"
+    assert item.raw_payload["display_area_m2"] == "96"
