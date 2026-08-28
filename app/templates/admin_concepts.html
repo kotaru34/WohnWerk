@@ -10,10 +10,11 @@
     main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
     h1 { margin-bottom: 4px; }
     .subtle { opacity: .7; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a, .toolbar a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active, .toolbar a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
     .toolbar, .notice, .concept { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
     .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px; margin: 22px 0; }
-    .toolbar a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
-    .toolbar a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
     .notice { padding: 12px 14px; margin-bottom: 18px; background: color-mix(in srgb, #d89b00 16%, Canvas); }
     .concept { padding: 16px; margin: 12px 0; }
     .concept-head { display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 16px; align-items: start; }
@@ -45,6 +46,11 @@
 </head>
 <body>
 <main>
+  <nav class="topnav" aria-label="Administration">
+    <a href="/admin/jobs">Stellen</a>
+    <a href="/admin/concepts" class="active">Konzepte</a>
+  </nav>
+
   <h1>Kandidatenprofil</h1>
   <div class="subtle">{{ profile.label_de }} · Kanonische Konzepte und Synonyme</div>
 
