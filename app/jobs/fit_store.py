@@ -8,8 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.jobs.candidate_fit import FitEvidence, JobFitResult, score_job_concepts
+from app.jobs.candidate_job_store import load_candidate_job_states
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
-from app.jobs.candidate_profile_store import load_profile_preferences
+from app.jobs.candidate_profile_store import get_profile, load_profile_preferences
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.jobs.concepts import ConceptKind, JobConcept, JobConceptEvidence
 from app.models import Job, JobListing, ListingStatus, Source
@@ -35,6 +36,8 @@ class JobFitView:
     links: tuple[JobSourceLink, ...]
     drivers: tuple[JobFitDriverView, ...]
     hard_labels: tuple[str, ...]
+    favorite: bool = False
+    hidden: bool = False
 
 
 def _gate_accepted(listing: JobListing) -> bool:
@@ -155,10 +158,16 @@ def load_live_job_fit(
     """Recompute current persisted-profile fit without writing a cache to Job.job_fit_score."""
 
     preferences = load_profile_preferences(session, profile_slug)
+    profile = get_profile(session, profile_slug)
+    if profile is None or not profile.enabled:
+        raise ValueError(f"candidate profile is unavailable: {profile_slug}")
+
     jobs = relevant_active_jobs(session)
-    evidence = persisted_evidence_by_job(session, {job.id for job in jobs})
+    job_ids = {job.id for job in jobs}
+    evidence = persisted_evidence_by_job(session, job_ids)
     links_by_job = _source_links(session, jobs)
     labels = _concept_labels(session)
+    states = load_candidate_job_states(session, profile.id, job_ids)
 
     views: list[JobFitView] = []
     for job in jobs:
@@ -173,6 +182,7 @@ def load_live_job_fit(
         hard_labels = tuple(
             labels.get((item.kind, item.slug), item.slug) for item in result.hard_constraints
         )
+        state = states.get(job.id)
         views.append(
             JobFitView(
                 job=job,
@@ -181,11 +191,15 @@ def load_live_job_fit(
                 links=links_by_job.get(job.id, ()),
                 drivers=drivers,
                 hard_labels=hard_labels,
+                favorite=state.favorite if state is not None else False,
+                hidden=state.hidden if state is not None else False,
             )
         )
 
     views.sort(
         key=lambda view: (
+            view.hidden,
+            not view.favorite,
             view.result.score is None,
             bool(view.result.hard_constraints),
             -(view.result.score or 0),
