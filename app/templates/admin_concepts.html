@@ -14,9 +14,14 @@
     .topnav a, .toolbar a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
     .topnav a.active, .toolbar a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
     .toolbar, .notice, .concept { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
-    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px; margin: 22px 0; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px; margin: 16px 0; }
+    .toolbar .separator { width: 1px; align-self: stretch; background: color-mix(in srgb, CanvasText 15%, transparent); margin: 0 3px; }
+    .progress { margin: 12px 0 18px; font-size: .9rem; opacity: .74; }
     .notice { padding: 12px 14px; margin-bottom: 18px; background: color-mix(in srgb, #d89b00 16%, Canvas); }
-    .concept { padding: 16px; margin: 12px 0; }
+    .concept { padding: 16px; margin: 12px 0; transition: opacity .14s ease, border-color .14s ease, background .14s ease; }
+    .concept.rated { opacity: .72; }
+    .concept.rated:hover, .concept.rated:focus-within { opacity: 1; }
+    .concept.unrated { border-color: color-mix(in srgb, AccentColor 55%, CanvasText 18%); background: color-mix(in srgb, AccentColor 5%, Canvas); }
     .concept-head { display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 16px; align-items: start; }
     .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; opacity: .65; }
     h2 { margin: 3px 0 4px; font-size: 1.08rem; }
@@ -41,6 +46,7 @@
       .concept-head { grid-template-columns: 1fr; }
       .metrics { text-align: left; }
       .alias-add { grid-template-columns: 1fr; }
+      .toolbar .separator { display: none; }
     }
   </style>
 </head>
@@ -56,11 +62,20 @@
 
   <nav class="toolbar" aria-label="Konzeptfilter">
     <strong>Typ:</strong>
-    <a href="/admin/concepts" class="{% if selected_kind is none %}active{% endif %}">Alle</a>
+    <a href="/admin/concepts?bewertung={{ selected_rating }}" class="{% if selected_kind is none %}active{% endif %}">Alle</a>
     {% for kind in kinds %}
-      <a href="/admin/concepts?kind={{ kind.value }}" class="{% if selected_kind == kind %}active{% endif %}">{{ kind_labels[kind] }}</a>
+      <a href="/admin/concepts?kind={{ kind.value }}&bewertung={{ selected_rating }}" class="{% if selected_kind == kind %}active{% endif %}">{{ kind_labels[kind] }}</a>
+    {% endfor %}
+    <span class="separator"></span>
+    <strong>Status:</strong>
+    {% for value, label in concept_rating_filters.items() %}
+      <a href="/admin/concepts?bewertung={{ value }}{% if selected_kind %}&kind={{ selected_kind.value }}{% endif %}" class="{% if selected_rating == value %}active{% endif %}">{{ label }}</a>
     {% endfor %}
   </nav>
+
+  <div class="progress">
+    {{ concept_stats.bewertet }} bewertet · {{ concept_stats.unbewertet }} noch unbewertet · {{ concept_stats.gesamt }} insgesamt in dieser Typauswahl
+  </div>
 
   {% if normalization_notice %}
     <div class="notice">
@@ -70,7 +85,7 @@
 
   {% for row in rows %}
     {% set pref = row.preference %}
-    <section class="concept" id="concept-{{ row.concept.id }}">
+    <section class="concept {{ 'rated' if pref else 'unrated' }}" id="concept-{{ row.concept.id }}">
       <div class="concept-head">
         <div>
           <div class="kind">{{ kind_labels_by_value[row.concept.kind] }}</div>
@@ -90,12 +105,14 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="state" value="{{ state.value }}">
             <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+            <input type="hidden" name="return_rating" value="{{ selected_rating }}">
             <button type="submit" class="{% if pref and pref.state == state.value %}active{% endif %}">{{ state_labels[state] }}</button>
           </form>
         {% endfor %}
         <form method="post" action="/admin/concepts/{{ row.concept.id }}/preference/reset">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+          <input type="hidden" name="return_rating" value="{{ selected_rating }}">
           <button type="submit">Auf Standard zurücksetzen</button>
         </form>
       </div>
@@ -104,7 +121,7 @@
           Bewertung: <strong>{{ 'Manuell' if pref.source == 'manual' else 'Standard' }}</strong>
           {% if pref.seed_version %} · {{ pref.seed_version }}{% endif %}
         {% else %}
-          Bewertung: <strong>Unbewertet</strong>
+          Bewertung: <strong>Noch unbewertet</strong>
         {% endif %}
       </div>
 
@@ -119,6 +136,7 @@
                 <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
                 <input type="hidden" name="enabled" value="{{ '0' if alias.enabled else '1' }}">
                 <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+                <input type="hidden" name="return_rating" value="{{ selected_rating }}">
                 <button type="submit" title="{{ 'Deaktivieren' if alias.enabled else 'Aktivieren' }}">{{ '−' if alias.enabled else '+' }}</button>
               </form>
               {% if alias.source == 'manual' %}
@@ -126,6 +144,7 @@
                   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
                   <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+                  <input type="hidden" name="return_rating" value="{{ selected_rating }}">
                   <button class="danger" type="submit" title="Löschen">×</button>
                 </form>
               {% endif %}
@@ -137,6 +156,7 @@
         <form class="alias-add" method="post" action="/admin/concepts/{{ row.concept.id }}/aliases">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+          <input type="hidden" name="return_rating" value="{{ selected_rating }}">
           <input name="alias" required maxlength="240" placeholder="Neues Synonym">
           <input name="language" maxlength="8" placeholder="de / en">
           <button type="submit">Hinzufügen</button>
@@ -144,7 +164,7 @@
       </div>
     </section>
   {% else %}
-    <p>Keine Konzepte gefunden.</p>
+    <p>Keine Konzepte entsprechen diesem Filter.</p>
   {% endfor %}
 </main>
 </body>
