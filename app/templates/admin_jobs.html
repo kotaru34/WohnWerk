@@ -24,6 +24,8 @@
     button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 7px 10px; background: ButtonFace; color: ButtonText; cursor: pointer; }
     button:hover { border-color: color-mix(in srgb, CanvasText 45%, transparent); }
     .job { display: grid; grid-template-columns: 116px minmax(0, 1fr) minmax(250px, .62fr); gap: 18px; align-items: start; padding: 16px; margin: 10px 0; border-left-width: 4px; transition: background .15s ease, border-color .15s ease; }
+    .job.unviewed { box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 12%, transparent); }
+    .job.viewed h2, .job.viewed .company { opacity: .86; }
     .job.fit-excellent { border-left-color: #649474; background: color-mix(in srgb, #649474 5%, Canvas); }
     .job.fit-good { border-left-color: #738ba3; background: color-mix(in srgb, #738ba3 4%, Canvas); }
     .job.fit-medium { border-left-color: #9b8d69; background: color-mix(in srgb, #9b8d69 3%, Canvas); }
@@ -43,6 +45,8 @@
     h2 a:hover { text-decoration: underline; }
     .meta { display: flex; gap: 7px 14px; flex-wrap: wrap; font-size: .88rem; margin: 8px 0; }
     .badge { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; }
+    .new-badge { font-weight: 750; border-color: color-mix(in srgb, AccentColor 55%, CanvasText 20%); background: color-mix(in srgb, AccentColor 10%, Canvas); }
+    .seen-badge { opacity: .72; }
     .hard { border-color: color-mix(in srgb, #d33 65%, transparent); background: color-mix(in srgb, #d33 12%, Canvas); }
     .favorite-badge { border-color: color-mix(in srgb, #b18a42 55%, transparent); background: color-mix(in srgb, #b18a42 10%, Canvas); }
     .hidden-badge { opacity: .68; }
@@ -113,7 +117,7 @@
       {% set fit_class = 'fit-low' %}
     {% endif %}
     {% set detail_available = not row.hidden %}
-    <article class="job {{ fit_class }}" id="job-{{ row.job.id }}">
+    <article class="job {{ fit_class }} {{ 'viewed' if row.viewed else 'unviewed' }}" id="job-{{ row.job.id }}">
       <div>
         <div class="score-label">Passung</div>
         {% if row.result.score is not none %}
@@ -132,6 +136,8 @@
         <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
         <h2>{% if detail_available %}<a href="/jobs/{{ row.job.id }}">{{ row.job.title }}</a>{% else %}{{ row.job.title }}{% endif %}</h2>
         <div class="meta">
+          {% if row.is_new %}<span class="badge new-badge">Neu</span>{% endif %}
+          <span class="badge seen-badge">{{ 'Gesehen' if row.viewed else 'Noch nicht angesehen' }}</span>
           {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
           {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
           {% if row.favorite %}<span class="badge favorite-badge">Favorit</span>{% endif %}
