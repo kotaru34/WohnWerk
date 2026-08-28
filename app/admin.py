@@ -34,6 +34,7 @@ KIND_LABELS = {
     ConceptKind.METHOD: "Methode",
     ConceptKind.TOOL: "Werkzeug",
 }
+KIND_LABELS_BY_VALUE = {kind.value: label for kind, label in KIND_LABELS.items()}
 STATE_LABELS = {
     CandidatePreferenceState.CAN_WANT: "Kann ich / möchte ich",
     CandidatePreferenceState.CAN_NOT_WANT: "Kann ich / möchte ich nicht",
@@ -110,6 +111,7 @@ def concepts_page(
             "rows": rows,
             "kinds": list(ConceptKind),
             "kind_labels": KIND_LABELS,
+            "kind_labels_by_value": KIND_LABELS_BY_VALUE,
             "selected_kind": selected_kind,
             "state_labels": STATE_LABELS,
             "preference_states": list(CandidatePreferenceState),
