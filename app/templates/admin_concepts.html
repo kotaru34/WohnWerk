@@ -74,7 +74,7 @@
   </nav>
 
   <div class="progress">
-    {{ concept_stats.bewertet }} bewertet · {{ concept_stats.unbewertet }} noch unbewertet · {{ concept_stats.gesamt }} insgesamt in dieser Typauswahl
+    {{ concept_stats.bewertet }} vom Kandidaten bestätigt · {{ concept_stats.unbewertet }} noch offen · {{ concept_stats.gesamt }} insgesamt in dieser Typauswahl
   </div>
 
   {% if normalization_notice %}
@@ -85,7 +85,8 @@
 
   {% for row in rows %}
     {% set pref = row.preference %}
-    <section class="concept {{ 'rated' if pref else 'unrated' }}" id="concept-{{ row.concept.id }}">
+    {% set manually_rated = pref and pref.source == 'manual' %}
+    <section class="concept {{ 'rated' if manually_rated else 'unrated' }}" id="concept-{{ row.concept.id }}">
       <div class="concept-head">
         <div>
           <div class="kind">{{ kind_labels_by_value[row.concept.kind] }}</div>
@@ -117,8 +118,10 @@
         </form>
       </div>
       <div class="provenance">
-        {% if pref %}
-          Bewertung: <strong>{{ 'Manuell' if pref.source == 'manual' else 'Standard' }}</strong>
+        {% if manually_rated %}
+          Bewertung: <strong>Vom Kandidaten bestätigt</strong>
+        {% elif pref %}
+          Bewertung: <strong>Standard · noch nicht bestätigt</strong>
           {% if pref.seed_version %} · {{ pref.seed_version }}{% endif %}
         {% else %}
           Bewertung: <strong>Noch unbewertet</strong>
