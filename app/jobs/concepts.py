@@ -26,6 +26,11 @@ class ConceptKind(StrEnum):
     TOOL = "tool"
 
 
+class ConceptEvidenceScope(StrEnum):
+    PRIMARY = "primary"
+    CONTEXT = "context"
+
+
 class JobConcept(Base):
     """Canonical vocabulary item used for job normalization and later candidate fit."""
 
@@ -102,6 +107,7 @@ class JobConceptEvidence(Base):
         ),
         Index("ix_job_concept_evidence_job_version", "job_id", "extractor_version"),
         Index("ix_job_concept_evidence_concept", "concept_id"),
+        Index("ix_job_concept_evidence_scope", "scope"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -115,6 +121,7 @@ class JobConceptEvidence(Base):
         ForeignKey("job_concept_aliases.id", ondelete="SET NULL"), index=True
     )
     field: Mapped[str] = mapped_column(String(24), nullable=False)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)
     matched_text: Mapped[str] = mapped_column(String(240), nullable=False)
     confidence: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False)
     extractor_version: Mapped[str] = mapped_column(String(80), nullable=False)
