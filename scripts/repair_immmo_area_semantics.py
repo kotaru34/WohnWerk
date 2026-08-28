@@ -10,14 +10,14 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import CrawlRun, ListingStatus, Property, PropertyListing, Source
 
-REPAIR_VERSION = "immmo-area-semantics-2026-08-28-v1"
+REPAIR_VERSION = "immmo-area-semantics-2026-08-28-v2"
 SUPPORTED_FORMAT = "immmo-search-discovery-v12"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Clear legacy IMMMO-only canonical living areas that are not backed by "
+            "Clear current IMMMO-only canonical living areas that are not backed by "
             "explicit Wohn-/Wohnnutzfläche evidence. Dry-run by default."
         )
     )
@@ -62,20 +62,33 @@ def _validated_run(session, run_id: int) -> tuple[CrawlRun, Source]:
     return run, source
 
 
-def _repair_candidates(session, source: Source) -> list[tuple[Property, PropertyListing]]:
-    active_rows = list(
+def _repair_candidates(
+    session,
+    source: Source,
+    *,
+    run_id: int,
+) -> list[tuple[Property, list[PropertyListing]]]:
+    """Return IMMMO-only properties whose audited current rows lack living-area evidence.
+
+    Candidates are anchored to the exact complete reconciliation supplied by the operator.
+    This prevents a later incremental refresh from silently changing the mutation set between
+    dry-run and apply. Multiple active IMMMO rows for one canonical property are evaluated
+    together; explicit living evidence in any audited row preserves the canonical value.
+    """
+    audited_rows = list(
         session.scalars(
             select(PropertyListing)
             .where(
                 PropertyListing.source_id == source.id,
                 PropertyListing.status == ListingStatus.ACTIVE,
+                PropertyListing.last_seen_crawl_run_id == run_id,
             )
             .order_by(PropertyListing.property_id, PropertyListing.id)
         )
     )
 
     by_property: dict[int, list[PropertyListing]] = defaultdict(list)
-    for row in active_rows:
+    for row in audited_rows:
         payload = row.raw_payload or {}
         if payload.get("format") != SUPPORTED_FORMAT:
             continue
@@ -97,8 +110,10 @@ def _repair_candidates(session, source: Source) -> list[tuple[Property, Property
         )
     }
 
-    candidates: list[tuple[Property, PropertyListing]] = []
+    candidates: list[tuple[Property, list[PropertyListing]]] = []
     for property_id, listings in by_property.items():
+        # Be conservative: any listing from another property source, even historical, means
+        # canonical living-area provenance is no longer known to be IMMMO-only.
         if source_counts.get(property_id, 0) != 1:
             continue
         property_row = session.get(Property, property_id)
@@ -109,9 +124,7 @@ def _repair_candidates(session, source: Source) -> list[tuple[Property, Property
             for listing in listings
         ):
             continue
-        # Record one deterministic active listing for audit metadata and samples. The
-        # provider-neutral display-area value remains in raw_payload and is not discarded.
-        candidates.append((property_row, listings[0]))
+        candidates.append((property_row, listings))
 
     candidates.sort(key=lambda pair: pair[0].id)
     return candidates
@@ -121,14 +134,15 @@ def main() -> None:
     args = parse_args()
     with SessionLocal() as session:
         run, source = _validated_run(session, args.run_id)
-        candidates = _repair_candidates(session, source)
+        candidates = _repair_candidates(session, source, run_id=run.id)
 
         print(f"repair_version={REPAIR_VERSION}")
         print(f"run={run.id} status={run.status} coverage={run.coverage_status}")
         print(f"supported_format={SUPPORTED_FORMAT}")
         print(f"unverified_immmo_only={len(candidates)}")
         print("sample_candidates:")
-        for property_row, listing in candidates[: max(0, args.sample)]:
+        for property_row, listings in candidates[: max(0, args.sample)]:
+            listing = listings[0]
             payload = listing.raw_payload or {}
             print(
                 f"  listing={listing.id} property={property_row.id} "
@@ -146,18 +160,20 @@ def main() -> None:
             return
 
         applied_at = datetime.now(UTC).isoformat()
-        for property_row, listing in candidates:
+        for property_row, listings in candidates:
             previous = property_row.living_area_m2
             property_row.living_area_m2 = None
-            payload = dict(listing.raw_payload or {})
-            payload["wohnwerk_area_repair"] = {
-                "version": REPAIR_VERSION,
-                "run_id": run.id,
-                "reason": "legacy_immmo_display_area_not_explicit_living_area",
-                "previous_canonical_living_area_m2": str(previous),
-                "applied_at": applied_at,
-            }
-            listing.raw_payload = payload
+            for listing in listings:
+                payload = dict(listing.raw_payload or {})
+                payload["wohnwerk_area_repair"] = {
+                    "version": REPAIR_VERSION,
+                    "run_id": run.id,
+                    "reason": "current_immmo_v12_has_no_explicit_living_area_evidence",
+                    "previous_canonical_living_area_m2": str(previous),
+                    "audited_display_area_m2": payload.get("display_area_m2"),
+                    "applied_at": applied_at,
+                }
+                listing.raw_payload = payload
 
         session.commit()
         print("mode=apply")
