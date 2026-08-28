@@ -13,7 +13,7 @@ from app.models import CrawlRun, PropertyListing, Source
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Audit IMMMO v10 display-area semantics after a crawl without changing data."
+            "Audit IMMMO display-area semantics after a crawl without changing data."
         )
     )
     parser.add_argument("--run-id", type=int, required=True)
@@ -76,6 +76,7 @@ def main() -> None:
         explicit_plot = 0
         suspicious_plot_as_living: list[PropertyListing] = []
         canonical_living_mismatch: list[PropertyListing] = []
+        unverified_canonical_living: list[PropertyListing] = []
 
         for row in rows:
             payload = row.raw_payload or {}
@@ -90,6 +91,12 @@ def main() -> None:
                 explicit_living += 1
                 if canonical_living is not None and not _close(canonical_living, living):
                     canonical_living_mismatch.append(row)
+            elif canonical_living is not None:
+                # The current IMMMO card no longer supplies semantic evidence that the
+                # historical canonical value is a Wohn-/Wohnnutzfläche. Preserve the raw
+                # display area for review, but do not treat this field as verified.
+                unverified_canonical_living.append(row)
+
             if plot is not None:
                 explicit_plot += 1
 
@@ -101,9 +108,14 @@ def main() -> None:
             ):
                 suspicious_plot_as_living.append(row)
 
-        safe_cleanup = [
+        suspicious_immmo_only = [
             row
             for row in suspicious_plot_as_living
+            if source_counts.get(row.property_id, 0) == 1
+        ]
+        unverified_immmo_only = [
+            row
+            for row in unverified_canonical_living
             if source_counts.get(row.property_id, 0) == 1
         ]
 
@@ -115,10 +127,27 @@ def main() -> None:
         print(f"explicit_plot={explicit_plot}")
         print(f"canonical_living_mismatch={len(canonical_living_mismatch)}")
         print(f"suspicious_plot_as_living={len(suspicious_plot_as_living)}")
-        print(f"suspicious_immmo_only={len(safe_cleanup)}")
+        print(f"suspicious_immmo_only={len(suspicious_immmo_only)}")
+        print(f"unverified_canonical_living={len(unverified_canonical_living)}")
+        print(f"unverified_immmo_only={len(unverified_immmo_only)}")
 
         print("sample_suspicious_immmo_only:")
-        for row in safe_cleanup[: max(0, args.sample)]:
+        for row in suspicious_immmo_only[: max(0, args.sample)]:
+            payload = row.raw_payload or {}
+            print(
+                f"  listing={row.id} property={row.property_id} "
+                f"plz={row.property.postal_code or '-'} "
+                f"semantic={payload.get('display_area_semantics') or '-'}"
+            )
+            print(f"    title={row.property.title}")
+            print(f"    canonical_living={row.property.living_area_m2}")
+            print(f"    display_area={payload.get('display_area_m2')}")
+            print(f"    explicit_living={payload.get('explicit_living_area_m2')}")
+            print(f"    explicit_plot={payload.get('explicit_plot_area_m2')}")
+            print(f"    url={row.url}")
+
+        print("sample_unverified_immmo_only:")
+        for row in unverified_immmo_only[: max(0, args.sample)]:
             payload = row.raw_payload or {}
             print(
                 f"  listing={row.id} property={row.property_id} "
