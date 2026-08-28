@@ -11,7 +11,7 @@ _GENDER_RE = re.compile(
 )
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 _COMPANY_SUFFIX_RE = re.compile(
-    r"\b(?:gmbh|mbh|ag|kg|og|gesmbh|gmbh\s+co\s+kg|gmbh\s+und\s+co\s+kg)\b"
+    r"\b(?:gmbh\s+und\s+co\s+kg|gmbh\s+co\s+kg|gesmbh|gmbh|mbh|ag|kg|og)\b"
 )
 _TITLE_FILLER = {"at", "bei"}
 
