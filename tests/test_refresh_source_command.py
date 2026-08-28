@@ -1,5 +1,16 @@
+import importlib.util
+import sys
+from pathlib import Path
+
 from app.refresh import DueSourceRun, SourceRefreshPlan
-from scripts.refresh_sources import _source_command
+
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "refresh_sources.py"
+SPEC = importlib.util.spec_from_file_location("wohnwerk_refresh_sources_script", SCRIPT_PATH)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
+_source_command = MODULE._source_command
 
 
 def _run(source_name: str, *, reconciliation: bool) -> DueSourceRun:
