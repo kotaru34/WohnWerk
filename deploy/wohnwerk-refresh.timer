@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule WohnWerk dynamic source refresh
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* *:00/15:00
+RandomizedDelaySec=2min
+AccuracySec=1min
+Persistent=true
+Unit=wohnwerk-refresh.service
+
+[Install]
+WantedBy=timers.target
