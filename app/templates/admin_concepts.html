@@ -81,12 +81,14 @@
       <div class="preference" aria-label="Bewertung für {{ row.concept.label_de }}">
         {% for state in preference_states %}
           <form method="post" action="/admin/concepts/{{ row.concept.id }}/preference">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="state" value="{{ state.value }}">
             <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
             <button type="submit" class="{% if pref and pref.state == state.value %}active{% endif %}">{{ state_labels[state] }}</button>
           </form>
         {% endfor %}
         <form method="post" action="/admin/concepts/{{ row.concept.id }}/preference/reset">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
           <button type="submit">Auf Standard zurücksetzen</button>
         </form>
@@ -107,6 +109,7 @@
             <span class="alias {% if not alias.enabled %}off{% endif %}">
               {{ alias.alias }}{% if alias.language %} <small>({{ alias.language }})</small>{% endif %}
               <form method="post" action="/admin/aliases/{{ alias.id }}/toggle">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
                 <input type="hidden" name="enabled" value="{{ '0' if alias.enabled else '1' }}">
                 <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
@@ -114,6 +117,7 @@
               </form>
               {% if alias.source == 'manual' %}
                 <form method="post" action="/admin/aliases/{{ alias.id }}/delete">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                   <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
                   <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
                   <button class="danger" type="submit" title="Löschen">×</button>
@@ -125,6 +129,7 @@
           {% endfor %}
         </div>
         <form class="alias-add" method="post" action="/admin/concepts/{{ row.concept.id }}/aliases">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
           <input name="alias" required maxlength="240" placeholder="Neues Synonym">
           <input name="language" maxlength="8" placeholder="de / en">
