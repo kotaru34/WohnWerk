@@ -86,6 +86,10 @@ def duplicate_evidence(
     left_company = normalize_company(left.company)
     right_company = normalize_company(right.company)
     company_match = bool(left_company and left_company == right_company)
+    company_conflict = bool(left_company and right_company and left_company != right_company)
+    if company_conflict:
+        return None
+
     similarity = title_similarity(left.title, right.title)
 
     postal_match = bool(left.postal_codes & right.postal_codes)
