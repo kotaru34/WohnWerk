@@ -40,6 +40,40 @@ def test_parse_stepstone_search_page_extracts_card_fields_and_postal_code() -> N
     assert job.raw_payload["acquisition_level"] == "search-result-card"
 
 
+def test_parse_stepstone_search_page_handles_whole_card_inside_anchor() -> None:
+    long_description = (
+        "Mechanische Konstruktion von Baugruppen und Komponenten mit 3D-CAD für "
+        "anspruchsvolle Sondermaschinenbauprojekte. " * 8
+    )
+    content = f"""
+    <html><body>
+      <h1>321 Treffer für Konstrukteur Maschinenbau Jobs</h1>
+      <a href="/stellenangebote--Konstrukteur-Kufstein-Vahle--223344-inline.html">
+        <h2>Konstrukteur / Maschinenbautechniker (m/w/d)</h2>
+        <div>VAHLE AUTOMATION GmbH</div>
+        <div>6330 Kufstein</div>
+        <p>{long_description}</p>
+        <span>vor 1 Woche</span>
+      </a>
+    </body></html>
+    """
+
+    jobs, reported = parse_stepstone_search_page(
+        content,
+        search_label="Konstrukteur Maschinenbau",
+    )
+
+    assert reported == 321
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.title == "Konstrukteur / Maschinenbautechniker (m/w/d)"
+    assert len(job.title) < 500
+    assert job.company == "VAHLE AUTOMATION GmbH"
+    assert job.locations[0].postal_code == "6330"
+    assert job.locations[0].city == "Kufstein"
+    assert "Sondermaschinenbauprojekte" in (job.description or "")
+
+
 def test_parse_stepstone_search_page_handles_region_then_city_without_inventing_plz() -> None:
     content = """
     <a href="/stellenangebote--Maschinenbauingenieur-Modling-Example--987654-inline.html">
