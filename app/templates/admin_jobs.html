@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Stellenranking</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
+    h1 { margin: 0 0 4px; }
+    .subtle { opacity: .7; }
+    .topnav, .filters, .stats, .job { border-radius: 12px; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a, .filters a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active, .filters a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin: 20px 0; }
+    .stat, .filters, .job { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); }
+    .stat { padding: 12px 14px; border-radius: 10px; }
+    .stat strong { display: block; font-size: 1.35rem; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; margin-bottom: 16px; }
+    .filters form { margin-left: auto; display: flex; gap: 7px; }
+    input { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
+    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 11px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    .job { display: grid; grid-template-columns: 86px minmax(0, 1fr) minmax(250px, .6fr); gap: 16px; align-items: start; padding: 16px; margin: 10px 0; }
+    .score { font-size: 2rem; font-weight: 750; line-height: 1; }
+    .score.unrated { font-size: 1.2rem; opacity: .55; }
+    .coverage { margin-top: 6px; font-size: .82rem; opacity: .68; }
+    .company { font-size: .9rem; opacity: .72; margin-bottom: 3px; }
+    h2 { margin: 0 0 7px; font-size: 1.08rem; line-height: 1.3; }
+    .meta { display: flex; gap: 7px 14px; flex-wrap: wrap; font-size: .88rem; margin: 8px 0; }
+    .badge { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; }
+    .hard { border-color: color-mix(in srgb, #d33 65%, transparent); background: color-mix(in srgb, #d33 12%, Canvas); }
+    .drivers { font-size: .86rem; line-height: 1.55; }
+    .positive { opacity: .92; }
+    .negative { opacity: .75; }
+    .right { font-size: .88rem; line-height: 1.55; }
+    .right a { color: inherit; }
+    .right section + section { margin-top: 10px; }
+    .empty { padding: 30px 0; opacity: .7; }
+    @media (max-width: 900px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      .job { grid-template-columns: 72px 1fr; }
+      .right { grid-column: 2; }
+      .filters form { width: 100%; margin-left: 0; }
+      .filters form input { flex: 1; min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Administration">
+    <a href="/admin/jobs" class="active">Stellen</a>
+    <a href="/admin/concepts">Konzepte</a>
+  </nav>
+
+  <h1>Stellenranking</h1>
+  <div class="subtle">{{ profile.label_de }} · Live aus persistiertem Profil und aktueller Konzept-Evidenz berechnet</div>
+
+  <div class="stats">
+    <div class="stat"><strong>{{ stats.gesamt }}</strong>relevante Stellen</div>
+    <div class="stat"><strong>{{ stats.bewertet }}</strong>bewertet</div>
+    <div class="stat"><strong>{{ stats.unvereinbar }}</strong>unvereinbar</div>
+    <div class="stat"><strong>{{ stats.unbewertet }}</strong>unbewertet</div>
+  </div>
+
+  <nav class="filters" aria-label="Stellenfilter">
+    {% for value, label in job_filters.items() %}
+      <a href="/admin/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">{{ label }}</a>
+    {% endfor %}
+    <form method="get" action="/admin/jobs">
+      <input type="hidden" name="ansicht" value="{{ selected_filter }}">
+      <input name="suche" value="{{ search }}" placeholder="Titel, Firma oder Ort">
+      <button type="submit">Suchen</button>
+    </form>
+  </nav>
+
+  {% for row in rows %}
+    {% set salary = annual_salary_label(row.job) %}
+    <article class="job">
+      <div>
+        {% if row.result.score is not none %}
+          <div class="score">{{ row.result.score }}</div>
+          <div class="coverage">{{ (row.result.preference_coverage * 100)|round|int }} % Abdeckung</div>
+        {% else %}
+          <div class="score unrated">–</div>
+          <div class="coverage">unbewertet</div>
+        {% endif %}
+      </div>
+
+      <div>
+        <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
+        <h2>#{{ row.job.id }} · {{ row.job.title }}</h2>
+        <div class="meta">
+          {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
+          {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
+          {% if row.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ row.hard_labels|join(', ') }}</span>{% endif %}
+        </div>
+        {% if row.drivers %}
+          <div class="drivers">
+            <strong>Treiber:</strong>
+            {% for driver in row.drivers %}
+              <span class="{{ 'positive' if driver.contribution >= 0 else 'negative' }}">{{ driver.label_de }} {{ '%+.2f'|format(driver.contribution) }}</span>{% if not loop.last %} · {% endif %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="right">
+        {% if row.links %}
+          <section>
+            <strong>Quellen</strong><br>
+            {% for link in row.links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}
+            {% endfor %}
+          </section>
+        {% endif %}
+        {% if row.job.salary_text and not salary %}
+          <section><strong>Gehaltsangabe</strong><br>{{ row.job.salary_text }}</section>
+        {% endif %}
+      </div>
+    </article>
+  {% else %}
+    <div class="empty">Keine Stellen entsprechen diesem Filter.</div>
+  {% endfor %}
+</main>
+</body>
+</html>
