@@ -22,7 +22,9 @@ _LOCALITY_ALIASES = {
     "linz austria": "linz",
     "salzburg austria": "salzburg",
     "innsbruck austria": "innsbruck",
+    "klagenfurt": "klagenfurt am wörthersee",
     "klagenfurt austria": "klagenfurt am wörthersee",
+    "klagenfurt am worthersee": "klagenfurt am wörthersee",
 }
 
 _REMOTE_ONLY = {
