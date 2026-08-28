@@ -28,14 +28,18 @@ def _request(query: str = "", cookie_payload: dict | None = None) -> Request:
     )
 
 
-def test_house_filters_start_with_family_budget_defaults() -> None:
+def test_house_filters_start_empty() -> None:
     filters = load_house_filters(_request())
 
     assert filters == BASE_HOUSE_FILTERS
-    assert filters.preis_von == Decimal(30000)
-    assert filters.preis_bis == Decimal(150000)
-    assert filters.wohn_von == Decimal(90)
-    assert filters.grund_von == Decimal(300)
+    assert filters == HouseFilters()
+    assert filters.ort == ""
+    assert filters.preis_von is None
+    assert filters.preis_bis is None
+    assert filters.wohn_von is None
+    assert filters.wohn_bis is None
+    assert filters.grund_von is None
+    assert filters.grund_bis is None
 
 
 def test_house_filters_restore_saved_browser_values() -> None:
@@ -56,7 +60,7 @@ def test_house_filters_restore_saved_browser_values() -> None:
 def test_explicit_house_filter_query_overrides_saved_cookie() -> None:
     request = _request(
         "preis_bis=120000&wohn_von=95&grund_von=350",
-        cookie_payload=BASE_HOUSE_FILTERS.as_cookie_payload(),
+        cookie_payload=HouseFilters(preis_von=Decimal(50000)).as_cookie_payload(),
     )
     filters = resolve_house_filters(
         request,
@@ -75,7 +79,7 @@ def test_explicit_house_filter_query_overrides_saved_cookie() -> None:
     assert filters.grund_von == Decimal(350)
 
 
-def test_house_filter_reset_restores_budget_defaults() -> None:
+def test_house_filter_reset_clears_saved_filters() -> None:
     request = _request(
         "filter_reset=1",
         cookie_payload=HouseFilters(preis_bis=Decimal(90000)).as_cookie_payload(),
@@ -91,4 +95,4 @@ def test_house_filter_reset_restores_budget_defaults() -> None:
         grund_bis=None,
     )
 
-    assert filters == BASE_HOUSE_FILTERS
+    assert filters == HouseFilters()
