@@ -46,26 +46,24 @@ Acquisition micro-polishing is paused intentionally.
 
 Current discovery gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is closed unless a genuinely generic bug appears.
 
-Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is future fit `cannot + not want`; this affects candidate fit, not broad acquisition.
+Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is `cannot + not want`; this affects candidate fit, not broad acquisition.
 
-## Canonical job dedupe — closed for current corpus
+## Canonical job dedupe — closed
 
-Seven explicit fail-closed groups were applied successfully. Corpus moved from `163 / 0` relevant canonical / multi-listing canonical jobs to `156 / 7`.
+Seven explicit fail-closed groups were merged. Corpus moved from `163 / 0` relevant canonical / multi-listing canonical jobs to `156 / 7`.
 
 Final production audit:
 - `duplicate_candidates_high=0`
 - `duplicate_candidates_blocked=1`
 - `duplicate_candidates_medium=6`
 
-Blocked pair is teampool 163/168: strong same-source title/body evidence but explicit source locations conflict (`Wien` vs `Wels`). Medium TSMG/Austro Holding/Trenkwalder/Anton Paar candidates remain untouched.
+Blocked teampool 163/168 remains split because source locations conflict (`Wien` vs `Wels`). Medium TSMG/Austro Holding/Trenkwalder/Anton Paar candidates remain untouched.
 
-Merge engine remains explicit-ID, dry-run by default and fail-closed on company/salary/evidence/same-source location conflicts. Source listings/raw payloads survive on canonical survivors. The SQLAlchemy duplicate-location double-delete warning was removed by letting relationship `delete-orphan` own child deletion. Audit and merge safety share the same plan.
+Merge is explicit-ID, dry-run by default and fail-closed on company/salary/evidence/same-source location conflicts. Source listings/raw payloads survive canonical merge. Audit and destructive safety use the same merge plan.
 
 Canonical dedupe is intentionally closed for the current corpus.
 
-## Normalized job concepts — current primary work
-
-Goal: normalize source wording into candidate-independent concepts before any can/want scoring.
+## Normalized job concepts — production established
 
 Dimensions:
 - `role`
@@ -75,133 +73,152 @@ Dimensions:
 - `tool`
 
 Files:
-- `app/jobs/concepts.py` — canonical concept, alias, evidence models and evidence semantics.
-- `app/jobs/concept_catalog.py` — deterministic seed vocabulary + phrase extractor.
-- `migrations/versions/0007_job_concepts.py` — vocabulary/evidence tables.
-- `scripts/normalize_job_concepts.py` — read-only by default; `--apply` seeds/recomputes.
-- `tests/test_job_concepts.py` — normalization/extraction/evidence regressions.
-- `migrations/env.py` imports concept models for complete Alembic metadata.
+- `app/jobs/concepts.py`
+- `app/jobs/concept_catalog.py`
+- `migrations/versions/0007_job_concepts.py`
+- `scripts/normalize_job_concepts.py`
+- `scripts/job_concept_persisted_audit.py`
+- `tests/test_job_concepts.py`
 
-### Data model
+Vocabulary is canonical `JobConcept` + many `JobConceptAlias` rows. `JobConceptEvidence` stores concept, alias, field, semantic scope, confidence and extractor version. Evidence is recomputable and candidate-independent.
 
-`JobConcept` stores canonical `kind + slug`, German label and enabled state.
+### Extractor v2 / evidence semantics
 
-`JobConceptAlias` stores many surface forms per concept with normalized alias, optional language, provenance and enabled state.
+Current deterministic extractor: `concept-seed-2026-08-28-v2`.
 
-`JobConceptEvidence` stores job/concept, matched alias, source field, semantic scope, confidence and extractor version.
+Phrase occurrence is explicitly classified:
+- title -> `scope=primary`, confidence `1.00`
+- description role -> `scope=context`, confidence `0.45`
+- description domain -> `scope=context`, confidence `0.55`
+- description task -> `scope=context`, confidence `0.80`
+- description method/tool -> `scope=context`, confidence `0.85`
 
-Evidence is recomputable and candidate-independent. Candidate preferences belong on canonical concepts later, never raw source words.
-
-### Extractor v1 result
-
-Read-only v1 on the post-dedupe 156-job corpus:
-- `jobs_with_concepts=131`
-- `jobs_without_concepts=25`
-- `distinct_concepts_matched=32`
-- `evidence_rows=433`
-
-The 25 unmatched titles were mainly systematic variants such as Maschinenbautechniker, generic Konstrukteur/Senior Designer, Service Techniker, Berechnungsingenieur, CAD-Techniker, Anlagenbau, Stahlbau, Mechatroniker, Metalltechniker, Schlosser and Instandhaltung.
-
-### Extractor v2 vocabulary
-
-Current phrase extractor version remains `concept-seed-2026-08-28-v2` because v2 has never been persisted; the latest changes refine evidence semantics rather than phrase matching.
-
-V2 adds only neutral concepts observed in production, including:
-
-Roles:
-- Maschinenbautechniker
-- generic Konstrukteur / Design Engineer
-- Berechnungsingenieur
-- generic Projektleiter / Projektmanager
-- Produktionsleiter
-- Service Techniker / Field Service Technician
-- CAD-Techniker / Technischer Zeichner / Detailplaner / Ausführungsplaner
-- Mechatroniker
-- Metalltechniker
-- Schlosser / Maschinenschlosser
-
-Domains:
-- Anlagenbau
-- Stahlbau
-- Gebäudetechnik / HKLS
-- Mechatronik
-
-Tasks:
-- Instandhaltung
-- Fertigung / Produktion
-- Ausführungs-/Detailplanung
-- Toleranzanalyse
+This keeps description requirements useful without allowing text such as `Studium Maschinenbau, Mechatronik oder Elektrotechnik` to redefine the vacancy as three primary domains.
 
 Guardrails:
-- generic `Konstrukteur` is a generic designer role but does not imply mechanical-engineering;
+- generic `Konstrukteur` is a generic designer role, not automatic mechanical-engineering;
 - EPLAN alone does not imply electrical-engineering;
-- word boundaries keep FEM from matching `female`;
-- deterministic recompute deletes prior `concept-seed-*` evidence while leaving future other extractor families untouched;
-- DB-enabled concepts/aliases drive applied extraction, so future German admin UI edits do not require Python changes.
+- FEM cannot substring-match `female`;
+- deterministic recompute replaces prior `concept-seed-*` evidence only;
+- DB-enabled concepts/aliases drive applied extraction, so future admin UI edits do not require Python changes.
 
-### Production v2 precision audit
+### Production migration + persist completed
 
-Read-only v2 on the real 156-job corpus produced:
+Migration `0007_job_concepts` was applied successfully from `0006_job_source_tenants` and is currently installed in production.
+
+Production `normalize_job_concepts.py --apply` result:
+- `relevant_active_jobs=156`
 - `jobs_with_concepts=156`
 - `jobs_without_concepts=0`
 - `distinct_concepts_matched=49`
 - `evidence_rows=747`
-- `jobs_role=115`, `evidence_role=229`
-- `jobs_domain=125`, `evidence_domain=268`
-- `jobs_task=86`, `evidence_task=176`
-- `jobs_method=11`, `evidence_method=11`
-- `jobs_tool=38`, `evidence_tool=63`
+- `evidence_primary=219`
+- `evidence_context=528`
+- jobs/evidence by kind:
+  - role `115 / 229`
+  - domain `125 / 268`
+  - task `86 / 176`
+  - method `11 / 11`
+  - tool `38 / 63`
 
-Important precision observations:
+Persisted DB audit confirmed exactly:
+- `persisted_evidence_rows=747`
+- `persisted_jobs=156`
+- `persisted_primary=219`
+- `persisted_context=528`
+- `invalid_scope_values=-`
+- only deterministic version present: `concept-seed-2026-08-28-v2 rows=747`
 
-1. `role:mechanical-technician` is clean and mostly primary identity evidence:
-   - 23 jobs total;
-   - 21 have title evidence;
-   - examples are actual Maschinenbautechniker title variants.
+Targeted persisted checks also matched dry-run:
+- `domain:electrical-engineering`: 40 jobs, primary=4, context=38
+- `role:mechanical-technician`: 23 jobs, primary=21, context=8
+- `role:designer-engineer`: 48 jobs, primary=44, context=32
 
-2. `role:designer-engineer` is intentionally generic:
-   - 48 jobs;
-   - 44 have title evidence;
-   - includes mechanical, electrical, civil/HKLS and hardware design roles;
-   - therefore this concept must not itself imply positive mechanical fit. Domain/task evidence decides specialization.
+Normalization is now considered production-established. Do not continue synonym polishing without a demonstrated fit/precision problem.
 
-3. `domain:electrical-engineering` exposed the limit of raw phrase matching:
-   - 40 unique jobs;
-   - only 4 title-primary matches;
-   - 38 description matches;
-   - many description matches are explicit `Elektrotechnik` / `Electrical Engineering` mentions in education/qualification/context, not proof that the vacancy itself is primarily electrical.
+## Candidate concept preferences / fit — current primary work
 
-Examples include mechanical/service/development titles whose descriptions mention Elektrotechnik as one accepted background. Conversely titles such as `Entwicklungsingenieur Elektrotechnik`, `Electrical Engineer` and `Konstrukteur*in Elektrotechnik` are genuine primary electrical identity evidence.
+New files:
+- `app/jobs/candidate_fit.py` — ORM preference models + pure versioned scoring engine
+- `app/jobs/candidate_profile_seed.py` — conservative initial profile seed
+- `migrations/versions/0008_candidate_preferences.py`
+- `scripts/candidate_fit_audit.py` — read-only production ranking audit
+- `tests/test_candidate_fit.py`
+- `migrations/env.py` imports candidate preference models for complete Alembic metadata
 
-### Primary vs context evidence semantics
+### Four-state model
 
-Because phrase occurrence in a description is not equivalent to job identity, evidence now has explicit `scope`:
+`CandidateConceptPreference` stores exactly one of:
+- `can_want`
+- `can_not_want`
+- `cannot_want`
+- `cannot_not_want`
 
-- title matches -> `scope=primary`, confidence `1.00`;
-- description role matches -> `scope=context`, confidence `0.45`;
-- description domain matches -> `scope=context`, confidence `0.55`;
-- description task matches -> `scope=context`, confidence `0.80`;
-- description method matches -> `scope=context`, confidence `0.85`;
-- description tool matches -> `scope=context`, confidence `0.85`.
+DB migration `0008` includes a check constraint for these four states. Absence of a preference row means **unrated**; uncertain concepts are not forced into a guessed state.
 
-This preserves useful context without letting requirements such as `Studium Maschinenbau, Mechatronik oder Elektrotechnik` redefine the vacancy as three primary domains.
+`CandidateProfile` makes the architecture profile-aware rather than hardcoding one candidate.
 
-Migration `0007` was updated before production application to persist the non-null `scope` field and index it.
+### Fit policy v1
 
-Audit output now prints `primary/context` counts and targeted concept evidence includes field/scope/confidence.
+Current dry-run policy: `candidate-fit-2026-08-28-v1`.
 
-CI #412 passed Ruff, Compile and the full test suite for evidence scope/confidence semantics and migration wiring.
+State values:
+- can + want = `+1.00`
+- can + not want = `-0.20`
+- cannot + want = `+0.20`
+- cannot + not want = `-1.00`
+
+Kind weights:
+- role `1.15`
+- domain `1.25`
+- task `1.00`
+- method/tool `0.75`
+
+Scope amplitude:
+- primary `1.00`
+- context `0.35`
+
+Important math guard: normalization uses the unscoped evidence strength while contribution amplitude uses scope. Therefore context attenuation cannot cancel out in numerator/denominator. A pure primary `cannot_not_want` domain can reach score 0, while the same concept present only as description context is only moderately negative (about 32–33), not an extreme identity signal.
+
+Repeated title/description evidence for the same concept collapses to the strongest signal. Unrated concepts do not bias score but reduce `preference_coverage`.
+
+`Job.job_fit_score` already exists historically but is **not** the source of truth and is not mutated by the current audit. It may later be used only as a materialized/cache value after policy validation.
+
+### Initial profile seed
+
+Seed version: `candidate-profile-2026-08-28-v1`.
+
+It intentionally rates only established concepts and leaves uncertain tool/role/domain concepts unrated. It includes positive mechanical/product/project/task evidence and explicit negative pure electrical domain. Generic cross-domain `designer-engineer` is intentionally not rated positive by itself; domain/task evidence must establish specialization.
+
+### Safety / tests
+
+Regression tests cover:
+- primary mechanical evidence dominating conflicting electrical context;
+- pure primary electrical `cannot_not_want` scoring at the bottom;
+- context-only negative evidence being attenuated rather than normalized back to an extreme;
+- unrated concepts lowering coverage without biasing signed score;
+- repeated evidence collapsing to the strongest signal;
+- middle states remaining directionally distinct;
+- no rated evidence returning no score.
+
+CI #423 passed Ruff, Compile and the full suite after the context-normalization fix.
 
 ## Immediate work order
 
-1. Pull current `bootstrap/austria-mvp`.
-2. Apply migration `0007` with `alembic upgrade head`.
-3. Run `python scripts/normalize_job_concepts.py --apply` to seed the DB vocabulary and persist current deterministic evidence.
-4. Immediately run a read-only concept audit again and verify:
-   - 156 relevant jobs still present;
-   - persisted evidence count is 747 unless DB alias state intentionally differs from seed;
-   - electrical description mentions are persisted as `context/0.55`, not primary;
-   - title identity matches are primary/1.00.
-5. Then add four-state candidate concept preferences: can+want / can+not-want / cannot+want / cannot+not-want.
-6. Intrinsic job fit must weight primary identity more strongly than context and remain independent of geography.
-7. Then combine fit with PostGIS house/job distance, salary and final recommendation ranking.
+1. Pull latest `bootstrap/austria-mvp`.
+2. **Do not apply migration 0008 yet.**
+3. Run only the read-only live fit audit:
+
+   `python scripts/candidate_fit_audit.py --limit 25`
+
+4. Inspect:
+   - `jobs_scored/jobs_unscored`
+   - score mean/median
+   - preference coverage mean/median
+   - top 25 and bottom 25 titles/companies
+   - printed concept drivers for obvious false positives/negatives
+5. If useful, rerun selected suspicious jobs with repeatable `--job-id ID` for full contribution detail.
+6. Tune fit policy/profile seed only from actual ranking evidence.
+7. Once ranking semantics are healthy, apply migration 0008 and persist the profile/preferences.
+8. Then build German admin UI for concept/profile rating and recompute materialized `Job.job_fit_score` from persisted profile state.
+9. After intrinsic fit is stable, combine with PostGIS house/job distance, salary and final recommendation ranking.
