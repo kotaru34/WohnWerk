@@ -8,8 +8,8 @@ from app.jobs.candidate_fit import (
     CandidateProfile,
 )
 from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES, PROFILE_SEED_VERSION, PROFILE_SLUG
-from app.jobs.candidate_profile_store import sync_seed_profile
-from app.jobs.concepts import JobConcept
+from app.jobs.candidate_profile_store import load_profile_preferences, sync_seed_profile
+from app.jobs.concepts import ConceptKind, JobConcept
 
 
 def _database() -> tuple[object, Session]:
@@ -52,6 +52,9 @@ def test_profile_seed_is_idempotent_and_preserves_manual_override() -> None:
         assert {item.source for item in preferences} == {CandidatePreferenceSource.SEED.value}
         assert {item.seed_version for item in preferences} == {PROFILE_SEED_VERSION}
 
+        persisted = load_profile_preferences(session)
+        assert persisted == PROFILE_PREFERENCES
+
         manual = preferences[0]
         manual.source = CandidatePreferenceSource.MANUAL.value
         manual.seed_version = None
@@ -61,14 +64,22 @@ def test_profile_seed_is_idempotent_and_preserves_manual_override() -> None:
             if original_seed_state != CandidatePreferenceState.CANNOT_NOT_WANT.value
             else CandidatePreferenceState.CAN_WANT.value
         )
-        manual_state = manual.state
+        manual_state = CandidatePreferenceState(manual.state)
+        manual_key = (
+            ConceptKind(manual.concept.kind),
+            manual.concept.slug,
+        )
         session.commit()
 
         sync_seed_profile(session)
         session.refresh(manual)
         assert manual.source == CandidatePreferenceSource.MANUAL.value
         assert manual.seed_version is None
-        assert manual.state == manual_state
+        assert CandidatePreferenceState(manual.state) == manual_state
+
+        persisted_after = load_profile_preferences(session)
+        assert persisted_after[manual_key] == manual_state
+        assert persisted_after != PROFILE_PREFERENCES
 
         preferences_after = list(
             session.scalars(
