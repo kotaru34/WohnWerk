@@ -276,7 +276,7 @@ def _persist(
 
     session.execute(
         delete(JobConceptEvidence).where(
-            JobConceptEvidence.extractor_version == EXTRACTOR_VERSION
+            JobConceptEvidence.extractor_version.like("concept-seed-%")
         )
     )
 
