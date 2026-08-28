@@ -10,173 +10,222 @@ This is the authoritative recovery point for a fresh context.
 
 ## Product invariants
 
-WohnWerk is a private/self-hosted Austria-first property + job acquisition, personalization and matching system.
+WohnWerk is a private/self-hosted Austria-first property + job acquisition, personalization and matching system for the candidate/father.
 
-- User/admin UI is German-only.
-- `JobListing.status` is source lifecycle only.
-- Discovery relevance stays in `raw_payload["wohnwerk_discovery_gate"]`.
-- Candidate preferences, curation and fit are independent/recomputable.
-- Failed/partial frontier crawls never mass-deactivate.
-- Do not invent Austrian PLZ/location coordinates; preserve provenance.
-- Geography remains separate from intrinsic fit.
-- No CAPTCHA bypass, credential theft, fingerprint spoofing or deliberate anti-bot evasion.
+- App/user UI is German-only.
+- Source lifecycle, discovery relevance and candidate fit are separate concerns.
+- Failed/partial crawls never mass-deactivate authoritative data.
+- Missing from a frontier search is not proof of disappearance.
+- Hidden/favorite curation survives lifecycle/canonical merges.
+- Do not invent coordinates or semantic property attributes.
+- Geography/commute remains separate from intrinsic job fit.
+- No permanent Job×Property pair table unless future measurements justify it.
 
-## Stable acquisition / dedupe
+## Production runtime
 
-Properties: IMMMO #11 = 13,948 coverage OK; s REAL #16 = 314 coverage OK/detail-enriched. ImmoAds disabled.
+Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 
-Jobs: SmartRecruiters #33=42, Personio #37=17, Lever #22=6, karriere.at #40=30, jobs.at #41=13, StepStone #45=37, willhaben #46=18 relevant jobs. Acquisition micro-polishing is intentionally paused.
-
-Discovery gate remains `profile-seed-2026-08-28-v14`. Seven fail-closed canonical merges reduced the relevant corpus 163 -> 156 with 7 multi-listing canonicals. Final dedupe audit: high=0, blocked=1 (teampool Wien/Wels), medium=6. Do not reopen without stronger evidence.
-
-## Job concepts — production established
-
-Migration `0007_job_concepts` is applied. Persisted extractor `concept-seed-2026-08-28-v3`:
-- 156/156 relevant jobs have concepts
-- 50 concepts
-- 780 evidence rows
-- 228 primary / 552 context
-- only v3 deterministic evidence persisted
-
-Important guards remain: generic Konstrukteur does not imply mechanical domain; EPLAN alone does not imply electrical; FEM cannot substring-match `female`; DB-enabled aliases drive applied extraction.
-
-Normalization tuning is closed unless real ranking feedback exposes a generic semantic failure.
-
-## Candidate profile + intrinsic fit — father-reviewed baseline
-
-Migration `0008_candidate_preferences` is applied. Profile slug `mechanical-project-engineer`, label `Maschinenbau / technische Projektleitung`.
-
-Fit policy remains `candidate-fit-2026-08-28-v3` with primary/context semantics, positive evidence budget 3.0 and primary role/domain `cannot_not_want` hard constraint capped at score 25. `Job.job_fit_score` is not source of truth; current UI recomputes live from persisted profile + persisted concept evidence.
-
-Historical bootstrap validation was 141 scored / 15 unscored / 13 hard-incompatible, mean 61.14 / median 63. Do not use that as the current target.
-
-On 2026-08-28 the real candidate/father reviewed the concept set in production. Current read-only persisted-profile audit:
-- persisted preferences: 50
-- source counts: manual 27 / seed 23
-- states: can_want 34 / cannot_not_want 10 / cannot_want 6
-- scored: 155 / unscored: 1
-- hard-incompatible: 38
-- score mean: 56.79
-- score median: 62.00
-- preference coverage mean: 0.974
-- preference coverage median: 1.000
-
-Current top includes #205, #214 and #223 at 100; #144=96; #251=94; #136=92. Service/building-services/electrical/electronics roles correctly move into the hard-incompatible tail according to the father-reviewed profile.
-
-The 27 manual / 23 seed split is intentional UI provenance: only explicit `source=manual` choices count as candidate-confirmed in the `Bewertet` review filter, although all persisted ratings still participate in scoring.
-
-## Production UI / runtime
-
-Public URL is live through Caddy HTTPS:
-- `https://wohnwerk.kotaru.lainlounge.org`
 - Caddy -> `127.0.0.1:8000`
+- `wohnwerk.service`: Uvicorn/FastAPI, loopback only
+- local OSRM: `127.0.0.1:5000`, Austria graph, MLD, mmap
+- `wohnwerk-refresh.timer`: every 15 minutes, dynamic source refresh
+- `wohnwerk-liveness.timer`: daily frontier liveness probe
+- health endpoint: `/health`
 
-`deploy/wohnwerk.service` is installed and working in production; backend survives reboot alongside Caddy.
+Latest verified runtime after the IMMMO repair:
+- web service active and listening on 127.0.0.1:8000
+- `/health` returns `status=ok`, `country=AT`
+- refresh timer active/waiting with a real next trigger
 
-Protected German admin surfaces:
-- `/admin/concepts`
-- `/admin/jobs`
+Existing Starlette warning is non-blocking: `starlette.testclient`/`httpx` deprecation.
 
-Security: fail-closed Basic auth, configurable username, byte-safe password comparison, HMAC CSRF on every write form.
+## Property acquisition and lifecycle
 
-### Concepts
+Authoritative property sources:
+- `immmo.at`
+- `sreal.at`
 
-`/admin/concepts` has combined filters:
-- type: Alle / Rolle / Fachgebiet / Aufgabe / Methode / Werkzeug
-- review status: Alle / Bewertet / Unbewertet
+ImmoAds remains disabled.
 
-Review semantics:
-- `source=manual` = explicitly reviewed/confirmed by candidate -> Bewertet
-- `source=seed` = bootstrap default, still not candidate-confirmed -> Unbewertet/open
-- no row = Unbewertet/open
+Lifecycle model:
+- `ListingStatus`: ACTIVE / INACTIVE / UNKNOWN
+- source listing first/last seen timestamps and inactive timestamp
+- canonical property lifecycle is derived conservatively from source listings
+- reconciliation disappearance requires consecutive complete/OK scans
+- incomplete scans cannot mass-deactivate
 
-Reviewed cards are visually quieter; open cards get a subtle accent. Progress counts expose confirmed vs still-open concepts.
+### IMMMO identity continuity — CLOSED
 
-### Jobs
+IMMMO is a meta-search source. Its downstream portal URL is not stable identity: the same physical property can rotate between ImmobilienScout24, FindMyHome, Nachrichten, SN and synthetic IMMMO fallback URLs.
 
-`/admin/jobs` labels the two metrics explicitly:
-- **Passung N / 100** = intrinsic candidate/job fit
-- **Bewertungsbasis N %** = normalized job evidence covered by rated profile concepts
+Continuity implementation:
+- `app/ingestion/property_continuity.py`
+- `app/ingestion/immmo_continuity.py`
+- `scripts/repair_immmo_continuity.py`
 
-Cards use restrained score-band/tint styling. Filters include Passend / Favoriten / Alle / Unvereinbar / Unbewertet / Ausgeblendet.
+Current continuity policy: `immmo-continuity-2026-08-28-v3`.
 
-Migration `0009_candidate_job_preferences` supplies sparse per-profile `favorite` / `hidden` state. Hidden jobs remain recoverable; favorites are independent. Future canonical merge OR-preserves curation state onto the survivor before donor deletion. The user confirmed the current father-feedback UI version is working in production after deployment cleanup.
+Safe strategies only:
+- exact: PLZ + normalized title + price + provider-neutral display-area fingerprint
+- title_area: PLZ + normalized title + display-area fingerprint
 
-## PostGIS spatial matching — validated first slice
+Price-only continuity was removed because provider changes can also change area semantics.
 
-Existing `Property.location` and `JobLocation.location` are `geography(POINT,4326)` with spatial indexes.
+Run #47 historical repair:
+- raw new: 2267
+- deterministic continuity matches: 1471
+- reclassified genuinely-new rows: 1466
+- effective new after repair: 801
 
-Current location semantics are approximate by design:
-- properties receive resolved Austrian PLZ points from BEV-derived postal centroids
-- job locations use explicit resolved PLZ centroids when available
-- otherwise conservative locality centroids derived from RTR postal names + BEV postal centroids
-- unresolved/countrywide locations remain ungeocoded; no coordinates are invented
+v3 idempotency verification on run #47:
+- `deterministic_pairs=0`
 
-`app/matching.py` provides:
-- `geo_coverage()` for production coverage diagnostics
-- `nearest_properties_for_job_stmt()` / `nearest_properties_for_job()`
-- `load_spatial_candidate_matches()` combining current live father-reviewed fit with on-demand spatial selection
+Subsequent full scans stabilized naturally; latest controlled scans had no identity churn (`new=0`, `continuity_merged=0`). Do not reopen continuity unless new production evidence shows a concrete regression.
 
-Spatial query semantics:
-- `ST_DWithin` constrains candidate pairs first so PostGIS can use spatial indexes
-- exact geography `ST_Distance` returns straight-line geodesic distance
-- multi-location jobs use a window to keep only the nearest job location per property
-- no permanent Job×Property pair table is created
-- hidden, hard-incompatible and unscored jobs are excluded before geography
-- favorite is curation only and does not boost intrinsic score
-- distance is explicitly **Luftlinie**, not road/travel time
+## IMMMO area semantics — CLOSED
 
-Read-only CLI: `scripts/spatial_match_audit.py`.
+Critical source fact: IMMMO's card-level `PLZ / N m²` is a provider-defined display area. It can represent Wohnfläche, Nutzfläche or Grundstück depending on the downstream portal/card. It must not be blindly stored as Wohnfläche.
 
-Production audit at 50 km on 2026-08-28:
-- active properties: 14,262
-- located properties: 14,260 (reported ratio 1.000)
-- relevant jobs: 156
-- relevant job locations: 161
-- located job locations: 134
-- jobs with at least one located location: 131 (ratio 0.840)
-- actual nearest-house examples were sensible for Wels, Kufstein, Stallhofen, Nebelberg, Lungötz, Weiz, Vöcklabruck, Radfeld and Wien
+Current parser payload format: `immmo-search-discovery-v12`.
 
-Centroid-level geography is therefore validated as a useful first ranking signal. Same-PLZ pairs naturally collapse to 0 km because the current coordinates are postal centroids; do not misrepresent this as street accuracy.
+Current semantics:
+- explicit Wohnfläche / Wohnnutzfläche -> canonical `living_area_m2`
+- explicit Grundstück / Grundstücksfläche -> `plot_area_m2`
+- generic primary card area -> `raw_payload.display_area_m2`
+- ambiguous display area is not promoted to Wohnfläche
 
-## Optional OSRM road refinement — code ready, production benchmark next
+Parser v12 also protects flattened metadata such as:
+- `Wohnnutzfläche: 87.75 m² Grundstücksfläche: 410 m²`
+- `Nutzfläche: 120 m² Grundstücksfläche: 784 m²`
+so a previous numeric field is not incorrectly attached to the next label.
 
-Road routing is now an optional second-stage refinement; it does not replace PostGIS and does not alter intrinsic fit.
+Run #62 full v12 reconciliation:
+- status success / coverage ok
+- rows seen: 13,990
+- new: 0
+- continuity merged: 0
+- disappeared: 1
+- explicit living: 6,112
+- explicit plot: 3,030
 
-New code:
-- `app/routing.py`: bounded OSRM Table client returning fastest-route distance and duration
-- `app/road_matching.py`: Luftlinie prefilter -> road matrix refinement
-- `scripts/road_match_audit.py`: read-only production benchmark/audit
-- `tests/test_routing.py`: parsing, null/unreachable, batching and validation coverage
+Historical legacy repair: `immmo-area-semantics-2026-08-28-v2`.
 
-Semantics and guards:
-- PostGIS `ST_DWithin` remains the cheap first-stage candidate search and fallback
-- default road prefilter routes only the nearest 75 Luftlinie properties per selected job
-- property destinations sharing the same centroid are deduplicated before OSRM calls
-- all geocoded physical locations of a multi-location job are routed; the fastest reachable location is retained per property
-- road matches are sorted by driving duration, then road distance, then Luftlinie
-- configured 50 km radius is applied to actual road distance after refinement
-- no permanent Job×Property route table/cache exists yet
-- no migration is required
-- OSRM is disabled by default and expected on loopback at `127.0.0.1:5000`
-- if routing is not deployed, the established Luftlinie matching path remains unchanged
-- current PLZ/locality centroid limitation still applies: same-centroid houses/jobs can still produce 0 road km/min; road refinement chiefly improves cross-centroid topology until street-level geocoding exists
+The controlled repair cleared 7,395 IMMMO-only canonical `living_area_m2` values whose current audited v12 listings had no explicit living-area evidence. Source/display values were retained in listing raw payload; repair metadata records the previous canonical value.
 
-Configuration keys are documented in `.env.example`:
-- `WOHNWERK_ROUTING_ENABLED`
-- `WOHNWERK_ROUTING_BASE_URL`
-- `WOHNWERK_ROUTING_TIMEOUT_SECONDS`
-- `WOHNWERK_ROUTING_MAX_TABLE_COORDINATES`
-- `WOHNWERK_ROUTING_PREFILTER_PROPERTIES_PER_JOB`
+Repair checks:
+- safety dry-run candidates: 7395
+- applied: `canonical_living_cleared=7395`
+- repeat dry-run: `unverified_immmo_only=0`
 
-CI #510 passed Ruff, Compile and the full suite: 228 tests passed, 1 existing Starlette/httpx deprecation warning.
+Post-repair audit on run #62:
+- canonical_living_mismatch=0
+- suspicious_plot_as_living=0
+- suspicious_immmo_only=0
+- unverified_canonical_living=0
+- unverified_immmo_only=0
+
+UI semantics now support neutral `Fläche N m² (Typ nicht eindeutig)` when canonical Wohnfläche is unknown but a single unambiguous source display-area exists. Do not call this value Wohnfläche.
+
+## Jobs, concepts and candidate fit
+
+Current relevant active jobs: 179.
+
+Candidate profile:
+- slug: `mechanical-project-engineer`
+- label: `Maschinenbau / technische Projektleitung`
+- father profile: ~30 years mechanical engineering / technical project leadership, product development, mechanical design, project steering, machinery/vehicle/rail/special equipment, team/vendor/specification/schedule/FEM/FMEA/test/assembly/commissioning experience
+
+Current fit policy: `candidate-fit-2026-08-28-v3`.
+
+Concept extractor: `concept-seed-2026-08-28-v3`.
+
+Candidate curation:
+- migration `0009_candidate_job_preferences`
+- sparse favorite/hidden per profile
+- hidden is recoverable
+- favorite does not intrinsically boost fit
+- canonical merge OR-preserves curation
+
+Previously hidden by user and excluded from matching:
+- job #205 HR Group
+- job #214 ACTIEF JOBMADE
+
+Matching excludes hidden, hard-incompatible and unscored jobs before geography.
+
+## Dynamic refresh
+
+Authoritative reconciliation sources:
+- immmo.at
+- sreal.at
+- lever-public-postings
+- personio-public-xml
+- smartrecruiters-public-postings
+
+Frontier job sources:
+- karriere.at
+- jobs.at
+- stepstone.at
+- willhaben-jobs
+
+Scheduler runs every 15 minutes and decides source due-ness from DB state. Job success triggers resolver/concept processing and live fit remains recomputable.
+
+Known future acquisition expansion:
+- Workday
+- Greenhouse
+- direct Austrian company career pages
+- additional Austrian job sources where useful
+
+## Geography and routing
+
+Property location semantics:
+- Austrian BEV PLZ centroid
+
+Job location semantics:
+- explicit PLZ centroid where available
+- otherwise conservative locality centroid
+- unresolved/countrywide remains ungeocoded
+
+Road semantics:
+- PostGIS geography is the cheap Luftlinie prefilter
+- local OSRM Table API performs fastest-driving refinement
+- 50 km configured radius is enforced on road distance after refinement
+- prefilter default: 75 properties/job
+- same-PLZ/same-centroid pairs can legitimately report 0 km / 0 min; this is a centroid limitation, not a routing failure
+
+Latest post-repair road audit (50 km, 20 jobs, 5 houses/job, prefilter 75):
+- routing_status=ok
+- routing_seconds=0.749
+- active_properties=14,414
+- located_properties=14,413
+- property_location_ratio≈1.000
+- relevant_jobs=179
+- relevant_job_locations=190
+- located_job_locations=159
+- jobs_with_located_location=151
+- job_location_ratio=0.844
+
+The routing layer remains fast and healthy after the property cleanup.
+
+## Current UI state
+
+Current protected German surfaces:
+- `/admin/matches` — job + nearby-house combinations
+- `/admin/jobs` — ranked jobs, filters, favorite/hide actions
+- `/admin/concepts` — technical candidate concept review/admin
+
+Root currently redirects to the matching surface.
+
+The matching page is already road-aware and fail-soft to Luftlinie. Property area presentation is provenance-aware after the v12 repair.
 
 ## Immediate next steps
 
-1. Pull the current branch on production; no migration is required.
-2. Inspect available container runtime and host RAM/disk before deploying a router.
-3. If acceptable, build a local Austria-only OSRM graph from the current Geofabrik PBF and bind `osrm-routed` to loopback only.
-4. Compare baseline `scripts/spatial_match_audit.py` with `scripts/road_match_audit.py` at `--radius-km 50 --jobs 10 --properties-per-job 5 --prefilter-properties-per-job 75`; record routing latency and OSRM RSS/CPU.
-5. Keep road refinement only if the measured runtime overhead is acceptable; otherwise retain Luftlinie as the production signal.
-6. After routing semantics are validated, add a German matching UI surface and property source links/filters.
-7. Compose final recommendation score from intrinsic fit + geographic/commute signal + source-backed salary + property price/area attributes.
+1. Move father-facing browsing away from the `/admin/*` namespace without rewriting the proven auth/curation internals:
+   - `/matches` for combinations
+   - `/jobs` for ranked jobs and favorite/hide curation
+   - keep `/admin/concepts` as the technical/admin surface
+   - preserve legacy `/admin/matches` and `/admin/jobs` compatibility redirects/aliases
+2. Make root `/` lead to `/matches`.
+3. Add `Kombinationen` + `Stellen` navigation consistently on father-facing pages; do not surface `Konzepte` as a normal user tab.
+4. Keep Basic auth for now; improve auth naming/UX separately if needed.
+5. After father-facing navigation is stable, continue broad job acquisition (Workday/Greenhouse/direct career pages).
+6. Later improve location precision only with source-backed street/address evidence; do not fake street-level routing from centroids.
