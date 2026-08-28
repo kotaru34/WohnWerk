@@ -150,6 +150,7 @@ def test_plot_primary_display_area_is_not_promoted_to_living_area() -> None:
     assert garden.raw_payload["display_area_m2"] == "7246.04"
     assert garden.raw_payload["display_area_semantics"] == "plot_explicit_primary"
     assert garden.raw_payload["explicit_living_area_m2"] is None
+    assert garden.raw_payload["explicit_usable_area_m2"] == "20"
     assert garden.raw_payload["explicit_plot_area_m2"] == "7246.04"
 
 
@@ -165,6 +166,7 @@ def test_explicit_living_area_wins_when_primary_display_is_plot_area() -> None:
     assert farmhouse.raw_payload["display_area_m2"] == "748"
     assert farmhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
     assert farmhouse.raw_payload["explicit_living_area_m2"] == "130"
+    assert farmhouse.raw_payload["explicit_usable_area_m2"] is None
     assert farmhouse.raw_payload["explicit_plot_area_m2"] == "748"
 
 
@@ -207,6 +209,7 @@ def test_wohn_slash_nutzflaeche_is_explicit_living_area() -> None:
     assert landhouse.raw_payload["display_area_m2"] == "793"
     assert landhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
     assert landhouse.raw_payload["explicit_living_area_m2"] == "257"
+    assert landhouse.raw_payload["explicit_usable_area_m2"] is None
     assert landhouse.raw_payload["explicit_plot_area_m2"] == "793"
 
 
@@ -220,15 +223,18 @@ def test_flattened_metadata_does_not_bind_previous_area_to_next_plot_label() -> 
     assert haschendorf.living_area_m2 == Decimal("87.75")
     assert haschendorf.plot_area_m2 == Decimal(410)
     assert haschendorf.raw_payload["display_area_semantics"] == "living_explicit_primary"
+    assert haschendorf.raw_payload["explicit_usable_area_m2"] is None
 
     wallersee = next(item for item in page.items if item.postal_code == "5302")
     assert wallersee.living_area_m2 is None
     assert wallersee.plot_area_m2 == Decimal(784)
     assert wallersee.raw_payload["display_area_m2"] == "120"
     assert wallersee.raw_payload["display_area_semantics"] == "unknown"
+    assert wallersee.raw_payload["explicit_usable_area_m2"] == "120"
 
     ohlsdorf = next(item for item in page.items if item.postal_code == "4694")
     assert ohlsdorf.living_area_m2 is None
     assert ohlsdorf.plot_area_m2 == Decimal(831)
     assert ohlsdorf.raw_payload["display_area_m2"] == "278.91"
     assert ohlsdorf.raw_payload["display_area_semantics"] == "unknown"
+    assert ohlsdorf.raw_payload["explicit_usable_area_m2"] == "278.91"
