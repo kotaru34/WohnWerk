@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.jobs.candidate_fit import (
     CandidateConceptPreference,
     CandidatePreferenceSource,
+    CandidatePreferenceState,
     CandidateProfile,
 )
 from app.jobs.candidate_profile_seed import (
@@ -17,6 +18,7 @@ from app.jobs.candidate_profile_seed import (
 from app.jobs.concepts import ConceptKind, JobConcept
 
 ConceptKey = tuple[ConceptKind, str]
+PreferenceMap = dict[ConceptKey, CandidatePreferenceState]
 
 
 def enabled_concepts(session: Session) -> dict[ConceptKey, JobConcept]:
@@ -28,8 +30,12 @@ def enabled_concepts(session: Session) -> dict[ConceptKey, JobConcept]:
     }
 
 
+def get_profile(session: Session, slug: str) -> CandidateProfile | None:
+    return session.scalar(select(CandidateProfile).where(CandidateProfile.slug == slug))
+
+
 def get_seed_profile(session: Session) -> CandidateProfile | None:
-    return session.scalar(select(CandidateProfile).where(CandidateProfile.slug == PROFILE_SLUG))
+    return get_profile(session, PROFILE_SLUG)
 
 
 def preference_rows(
@@ -52,6 +58,23 @@ def concept_key(concept: JobConcept) -> ConceptKey:
 
 def format_concept_keys(keys: list[ConceptKey]) -> str:
     return ",".join(f"{kind.value}:{slug}" for kind, slug in sorted(keys)) or "-"
+
+
+def load_profile_preferences(session: Session, slug: str = PROFILE_SLUG) -> PreferenceMap:
+    """Load the persisted source-of-truth preference map for one enabled profile."""
+
+    profile = get_profile(session, slug)
+    if profile is None:
+        raise ValueError(f"candidate profile does not exist: {slug}")
+    if not profile.enabled:
+        raise ValueError(f"candidate profile is disabled: {slug}")
+
+    result: PreferenceMap = {}
+    for preference, concept in preference_rows(session, profile.id):
+        if not concept.enabled:
+            continue
+        result[concept_key(concept)] = CandidatePreferenceState(preference.state)
+    return result
 
 
 def sync_seed_profile(session: Session) -> CandidateProfile:
