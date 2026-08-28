@@ -144,13 +144,20 @@ def _driver_label(result: JobFitResult, limit: int = 5) -> str:
     ) or "-"
 
 
+def _hard_label(result: JobFitResult) -> str:
+    return ",".join(f"{item.kind.value}:{item.slug}" for item in result.hard_constraints) or "-"
+
+
 def _print_job(job: Job, result: JobFitResult) -> None:
     score = "-" if result.score is None else str(result.score)
     print(
         f"  job={job.id} score={score} coverage={result.preference_coverage:.3f} "
+        f"hard_incompatible={'yes' if result.hard_constraints else 'no'} "
         f"company={job.company or '-'} title={job.title}"
     )
     print(f"    drivers={_driver_label(result)}")
+    if result.hard_constraints:
+        print(f"    hard_constraints={_hard_label(result)}")
 
 
 def main() -> None:
@@ -174,6 +181,7 @@ def main() -> None:
         }
 
         scored = [result for result in results.values() if result.score is not None]
+        hard_incompatible = [result for result in scored if result.hard_constraints]
         print(f"profile_seed_version={PROFILE_SEED_VERSION}")
         print(f"fit_policy_version={DEFAULT_FIT_POLICY.version}")
         print(f"extractor_version={EXTRACTOR_VERSION}")
@@ -195,9 +203,20 @@ def main() -> None:
             )
         )
         print(f"positive_evidence_budget={DEFAULT_FIT_POLICY.positive_evidence_budget:.2f}")
+        print(
+            "hard_incompatibility_kinds="
+            + ",".join(
+                sorted(kind.value for kind in DEFAULT_FIT_POLICY.hard_incompatibility_kinds)
+            )
+        )
+        print(
+            "hard_primary_incompatibility_cap="
+            f"{DEFAULT_FIT_POLICY.hard_primary_incompatibility_cap}"
+        )
         print(f"relevant_active_jobs={len(jobs)}")
         print(f"jobs_scored={len(scored)}")
         print(f"jobs_unscored={len(jobs) - len(scored)}")
+        print(f"jobs_hard_incompatible={len(hard_incompatible)}")
         if not args.preview_current_extractor and not any(evidence_by_job.values()):
             print(
                 "warning=no persisted evidence for current extractor; "
@@ -258,7 +277,8 @@ def main() -> None:
                 for item in result.contributions:
                     print(
                         f"      contribution {item.kind.value}:{item.slug} "
-                        f"state={item.state.value} evidence_weight={item.evidence_weight:.3f} "
+                        f"state={item.state.value} scope={item.scope} "
+                        f"evidence_weight={item.evidence_weight:.3f} "
                         f"value={item.contribution:+.3f}"
                     )
                 print("      evidence:")
