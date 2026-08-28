@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Hashable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +24,29 @@ class PropertyContinuityMatch:
 
 def normalize_property_title(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def continuity_area_m2(
+    raw_payload: dict | None,
+    fallback_living_area_m2: Decimal | None,
+) -> Decimal | None:
+    """Return the provider-neutral area fingerprint used only for continuity matching.
+
+    IMMMO's card-level ``PLZ / N m²`` value is a provider-defined display area. It can be
+    Wohnfläche for one downstream portal and Grundstücks-/Nutzfläche for another. Newer
+    adapters persist that raw display value separately so lifecycle continuity can still
+    use it without claiming that it is semantically a living area. Legacy rows fall back
+    to the historical canonical living-area field because that is where the same card value
+    used to be stored.
+    """
+    payload = raw_payload or {}
+    value = payload.get("display_area_m2")
+    if value is None:
+        return fallback_living_area_m2
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return fallback_living_area_m2
 
 
 def _strategy_key(
@@ -57,11 +80,12 @@ def match_property_continuity(
     The matcher is deliberately one-to-one and staged. At every stage a key is accepted
     only when exactly one unmatched previous row and exactly one unmatched current row
     share it. Provider rotation is accepted when the full metadata fingerprint matches or
-    when postal code, title, and living area match exactly despite a price change.
+    when postal code, title, and the provider-neutral display-area fingerprint match exactly
+    despite a price change.
 
     Price-only continuity is intentionally rejected. Production IMMMO audits showed that
-    some downstream providers can expose plot/useful area in the field currently parsed as
-    living area, producing very large apparent area changes for otherwise identical cards.
+    downstream providers can expose different area semantics for the same house, producing
+    huge apparent area changes even when title and price remain identical.
     """
 
     previous_remaining = {row.token: row for row in previous}
