@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.candidate_activity import is_new_unviewed, load_job_viewed_ids, novelty_baseline
 from app.jobs.candidate_fit import FitEvidence, JobFitResult, score_job_concepts
 from app.jobs.candidate_job_store import load_candidate_job_states
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
@@ -38,6 +39,8 @@ class JobFitView:
     hard_labels: tuple[str, ...]
     favorite: bool = False
     hidden: bool = False
+    viewed: bool = False
+    is_new: bool = False
 
 
 def _gate_accepted(listing: JobListing) -> bool:
@@ -120,10 +123,14 @@ def _source_links(session: Session, jobs: list[Job]) -> dict[int, tuple[JobSourc
         for listing in job.listings
         if listing.status == ListingStatus.ACTIVE
     }
-    source_names = {
-        source.id: source.name
-        for source in session.scalars(select(Source).where(Source.id.in_(source_ids)))
-    } if source_ids else {}
+    source_names = (
+        {
+            source.id: source.name
+            for source in session.scalars(select(Source).where(Source.id.in_(source_ids)))
+        }
+        if source_ids
+        else {}
+    )
 
     result: dict[int, tuple[JobSourceLink, ...]] = {}
     for job in jobs:
@@ -168,6 +175,8 @@ def load_live_job_fit(
     links_by_job = _source_links(session, jobs)
     labels = _concept_labels(session)
     states = load_candidate_job_states(session, profile.id, job_ids)
+    viewed_ids = load_job_viewed_ids(session, profile.id, job_ids)
+    baseline = novelty_baseline(session, profile)
 
     views: list[JobFitView] = []
     for job in jobs:
@@ -183,6 +192,7 @@ def load_live_job_fit(
             labels.get((item.kind, item.slug), item.slug) for item in result.hard_constraints
         )
         state = states.get(job.id)
+        viewed = job.id in viewed_ids
         views.append(
             JobFitView(
                 job=job,
@@ -193,6 +203,12 @@ def load_live_job_fit(
                 hard_labels=hard_labels,
                 favorite=state.favorite if state is not None else False,
                 hidden=state.hidden if state is not None else False,
+                viewed=viewed,
+                is_new=is_new_unviewed(
+                    first_seen_at=job.first_seen_at,
+                    baseline=baseline,
+                    viewed_at=job.first_seen_at if viewed else None,
+                ),
             )
         )
 
