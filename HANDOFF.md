@@ -24,7 +24,7 @@ WohnWerk is a private/self-hosted Austria-first house + job acquisition, persona
 
 ## User-directed acquisition model
 
-The user explicitly wants consumer-board acquisition to behave like a person quickly scanning vacancies:
+Consumer-board acquisition should behave like a person quickly scanning vacancies:
 
 - a handful of broad/focused searches;
 - first result page initially;
@@ -35,7 +35,7 @@ The user explicitly wants consumer-board acquisition to behave like a person qui
 - ToS text can inform priority but is advisory rather than an architecture blocker by itself;
 - no technical anti-bot bypass.
 
-Do not return to the earlier overcautious permission-first/purge detour. Adzuna/Jooble remain useful supplementary APIs, not replacements for normal boards.
+Do not return to the earlier permission-first/purge detour. Adzuna/Jooble are supplementary APIs, not replacements for normal boards.
 
 ## Stable property acquisition
 
@@ -47,17 +47,17 @@ Do not reopen absent live regression:
 
 ## Stable supplementary ATS job sources
 
-- SmartRecruiters #33: 15/15, coverage OK, 53 source-active / 42 relevant-active listings, 41/42 relevant locations resolved; liveness and republish identity closed.
-- Personio #37: 14/14, 28 DE+EN feed requests, coverage OK, source_reported=215, 17 relevant-active jobs; only `österreichweit` unresolved.
-- Lever #22: 5/5, coverage OK, 6 relevant active jobs, all relevant locations resolved.
+- SmartRecruiters #33: 42 relevant-active canonical jobs; 41/42 relevant locations resolved.
+- Personio #37: 17 relevant-active jobs; only `österreichweit` intentionally unresolved.
+- Lever #22: 6 relevant jobs, all relevant locations resolved.
 
-Keep ATS feeds supplementary. Do not scale primarily by manually enumerating employers.
+ATS feeds remain supplementary. Do not scale primarily by manually enumerating employers.
 
-## Discovery gate v14 / candidate direction
+## Discovery gate / candidate direction
 
 Current gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is closed unless a genuinely generic bug appears.
 
-Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is explicit future fit `cannot + not want`; this must affect candidate fit, not broad acquisition.
+Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is future fit `cannot + not want`; this affects candidate fit, not broad acquisition.
 
 ## Stable low-impact broad boards
 
@@ -66,75 +66,45 @@ Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit s
 - 5/5 shards, 35 HTTP requests;
 - 30 relevant jobs;
 - 34 relevant locations, 27 geo-resolved;
-- 27 structured salaries, 15 annualized;
-- no source/rate-limit errors.
-
-Do not deepen traversal yet.
+- 27 structured salaries, 15 annualized.
 
 ### jobs.at — production #41
 
-Current broad searches: Maschinenbau, Konstrukteur, CAD Konstrukteur, Mechanischer Konstrukteur, SolidWorks.
+Broad searches: Maschinenbau, Konstrukteur, CAD Konstrukteur, Mechanischer Konstrukteur, SolidWorks.
 
 - 5/5 shards, 18 HTTP requests;
 - 13 relevant jobs;
 - 14 relevant locations, 7 geo-resolved;
 - 12 structured salaries + 1 salary text.
 
-`E-Plan` roles may remain in broad acquisition and later rank down via candidate fit.
-
 ### StepStone Austria — clean production #45
 
 Design: five search pages, zero details, stable numeric listing ID, always coverage-incomplete.
 
-Run #43 exposed CSS/no-js card pollution and a postal-only parsing bug. Those were repaired and regression-tested. A one-time fail-closed purge of the malformed #43 data then reported:
-
-- source_listings=35;
-- affected_jobs=35;
-- exclusive_jobs=35;
-- shared_jobs=0;
-- purge_safe=yes.
-
-Clean rebuild #45:
+After the one-time parser cleanup/reset:
 
 - 5/5 shards, 0 failed;
 - exactly 5 HTTP requests, zero details;
-- 37 seen / 37 new;
-- source_reported=5,360;
-- 37 relevant-active canonical jobs;
+- 37 relevant jobs;
 - 37 locations, 27 geo-resolved;
-- 2 source PLZ resolved, 25 city approximations, 10 unresolved;
-- no CSS title/company-as-location pollution remained.
-
-StepStone acquisition/parser work is closed for now absent a new generic live regression.
+- 2 source PLZ resolved;
+- no CSS/title/location pollution remains.
 
 ### willhaben Jobs — production #46
 
-Design: five first-page search requests, zero details, stable `/jobs/job/<slug>/<id>` identity.
-
-Run #44 had a bad global count regex but clean vacancy parsing. After fixing the count parser, refresh #46 produced:
+Design: five first-page search requests, zero details.
 
 - 5/5 shards, 0 failed;
 - exactly 5 HTTP requests, zero details;
-- 18 seen / 0 new / 18 updated;
-- sane source_reported=448 rather than ~1.07M;
-- 18 relevant-active canonical jobs;
-- 17 locations, 15 geo-resolved, 2 unresolved.
+- 18 relevant jobs;
+- sane source_reported=448;
+- 17 locations, 15 geo-resolved.
 
-Willhaben acquisition/parser work is closed for now absent regression.
+Acquisition micro-polishing is now paused intentionally.
 
 ## Supplementary broad APIs
 
-Adzuna Austria and Jooble Austria remain implemented/tested but have not been production-run because credentials were not supplied. They are optional corpus bonuses, not the current priority.
-
-## Acquisition phase status
-
-Acquisition micro-polishing is now paused intentionally. Source health is clean for all active job frontiers/feeds, and the first duplicate audit reported:
-
-- relevant_canonical_jobs=163;
-- already_multi_listing_canonical_jobs=0;
-- no database changes from the audit.
-
-Do not interpret 163 as 163 unique vacancies until canonical duplicate collapse is complete.
+Adzuna Austria and Jooble Austria remain implemented/tested but have not been production-run because credentials were not supplied. They are optional corpus bonuses.
 
 ## Canonical job dedupe — current primary work
 
@@ -147,65 +117,80 @@ Files:
 - `scripts/merge_duplicate_jobs.py`
 - `tests/test_job_merge.py`
 
-### First production duplicate audit
+Current pre-merge corpus:
 
-The first read-only audit on the 163-job corpus returned 14 high-confidence pair edges and 0 medium under the initial rule set.
+- `relevant_canonical_jobs=163`
+- `already_multi_listing_canonical_jobs=0`
 
-Very strong obvious examples included:
+No audit has changed the database.
 
-- PEISCHL Fahrzeugbau karriere.at ↔ StepStone, exact title/company/Stegersbach;
-- Global Hydro karriere.at ↔ StepStone, exact title/company/Niederranna;
-- IVM karriere.at ↔ StepStone, exact title/company/Linz;
-- APS Group jobs.at ↔ willhaben, normalized exact title/company/Frohnleiten;
-- Oberaigner StepStone German/English card variants in Nebelberg;
-- Austro Holding SmartRecruiters ↔ StepStone;
-- TSMG two Lever punctuation/title variants.
+### Production audit history
 
-The audit also exposed a critical ambiguity cluster: canonical jobs 164/165/169/208 were all `Konstrukteur (m/w/d)` at Trenkwalder. Some had no location, while jobs 165 and 208 were Klagenfurt variants. The initial rule `same company + normalized exact title + no explicit location conflict` was therefore too permissive for generic titles. No merge was performed.
+Initial audit under the first rule set:
 
-### Refined duplicate evidence
+- 14 high-confidence edges;
+- 0 medium;
+- exposed an over-permissive Trenkwalder `Konstrukteur` cluster.
 
-Current dedupe rules are deliberately stricter:
+Second audit after generic-title/location refinement:
+
+- 10 high-confidence edges;
+- 6 medium-confidence edges.
+
+Strong cross-board evidence included PEISCHL, Global Hydro, IVM, E-Plan/Trenkwalder, APS Group and the Klagenfurt Trenkwalder syndication. Same-source strong examples included teampool and Oberaigner.
+
+The second audit exposed two remaining risks:
+
+1. TSMG jobs 3/4 are separate Lever listing IDs with the same normalized title/location but only `description_similarity=0.307`; same-source exact title/location is therefore not sufficient.
+2. Trenkwalder jobs 164/169 are same-source generic `Konstrukteur` titles with `description_similarity=0.888`; staffing-agency template reuse can make that look stronger than it really is.
+
+### Current duplicate evidence policy
+
+Current rules are deliberately conservative:
 
 - known different normalized companies are a hard conflict;
-- gender suffixes such as `(m/w/d)`, `all genders`, and bare `m|f|d` are normalized away;
-- `Klagenfurt`, `Klagenfurt am Wörthersee`, and ASCII `Klagenfurt am Worthersee` canonicalize together;
-- generic titles such as `Konstrukteur`, `Mechanical Engineer`, `Entwicklungsingenieur`, etc. do **not** become high confidence from company alone;
-- generic title + company requires location overlap or strong description-overlap evidence for high confidence;
-- specific long normalized-exact titles at the same company may still be high without a location when no conflict exists;
-- descriptions use conservative token-containment similarity so a board snippet can match a fuller detail description;
-- audit output now includes `description_similarity`, generic-title flag, source listing IDs and URLs.
+- gender suffixes such as `(m/w/d)`, `all genders`, bare `m|f|d` normalize away;
+- Klagenfurt naming variants canonicalize together;
+- generic titles are treated conservatively;
+- descriptions use token-containment similarity so snippets can match fuller descriptions;
+- source listing IDs/URLs, description similarity, generic-title flag and shared-source flag are printed by the audit;
+- cross-board exact company/title/location is strong syndication evidence;
+- **same-source** different listing IDs are treated as possible parallel openings rather than automatic duplicates;
+- same-source non-generic pairs need `description_similarity >= 0.82` for high confidence;
+- same-source generic/template pairs need `description_similarity >= 0.95` for high confidence;
+- otherwise matching same-company titles remain medium rather than being destructively merged.
 
-This refinement is designed specifically to split safe duplicate evidence from staffing-agency/template-title coincidences.
+This should downgrade TSMG 3/4 and the ambiguous generic Trenkwalder 164/169 pair while retaining strong Oberaigner/teampool same-source variants.
 
-### Fail-closed canonical merge engine
+CI #376 passed Ruff, Compile and the full test suite for these final thresholds.
+
+## Fail-closed canonical merge engine
 
 `merge_duplicate_jobs.py` is dry-run by default and accepts explicit canonical Job IDs only. It never automatically merges every audit hit.
 
 Safety behavior:
 
-- group must be connected by **high-confidence** duplicate evidence;
-- conflicting normalized companies block the merge;
-- conflicting canonical salary bundles block the merge rather than silently choosing one;
-- survivor is chosen automatically by canonical richness: structured salary, PLZ/geography, description depth, listing count, then stable lower-ID tie-break;
+- group must be connected by high-confidence evidence;
+- conflicting normalized companies block merge;
+- conflicting canonical salary bundles block merge;
+- survivor is chosen by canonical richness: structured salary, PLZ/geography, description depth, listing count, then lower-ID tie-break;
 - richer description/company and non-conflicting salary bundle are preserved;
-- all `JobListing` rows are moved to the survivor, preserving independent source lifecycle/raw payloads;
+- all `JobListing` rows move to the survivor with independent source lifecycle/raw payloads preserved;
 - locations are unioned and obvious equivalent city/PLZ rows deduplicated/enriched;
-- canonical hash is cleared because merged identity must not retain a stale pre-merge hash;
-- conflicting/non-uniform fit score is cleared for future recomputation;
-- absorbed canonical Jobs are deleted only after listings/locations have been transferred;
+- stale canonical hash is cleared;
+- conflicting/non-uniform fit score is cleared for recomputation;
+- absorbed canonical Jobs are deleted only after transfers;
 - `--apply` is required for mutation.
-
-CI #369 passed Ruff, Compile and the full test suite for the refined dedupe + merge-plan state.
 
 ## Immediate work order
 
 1. Pull current `bootstrap/austria-mvp`.
-2. Run only the refined read-only audit:
+2. Run the final refined read-only audit:
    `python scripts/job_duplicate_audit.py --include-medium --limit 100`.
-3. Inspect the new high/medium groups including listing IDs/URLs and description similarity.
-4. Do **not** bulk merge all candidates.
-5. For each clearly safe connected group, run `scripts/merge_duplicate_jobs.py <ids...>` in dry-run mode first.
-6. Apply only groups whose dry-run reports `safe=yes` and no salary/company/evidence blockers.
-7. Re-run duplicate audit after approved merges; canonical count should fall while `already_multi_listing_canonical_jobs` rises.
-8. Once obvious duplicates are collapsed, shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
+3. Expect TSMG and ambiguous same-source staffing/template pairs to be downgraded.
+4. Dry-run clearly safe high-confidence groups with `scripts/merge_duplicate_jobs.py <ids...>`; no `--apply` yet.
+5. Inspect salary/company/evidence blockers and survivor choice.
+6. Apply only explicitly safe groups.
+7. Re-run duplicate audit; canonical count should fall and multi-listing canonicals should rise by predictable amounts.
+8. Leave TSMG/Austro Holding/Anton Paar and other ambiguous medium cases untouched until stronger evidence exists.
+9. Then shift primary work to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
