@@ -37,11 +37,40 @@ _STYLE_NOISE_RE = re.compile(
     r"display\s*:\s*none|\.res-[a-z0-9_-]+\s*\{|\}\s*\.res-)",
     re.IGNORECASE,
 )
+_NON_AT_COUNTRY_RE = re.compile(
+    r"(?:\bdeutschland\b|\bgermany\b|\bschweiz\b|\bswitzerland\b|"
+    r"\bitalien\b|\bitaly\b|\btschechien\b|\bczech(?:ia| republic)?\b|"
+    r"\bslowakei\b|\bslovakia\b|\bungarn\b|\bhungary\b|"
+    r"\bslowenien\b|\bslovenia\b)",
+    re.IGNORECASE,
+)
 _TITLE_NOISE = {
     "mehr",
     "neu",
     "schnelle bewerbung",
     "teilweise home-office",
+}
+_OBVIOUS_NON_AT_CITIES = {
+    "berlin",
+    "bratislava",
+    "budapest",
+    "dresden",
+    "düsseldorf",
+    "duesseldorf",
+    "frankfurt am main",
+    "hamburg",
+    "köln",
+    "koeln",
+    "ljubljana",
+    "münchen",
+    "munich",
+    "nürnberg",
+    "nuernberg",
+    "prag",
+    "prague",
+    "stuttgart",
+    "zürich",
+    "zurich",
 }
 
 _REGIONS = {
@@ -266,6 +295,18 @@ def _location_from_text(value: str | None) -> RawJobLocation | None:
     )
 
 
+def _obviously_non_austrian(location: RawJobLocation | None) -> bool:
+    if location is None:
+        return False
+    text = " ".join((location.location_text or "").casefold().split()).strip()
+    if not text:
+        return False
+    if _NON_AT_COUNTRY_RE.search(text):
+        return True
+    first = text.split(",", 1)[0].strip()
+    return first in _OBVIOUS_NON_AT_CITIES
+
+
 def parse_stepstone_search_page(
     content: str,
     *,
@@ -306,6 +347,8 @@ def parse_stepstone_search_page(
             )
 
         location = _location_from_text(location_text)
+        if _obviously_non_austrian(location):
+            continue
         jobs.append(
             RawJob(
                 source_listing_id=f"stepstoneat:{hit.job_id}",
