@@ -21,6 +21,7 @@
     h1 { margin: 0 0 9px; line-height: 1.2; }
     .badges { display: flex; flex-wrap: wrap; gap: 6px; }
     .badge { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; font-size: .82rem; }
+    .hard { border-color: color-mix(in srgb, #d33 60%, transparent); background: color-mix(in srgb, #d33 10%, Canvas); }
     .links { font-size: .9rem; line-height: 1.55; }
     .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
     .nearby-head h2 { margin: 0; }
@@ -63,8 +64,13 @@
   {% set salary = annual_salary_label(fit.job) %}
   <section class="job-head">
     <div>
-      <div class="score">{{ fit.result.score }} <small>/100</small></div>
-      <div class="coverage">Passung · Bewertungsbasis {{ (fit.result.preference_coverage * 100)|round|int }} %</div>
+      {% if fit.result.score is not none %}
+        <div class="score">{{ fit.result.score }} <small>/100</small></div>
+        <div class="coverage">Passung · Bewertungsbasis {{ (fit.result.preference_coverage * 100)|round|int }} %</div>
+      {% else %}
+        <div class="score">–</div>
+        <div class="coverage">Noch keine bewertbare Profilbasis</div>
+      {% endif %}
     </div>
     <div>
       <div class="company">{{ fit.job.company or 'Firma unbekannt' }}</div>
@@ -73,6 +79,7 @@
         {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
         {% for location in fit.locations %}<span class="badge">{{ location }}</span>{% endfor %}
         {% if fit.favorite %}<span class="badge">Favorit</span>{% endif %}
+        {% if fit.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ fit.hard_labels|join(', ') }}</span>{% endif %}
       </div>
     </div>
     <div class="links">
