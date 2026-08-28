@@ -40,6 +40,40 @@ def test_parse_stepstone_search_page_extracts_card_fields_and_postal_code() -> N
     assert job.raw_payload["acquisition_level"] == "search-result-card"
 
 
+def test_parse_stepstone_search_page_ignores_logo_css_before_real_title_link() -> None:
+    content = """
+    <html><body>
+      <h1>343 Treffer für Konstrukteur/in Maschinenbau Jobs</h1>
+      <a href="/stellenangebote--Senior-Konstrukteur-Wien-Example--123456-inline.html">
+        .res-logo{box-sizing:border-box;} #no-js-image-res-x { display: none !important; }
+      </a>
+      <a href="/stellenangebote--Senior-Konstrukteur-Wien-Example--123456-inline.html">
+        .res-title{box-sizing:border-box;}@media screen and (min-width: 600px){.res-title{display:flex;}}
+        Senior Konstrukteur (all genders), Maschinenbau – Mechanische Komponenten
+      </a>
+      <div>Flach &amp; Barfigo Personalleasing GmbH</div>
+      <div>1030 Wien</div>
+      <div>Schnelle Bewerbung</div>
+      <p>Abgeschlossene technische Ausbildung und Konstruktion mechanischer Komponenten und Baugruppen.</p>
+      <span>vor 6 Stunden</span>
+    </body></html>
+    """
+
+    jobs, reported = parse_stepstone_search_page(
+        content,
+        search_label="Konstrukteur Maschinenbau",
+    )
+
+    assert reported == 343
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.title == "Senior Konstrukteur (all genders), Maschinenbau – Mechanische Komponenten"
+    assert job.company == "Flach & Barfigo Personalleasing GmbH"
+    assert job.locations[0].postal_code == "1030"
+    assert job.locations[0].city == "Wien"
+    assert "box-sizing" not in job.title
+
+
 def test_parse_stepstone_search_page_handles_whole_card_inside_anchor() -> None:
     long_description = (
         "Mechanische Konstruktion von Baugruppen und Komponenten mit 3D-CAD für "
@@ -72,6 +106,24 @@ def test_parse_stepstone_search_page_handles_whole_card_inside_anchor() -> None:
     assert job.locations[0].postal_code == "6330"
     assert job.locations[0].city == "Kufstein"
     assert "Sondermaschinenbauprojekte" in (job.description or "")
+
+
+def test_parse_stepstone_search_page_preserves_postal_only_location() -> None:
+    content = """
+    <a href="/stellenangebote--Maschinenbauingenieur-Ried-Example--778899-inline.html">
+      Maschinenbauingenieur (m/w/d)
+    </a>
+    <div>Example GmbH</div>
+    <div>4973, Österreich</div>
+    <p>Mechanische Produktentwicklung und Konstruktion von Baugruppen.</p>
+    """
+
+    jobs, _ = parse_stepstone_search_page(content, search_label="Maschinenbauingenieur")
+
+    assert len(jobs) == 1
+    assert jobs[0].locations[0].postal_code == "4973"
+    assert jobs[0].locations[0].city is None
+    assert jobs[0].locations[0].location_text == "4973, Österreich"
 
 
 def test_parse_stepstone_search_page_handles_region_then_city_without_inventing_plz() -> None:
