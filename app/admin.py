@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from pathlib import Path
 from typing import Annotated
@@ -47,16 +49,36 @@ CredentialsDependency = Annotated[HTTPBasicCredentials | None, Depends(security)
 DbDependency = Annotated[Session, Depends(get_db)]
 
 
-def require_admin(credentials: CredentialsDependency) -> None:
+def _configured_admin_settings():
     settings = get_settings()
     if not settings.admin_password:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Admin-Oberfläche ist nicht konfiguriert.",
         )
-    valid = credentials is not None and secrets.compare_digest(
-        credentials.username, settings.admin_username
-    ) and secrets.compare_digest(credentials.password, settings.admin_password)
+    return settings
+
+
+def _secure_equal(left: str, right: str) -> bool:
+    return secrets.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
+
+
+def _csrf_token() -> str:
+    settings = _configured_admin_settings()
+    return hmac.new(
+        settings.admin_password.encode("utf-8"),
+        b"wohnwerk-admin-csrf-v1",
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def require_admin(credentials: CredentialsDependency) -> None:
+    settings = _configured_admin_settings()
+    valid = (
+        credentials is not None
+        and _secure_equal(credentials.username, settings.admin_username)
+        and _secure_equal(credentials.password, settings.admin_password)
+    )
     if not valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,7 +87,16 @@ def require_admin(credentials: CredentialsDependency) -> None:
         )
 
 
+def require_csrf(csrf_token: Annotated[str, Form()]) -> None:
+    if not _secure_equal(csrf_token, _csrf_token()):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ungültiger Formularschutz.",
+        )
+
+
 AdminDependency = Annotated[None, Depends(require_admin)]
+CsrfDependency = Annotated[None, Depends(require_csrf)]
 
 
 def _profile_or_503(db: Session):
@@ -121,6 +152,7 @@ def concepts_page(
             "state_labels": STATE_LABELS,
             "preference_states": list(CandidatePreferenceState),
             "normalization_notice": hinweis == "normalisierung",
+            "csrf_token": _csrf_token(),
         },
     )
 
@@ -129,6 +161,7 @@ def concepts_page(
 def set_preference(
     concept_id: int,
     _: AdminDependency,
+    __: CsrfDependency,
     db: DbDependency,
     state_value: Annotated[str, Form(alias="state")],
     return_kind: Annotated[str, Form()] = "",
@@ -148,6 +181,7 @@ def set_preference(
 def reset_preference(
     concept_id: int,
     _: AdminDependency,
+    __: CsrfDependency,
     db: DbDependency,
     return_kind: Annotated[str, Form()] = "",
 ):
@@ -163,6 +197,7 @@ def reset_preference(
 def add_alias(
     concept_id: int,
     _: AdminDependency,
+    __: CsrfDependency,
     db: DbDependency,
     alias: Annotated[str, Form()],
     language: Annotated[str, Form()] = "",
@@ -181,6 +216,7 @@ def add_alias(
 def toggle_alias(
     alias_id: int,
     _: AdminDependency,
+    __: CsrfDependency,
     db: DbDependency,
     concept_id: Annotated[int, Form()],
     enabled: Annotated[str, Form()],
@@ -197,6 +233,7 @@ def toggle_alias(
 def remove_alias(
     alias_id: int,
     _: AdminDependency,
+    __: CsrfDependency,
     db: DbDependency,
     concept_id: Annotated[int, Form()],
     return_kind: Annotated[str, Form()] = "",
