@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule WohnWerk conservative frontier liveness sweep
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=20min
+AccuracySec=5min
+Persistent=true
+Unit=wohnwerk-liveness.service
+
+[Install]
+WantedBy=timers.target
