@@ -80,6 +80,16 @@ PLOT_AREA_VALUE_FIRST_PATTERNS = (
 )
 
 
+def _anchor_matches_title(anchor_text: str, expected_title: str) -> bool:
+    if not _is_title_text(anchor_text):
+        return False
+    anchor = _clean_text(anchor_text).casefold()
+    expected = _clean_text(expected_title).casefold()
+    if len(expected) < 8:
+        return False
+    return expected in anchor or anchor in expected
+
+
 def _choose_card_anchor(
     anchors: list[_AnchorOccurrence],
     *,
@@ -87,8 +97,15 @@ def _choose_card_anchor(
     heading_end: int,
     segment_end: int,
     page_url: str,
+    expected_title: str,
 ) -> tuple[_AnchorOccurrence, str] | None:
-    """Find the original listing link even when one <a> wraps the whole card."""
+    """Return a card link only when its visible text belongs to this exact card.
+
+    IMMMO pages can contain unrelated external anchors inside the visible segment. A blind
+    first-link fallback can therefore bind one property's title/price to another property's
+    URL. Prefer losing the external URL and using our synthetic fallback identity over
+    creating a false cross-card association.
+    """
     wrapping: list[tuple[_AnchorOccurrence, str]] = []
     following: list[tuple[_AnchorOccurrence, str]] = []
 
@@ -109,10 +126,8 @@ def _choose_card_anchor(
 
     for candidates in (wrapping, following):
         for anchor, original_url in candidates:
-            if _is_title_text(anchor.text):
+            if _anchor_matches_title(anchor.text, expected_title):
                 return anchor, original_url
-        if candidates:
-            return candidates[0]
     return None
 
 
@@ -282,6 +297,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             explicit_plot_area=explicit_plot_area,
         )
 
+        title = _fallback_title(card_text, heading.text)
         price = _summary_price(card_text, facts)
         chosen = _choose_card_anchor(
             anchors,
@@ -289,18 +305,15 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             heading_end=heading.end,
             segment_end=segment_end,
             page_url=page_url,
+            expected_title=title,
         )
 
         original_url_missing = chosen is None
         if chosen is not None:
-            anchor, listing_url = chosen
-            title = _clean_text(anchor.text) if _is_title_text(anchor.text) else _fallback_title(
-                card_text, heading.text
-            )
+            _anchor, listing_url = chosen
             source_listing_id = _source_id(listing_url)
             original_host: str | None = (urlparse(listing_url).hostname or "").casefold()
         else:
-            title = _fallback_title(card_text, heading.text)
             source_listing_id, listing_url = _synthetic_identity(
                 postal_code=postal_code,
                 city=city,
