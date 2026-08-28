@@ -160,24 +160,65 @@ def test_generic_konstrukteur_role_does_not_imply_mechanical_domain() -> None:
     assert ("domain", "mechanical-engineering") not in slugs
 
 
+def test_explicit_electronics_titles_map_to_separate_domain() -> None:
+    german = _slugs(
+        JobTextSnapshot(
+            job_id=10,
+            title="Elektronik-Entwicklungsingenieur (m/w/d)",
+            description=None,
+        )
+    )
+    english = _slugs(
+        JobTextSnapshot(
+            job_id=11,
+            title="Staff Hardware Engineer (f/m/d)",
+            description=None,
+        )
+    )
+
+    assert ("domain", "electronics") in german
+    assert ("domain", "electronics") in english
+    assert ("domain", "electrical-engineering") not in german
+
+
+def test_explicit_electrical_design_and_emc_titles_are_primary_domain() -> None:
+    e_design = _slugs(
+        JobTextSnapshot(
+            job_id=12,
+            title="E-Konstrukteur (w/m/x)",
+            description=None,
+        )
+    )
+    emc = _slugs(
+        JobTextSnapshot(
+            job_id=13,
+            title="EMC Engineer (w/m/d)",
+            description=None,
+        )
+    )
+
+    assert ("domain", "electrical-engineering") in e_design
+    assert ("domain", "electrical-engineering") in emc
+
+
 def test_real_unmatched_patterns_gain_neutral_concepts() -> None:
     plant_designer = _slugs(
         JobTextSnapshot(
-            job_id=10,
+            job_id=14,
             title="Senior Konstrukteur (m/w/d) im Maschinen- & Anlagenbau",
             description=None,
         )
     )
     calculation = _slugs(
         JobTextSnapshot(
-            job_id=11,
+            job_id=15,
             title="Berechnungsingenieur Toleranzen 2D/3D (m/w/d)",
             description=None,
         )
     )
     building_services = _slugs(
         JobTextSnapshot(
-            job_id=12,
+            job_id=16,
             title="Ingenieur:in Gebäudetechnik / HKLS-Technik (m/w/d)",
             description=None,
         )
