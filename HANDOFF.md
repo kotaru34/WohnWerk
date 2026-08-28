@@ -65,12 +65,7 @@ Canonical dedupe is intentionally closed for the current corpus.
 
 ## Normalized job concepts — production established
 
-Dimensions:
-- `role`
-- `domain`
-- `task`
-- `method`
-- `tool`
+Dimensions: `role / domain / task / method / tool`.
 
 Files:
 - `app/jobs/concepts.py`
@@ -79,8 +74,6 @@ Files:
 - `scripts/normalize_job_concepts.py`
 - `scripts/job_concept_persisted_audit.py`
 - `tests/test_job_concepts.py`
-
-Vocabulary is canonical `JobConcept` + many `JobConceptAlias` rows. `JobConceptEvidence` stores concept, alias, field, semantic scope, confidence and extractor version. Evidence is recomputable and candidate-independent.
 
 Current deterministic extractor: `concept-seed-2026-08-28-v2`.
 
@@ -124,11 +117,7 @@ Files:
 - `scripts/candidate_fit_audit.py`
 - `tests/test_candidate_fit.py`
 
-Four states:
-- `can_want`
-- `can_not_want`
-- `cannot_want`
-- `cannot_not_want`
+Four states: `can_want / can_not_want / cannot_want / cannot_not_want`.
 
 Absence of a preference row means **unrated**. Candidate profiles are first-class. `Job.job_fit_score` is not source of truth and remains untouched by audits.
 
