@@ -27,11 +27,22 @@ _JOB_PATH_RE = re.compile(
     r"(?P<path>/stellenangebote--[^\"'?#]+--(?P<id>\d+)-inline\.html)"
 )
 _RESULT_COUNT_RE = re.compile(r"(?<!\d)(\d{1,4})\s+Treffer\b", re.IGNORECASE)
-_POSTAL_CITY_RE = re.compile(r"^(?P<postal>\d{4})\s+(?P<city>.+)$")
+_POSTAL_CITY_RE = re.compile(r"^(?P<postal>\d{4})(?:\s+(?P<city>.+))?$")
 _RELATIVE_AGE_RE = re.compile(
     r"^(?:vor\s+\d+\s+(?:Stunden?|Tagen?|Wochen?|Monaten?)|heute|gestern)$",
     re.IGNORECASE,
 )
+_STYLE_NOISE_RE = re.compile(
+    r"(?:box-sizing:|@media\b|#no-js-image|data-genesis-element|"
+    r"display\s*:\s*none|\.res-[a-z0-9_-]+\s*\{|\}\s*\.res-)",
+    re.IGNORECASE,
+)
+_TITLE_NOISE = {
+    "mehr",
+    "neu",
+    "schnelle bewerbung",
+    "teilweise home-office",
+}
 
 _REGIONS = {
     "burgenland",
@@ -79,6 +90,25 @@ class StepStoneSearchHit:
     title: str
     url: str
     tail_parts: tuple[str, ...]
+
+
+def _is_markup_noise(value: str) -> bool:
+    cleaned = " ".join(html.unescape(value).split()).strip()
+    if not cleaned:
+        return True
+    folded = cleaned.casefold()
+    if folded in _TITLE_NOISE:
+        return True
+    return bool(_STYLE_NOISE_RE.search(cleaned))
+
+
+def _title_part_index(parts: list[str]) -> int | None:
+    for index, part in enumerate(parts):
+        cleaned = " ".join(html.unescape(part).split()).strip()
+        if not cleaned or len(cleaned) > 500 or _is_markup_noise(cleaned):
+            continue
+        return index
+    return None
 
 
 class _SearchParser(HTMLParser):
@@ -137,17 +167,20 @@ class _SearchParser(HTMLParser):
         if tag != "a" or self._anchor_job_id is None:
             return
 
-        # StepStone currently serves at least two card shapes: one where only the
-        # title is linked, and another where most/all of the result card is inside
-        # the anchor. Treat the first text node as the title and feed the remaining
-        # anchor text back into the normal card tail instead of concatenating the
-        # entire card into a bogus multi-kilobyte title.
+        # Live StepStone cards expose multiple links to the same vacancy. Logo links
+        # can contain only Emotion/no-js CSS, while title links can contain CSS before
+        # the actual human title. Never promote those style fragments into a job row.
         anchor_parts = [html.unescape(part).strip() for part in self._anchor_parts if part.strip()]
-        if anchor_parts:
+        title_index = _title_part_index(anchor_parts)
+        if title_index is not None:
             self._current_job_id = self._anchor_job_id
-            self._current_title = anchor_parts[0]
+            self._current_title = " ".join(anchor_parts[title_index].split()).strip()
             self._current_url = urljoin(BASE_URL, self._anchor_href or "")
-            self._current_tail = anchor_parts[1:]
+            self._current_tail = [
+                part
+                for part in anchor_parts[title_index + 1 :]
+                if not _is_markup_noise(part)
+            ]
 
         self._anchor_job_id = None
         self._anchor_href = None
@@ -161,9 +194,10 @@ class _SearchParser(HTMLParser):
 def _compact_tail(parts: tuple[str, ...]) -> list[str]:
     result: list[str] = []
     for part in parts:
-        if part in result:
+        cleaned = " ".join(html.unescape(part).split()).strip()
+        if not cleaned or _is_markup_noise(cleaned) or cleaned in result:
             continue
-        result.append(part)
+        result.append(cleaned)
         if len(result) >= 12:
             break
     return result
@@ -173,7 +207,7 @@ def _safe_short_text(value: str | None, *, max_length: int) -> str | None:
     if value is None:
         return None
     cleaned = " ".join(html.unescape(value).split()).strip()
-    if not cleaned or len(cleaned) > max_length:
+    if not cleaned or len(cleaned) > max_length or _is_markup_noise(cleaned):
         return None
     return cleaned
 
@@ -186,9 +220,10 @@ def _location_from_text(value: str | None) -> RawJobLocation | None:
     first = text.split(",", 1)[0].strip()
     postal_match = _POSTAL_CITY_RE.match(first)
     if postal_match:
+        city = postal_match.group("city")
         return RawJobLocation(
             postal_code=postal_match.group("postal"),
-            city=postal_match.group("city").strip() or None,
+            city=city.strip() if city and city.strip() else None,
             location_text=text,
             remote=False,
         )
@@ -243,6 +278,7 @@ def parse_stepstone_search_page(
                     if len(part) >= 60
                     and part.casefold() not in {"schnelle bewerbung", "teilweise home-office"}
                     and not _RELATIVE_AGE_RE.match(part)
+                    and not _is_markup_noise(part)
                 ),
                 None,
             )
