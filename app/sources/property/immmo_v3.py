@@ -87,7 +87,14 @@ def _anchor_matches_title(anchor_text: str, expected_title: str) -> bool:
     expected = _clean_text(expected_title).casefold()
     if len(expected) < 8:
         return False
-    return expected in anchor
+    if expected in anchor:
+        return True
+    if anchor not in expected:
+        return False
+    # Provider cards often shorten the clickable title while the surrounding visible
+    # card contains a longer title. Accept that relation only when the anchor still carries
+    # substantial title text; this keeps generic/foreign anchors from becoming identity.
+    return len(anchor) >= 12 and len(anchor) >= max(12, int(len(expected) * 0.35))
 
 
 def _choose_card_anchor(
