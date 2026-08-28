@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.jobs.concepts import ConceptKind
 
-EXTRACTOR_VERSION = "concept-seed-2026-08-28-v1"
+EXTRACTOR_VERSION = "concept-seed-2026-08-28-v2"
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -54,6 +54,17 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
     ),
     ConceptSeed(
         ConceptKind.ROLE,
+        "mechanical-technician",
+        "Maschinenbautechniker",
+        (
+            "Maschinenbautechniker",
+            "Maschinenbautechnikerin",
+            "Mechanical Technician",
+            "Mechanical Engineering Technician",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
         "mechanical-designer",
         "Mechanischer Konstrukteur",
         (
@@ -65,15 +76,50 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
     ),
     ConceptSeed(
         ConceptKind.ROLE,
+        "designer-engineer",
+        "Konstrukteur / Design Engineer",
+        (
+            "Konstrukteur",
+            "Konstrukteurin",
+            "Senior Konstrukteur",
+            "Senior Designer",
+            "Design Engineer",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
         "development-engineer",
         "Entwicklungsingenieur",
         ("Entwicklungsingenieur", "Development Engineer"),
     ),
     ConceptSeed(
         ConceptKind.ROLE,
+        "calculation-engineer",
+        "Berechnungsingenieur",
+        (
+            "Berechnungsingenieur",
+            "Berechnungsingenieurin",
+            "Calculation Engineer",
+            "CAE Engineer",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
         "project-engineer",
         "Projektingenieur",
         ("Projektingenieur", "Project Engineer"),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
+        "project-manager",
+        "Projektleiter / Projektmanager",
+        (
+            "Projektleiter",
+            "Projektleiterin",
+            "Projektmanager",
+            "Projektmanagerin",
+            "Project Manager",
+        ),
     ),
     ConceptSeed(
         ConceptKind.ROLE,
@@ -87,9 +133,28 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
     ),
     ConceptSeed(
         ConceptKind.ROLE,
+        "production-manager",
+        "Produktionsleiter",
+        (
+            "Produktionsleiter",
+            "Produktionsleiterin",
+            "Production Manager",
+            "Manufacturing Manager",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
         "service-engineer",
         "Servicetechniker / Service Engineer",
-        ("Servicetechniker", "Service Engineer", "Field Service Engineer"),
+        (
+            "Servicetechniker",
+            "Service Techniker",
+            "Service-Techniker",
+            "Außendienst Service Techniker",
+            "Service Engineer",
+            "Field Service Engineer",
+            "Field Service Technician",
+        ),
     ),
     ConceptSeed(
         ConceptKind.ROLE,
@@ -98,10 +163,77 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ("CAD Konstrukteur", "CAD-Konstrukteur", "CAD Designer"),
     ),
     ConceptSeed(
+        ConceptKind.ROLE,
+        "technical-drafter",
+        "CAD-Techniker / Technischer Zeichner",
+        (
+            "CAD Techniker",
+            "CAD-Techniker",
+            "Technischer Zeichner",
+            "Technische Zeichnerin",
+            "Detailplaner",
+            "Ausführungsplaner",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
+        "mechatronics-technician",
+        "Mechatroniker",
+        ("Mechatroniker", "Mechatronikerin", "Mechatronics Technician"),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
+        "metal-technician",
+        "Metalltechniker",
+        ("Metalltechniker", "Metalltechnikerin", "Metal Technician"),
+    ),
+    ConceptSeed(
+        ConceptKind.ROLE,
+        "fitter",
+        "Schlosser / Maschinenschlosser",
+        ("Schlosser", "Schlosserin", "Maschinenschlosser", "Fitter"),
+    ),
+    ConceptSeed(
         ConceptKind.DOMAIN,
         "mechanical-engineering",
         "Maschinenbau",
-        ("Maschinenbau", "Mechanical Engineering"),
+        (
+            "Maschinenbau",
+            "Mechanical Engineering",
+            "Maschinenbautechniker",
+            "Maschinenbautechnikerin",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.DOMAIN,
+        "plant-engineering",
+        "Anlagenbau",
+        ("Anlagenbau", "Plant Engineering", "Plant Construction"),
+    ),
+    ConceptSeed(
+        ConceptKind.DOMAIN,
+        "steel-construction",
+        "Stahlbau",
+        ("Stahlbau", "Steel Construction", "Structural Steel"),
+    ),
+    ConceptSeed(
+        ConceptKind.DOMAIN,
+        "building-services",
+        "Gebäudetechnik / HKLS",
+        (
+            "Gebäudetechnik",
+            "HKLS",
+            "HKLS Technik",
+            "HKLS-Technik",
+            "Building Services",
+            "HVAC",
+        ),
+    ),
+    ConceptSeed(
+        ConceptKind.DOMAIN,
+        "mechatronics",
+        "Mechatronik",
+        ("Mechatronik", "Mechatronics", "Mechatroniker", "Mechatronikerin"),
     ),
     ConceptSeed(
         ConceptKind.DOMAIN,
@@ -203,6 +335,30 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
     ),
     ConceptSeed(
         ConceptKind.TASK,
+        "maintenance",
+        "Instandhaltung",
+        ("Instandhaltung", "Maintenance", "Maintenance Engineering"),
+    ),
+    ConceptSeed(
+        ConceptKind.TASK,
+        "production-manufacturing",
+        "Fertigung / Produktion",
+        ("Fertigung", "Gerätefertigung", "Manufacturing"),
+    ),
+    ConceptSeed(
+        ConceptKind.TASK,
+        "detailed-design",
+        "Ausführungs- / Detailplanung",
+        ("Ausführungsplanung", "Detailplanung", "Detailed Design"),
+    ),
+    ConceptSeed(
+        ConceptKind.TASK,
+        "tolerance-analysis",
+        "Toleranzanalyse",
+        ("Toleranzanalyse", "Toleranzberechnung", "Toleranzen", "Tolerance Analysis"),
+    ),
+    ConceptSeed(
+        ConceptKind.TASK,
         "calculation-simulation",
         "Berechnung / Simulation",
         ("Berechnung", "Simulation", "Engineering Calculation"),
@@ -211,7 +367,12 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.TASK,
         "technical-project-management",
         "Technische Projektsteuerung",
-        ("Projektsteuerung", "Technical Project Management", "Projektkoordination"),
+        (
+            "Projektsteuerung",
+            "Projektleitung",
+            "Technical Project Management",
+            "Projektkoordination",
+        ),
     ),
     ConceptSeed(
         ConceptKind.TASK,
