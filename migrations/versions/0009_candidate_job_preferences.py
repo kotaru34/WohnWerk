@@ -4,8 +4,8 @@ Revision ID: 0009_candidate_job_preferences
 Revises: 0008_candidate_preferences
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0009_candidate_job_preferences"
 down_revision = "0008_candidate_preferences"
