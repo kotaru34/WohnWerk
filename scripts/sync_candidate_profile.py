@@ -10,7 +10,6 @@ from app.database import SessionLocal
 from app.jobs.candidate_fit import (
     CandidateConceptPreference,
     CandidatePreferenceSource,
-    CandidatePreferenceState,
     CandidateProfile,
 )
 from app.jobs.candidate_profile_seed import (
