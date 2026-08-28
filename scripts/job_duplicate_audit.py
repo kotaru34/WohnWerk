@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
 from app.jobs.dedupe import DuplicateJobSnapshot, duplicate_evidence, normalize_locality
+from app.jobs.merge import build_merge_plan
 from app.models import Job, JobListing, ListingStatus, Source
 
 
@@ -111,6 +112,7 @@ def main() -> None:
         )
 
         high = []
+        blocked = []
         medium = []
         snapshot_by_id = {item.job_id: item for item in snapshots}
         for left, right in combinations(snapshots, 2):
@@ -118,26 +120,55 @@ def main() -> None:
             if evidence is None:
                 continue
             if evidence.confidence == "high":
-                high.append(evidence)
+                plan = build_merge_plan(
+                    [jobs_by_id[left.job_id], jobs_by_id[right.job_id]],
+                    source_names=source_names,
+                )
+                if plan.safe:
+                    high.append(evidence)
+                else:
+                    blocked.append((evidence, plan.blockers))
             else:
                 medium.append(evidence)
 
-        high.sort(key=lambda item: (-item.title_similarity, item.left_job_id, item.right_job_id))
-        medium.sort(key=lambda item: (-item.title_similarity, item.left_job_id, item.right_job_id))
+        high.sort(
+            key=lambda item: (-item.title_similarity, item.left_job_id, item.right_job_id)
+        )
+        blocked.sort(
+            key=lambda item: (
+                -item[0].title_similarity,
+                item[0].left_job_id,
+                item[0].right_job_id,
+            )
+        )
+        medium.sort(
+            key=lambda item: (-item.title_similarity, item.left_job_id, item.right_job_id)
+        )
 
         print(f"relevant_canonical_jobs={len(relevant_jobs)}")
         print(f"already_multi_listing_canonical_jobs={already_multi_listing}")
         print(f"duplicate_candidates_high={len(high)}")
+        print(f"duplicate_candidates_blocked={len(blocked)}")
         print(f"duplicate_candidates_medium={len(medium)}")
         print("mode=read-only no database changes")
 
-        candidates = high + (medium if args.include_medium else [])
-        for index, evidence in enumerate(candidates[: max(0, args.limit)], start=1):
+        candidates = [
+            ("high", evidence, ()) for evidence in high
+        ] + [
+            ("blocked", evidence, blockers) for evidence, blockers in blocked
+        ]
+        if args.include_medium:
+            candidates.extend(("medium", evidence, ()) for evidence in medium)
+
+        for index, (classification, evidence, blockers) in enumerate(
+            candidates[: max(0, args.limit)], start=1
+        ):
             left = snapshot_by_id[evidence.left_job_id]
             right = snapshot_by_id[evidence.right_job_id]
             print()
             print(
-                f"[{index}] confidence={evidence.confidence} "
+                f"[{index}] confidence={classification} "
+                f"evidence_confidence={evidence.confidence} "
                 f"similarity={evidence.title_similarity:.3f} "
                 f"description_similarity={evidence.description_similarity:.3f} "
                 f"generic_title={'yes' if evidence.generic_title else 'no'} "
@@ -156,6 +187,10 @@ def main() -> None:
             )
             print(f"    {right.title}")
             _print_listing_refs(jobs_by_id[right.job_id], source_names)
+            if blockers:
+                print("  merge_blockers:")
+                for blocker in blockers:
+                    print(f"    - {blocker}")
 
 
 if __name__ == "__main__":
