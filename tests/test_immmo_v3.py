@@ -53,7 +53,7 @@ AMBIGUOUS_AREA_FIXTURE = """
 <a href="https://www.immobilienscout24.at/expose/example-1">WOHNEN, wo RUHE zu Hause ist | ca. 386m² Grund | ca. 126m² gew. NFL</a>
 <div>€ 399.000,-</div>
 <div>2620 Neunkirchen / 126,53m² / 4 Zimmer</div>
-<div>Grundstücksfläche: 126 m²</div>
+<div>Grundstücksfläche: 386 m²</div>
 <h3>Bauernhaus kaufen in 7433 Mariasdorf</h3>
 <a href="https://www.immobilienscout24.at/expose/example-2">EIN ZUHAUSE mit GESCHICHTE | 472 m² Grundstücksfläche | ca. 240 m² NFL</a>
 <div>€ 249.000,-</div>
@@ -62,6 +62,27 @@ AMBIGUOUS_AREA_FIXTURE = """
 <a href="https://www.immobilienscout24.at/expose/example-3">Privates Landhaus mit Kaiserblick / 793 m² Grundstück / 257 m² Wohn-/Nutzfläche</a>
 <div>€ 3.900.000,-</div>
 <div>6370 Reith bei Kitzbühel / 793m² / 8 Zimmer</div>
+</body></html>
+"""
+
+FLATTENED_METADATA_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 3</p>
+<h3>Haus kaufen in 2490 Haschendorf</h3>
+<a href="https://www.immobilienscout24.at/expose/haschendorf">Neubau-Bungalow in Haschendorf – Erstbezug nach Fertigstellung</a>
+<div>€ 299.999,-</div>
+<div>2490 Haschendorf / 87,75m² / 3 Zimmer</div>
+<div>Wohnnutzfläche: ca. 87,75 m² Grundstücksfläche: ca. 410 m² Terrasse: ca. 21 m²</div>
+<h3>Haus kaufen in 5302 Henndorf</h3>
+<a href="https://www.immobilienscout24.at/expose/wallersee">Rarität am Wallersee mit Seezugang</a>
+<div>€ 1.990.000,-</div>
+<div>5302 Henndorf am Wallersee / 120m² / 6 Zimmer</div>
+<div>Nutzfläche: ca. 120 m² Grundstücksfläche: 784 m² Seegrundstück: 264 m²</div>
+<h3>Villa kaufen in 4694 Ohlsdorf</h3>
+<a href="https://www.immobilienscout24.at/expose/ohlsdorf">Einzigartige Luxus-Villa in Ohlsdorf</a>
+<div>€ 1.500.000,-</div>
+<div>4694 Ohlsdorf / 278,91m² / 7 Zimmer</div>
+<div>Nutzfläche: ca. 278,91 m² Grundstücksfläche: 831 m²</div>
 </body></html>
 """
 
@@ -147,7 +168,7 @@ def test_explicit_living_area_wins_when_primary_display_is_plot_area() -> None:
     assert farmhouse.raw_payload["explicit_plot_area_m2"] == "748"
 
 
-def test_plot_value_before_label_beats_conflicting_label_first_metadata() -> None:
+def test_explicit_plot_label_and_value_are_kept_together() -> None:
     page = parse_immmo_search_page(
         AMBIGUOUS_AREA_FIXTURE,
         page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
@@ -187,3 +208,27 @@ def test_wohn_slash_nutzflaeche_is_explicit_living_area() -> None:
     assert landhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
     assert landhouse.raw_payload["explicit_living_area_m2"] == "257"
     assert landhouse.raw_payload["explicit_plot_area_m2"] == "793"
+
+
+def test_flattened_metadata_does_not_bind_previous_area_to_next_plot_label() -> None:
+    page = parse_immmo_search_page(
+        FLATTENED_METADATA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
+    )
+
+    haschendorf = next(item for item in page.items if item.postal_code == "2490")
+    assert haschendorf.living_area_m2 == Decimal("87.75")
+    assert haschendorf.plot_area_m2 == Decimal(410)
+    assert haschendorf.raw_payload["display_area_semantics"] == "living_explicit_primary"
+
+    wallersee = next(item for item in page.items if item.postal_code == "5302")
+    assert wallersee.living_area_m2 is None
+    assert wallersee.plot_area_m2 == Decimal(784)
+    assert wallersee.raw_payload["display_area_m2"] == "120"
+    assert wallersee.raw_payload["display_area_semantics"] == "unknown"
+
+    ohlsdorf = next(item for item in page.items if item.postal_code == "4694")
+    assert ohlsdorf.living_area_m2 is None
+    assert ohlsdorf.plot_area_m2 == Decimal(831)
+    assert ohlsdorf.raw_payload["display_area_m2"] == "278.91"
+    assert ohlsdorf.raw_payload["display_area_semantics"] == "unknown"
