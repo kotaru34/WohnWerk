@@ -37,29 +37,21 @@ Consumer-board acquisition should behave like a person quickly scanning vacancie
 
 Do not return to the earlier permission-first/purge detour. Adzuna/Jooble are supplementary APIs, not replacements for normal boards.
 
-## Stable property acquisition
+## Stable acquisition
 
-Do not reopen absent live regression:
+Properties:
 
-- IMMMO #11: coverage OK, 13,948 seen, 1,167 pages, 9/9 shards, disappeared=0.
-- s REAL #16: coverage OK, 314 seen, detail-enriched, disappeared=0.
+- IMMMO #11: coverage OK, 13,948 seen, 1,167 pages, 9/9 shards.
+- s REAL #16: coverage OK, 314 seen, detail-enriched.
 - ImmoAds retired/disabled.
 
-## Stable supplementary ATS job sources
+Supplementary ATS jobs:
 
 - SmartRecruiters #33: 42 relevant-active canonical jobs; 41/42 relevant locations resolved.
 - Personio #37: 17 relevant-active jobs; only `österreichweit` intentionally unresolved.
 - Lever #22: 6 relevant jobs, all relevant locations resolved.
 
-ATS feeds remain supplementary. Do not scale primarily by manually enumerating employers.
-
-## Discovery gate / candidate direction
-
-Current gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is closed unless a genuinely generic bug appears.
-
-Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is future fit `cannot + not want`; this affects candidate fit, not broad acquisition.
-
-## Stable low-impact broad boards
+Low-impact broad boards:
 
 - karriere.at #40: 30 relevant jobs, 35 requests, 27 structured salaries.
 - jobs.at #41: 13 relevant jobs, 18 requests, 12 structured salaries + 1 salary text.
@@ -68,7 +60,13 @@ Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit s
 
 Acquisition micro-polishing is paused intentionally.
 
-## Canonical job dedupe — first production merge completed
+## Discovery gate / candidate direction
+
+Current discovery gate: `profile-seed-2026-08-28-v14`. Generic discovery correctness is closed unless a genuinely generic bug appears.
+
+Candidate is fundamentally mechanical/Maschinenbau, not electrical. Future fit should strongly prefer mechanical CAD/construction, components/assemblies, automotive/special-vehicle/rail work, product development, technical project work, supplier coordination and mechanically relevant validation/testing. Pure electrical engineering is future fit `cannot + not want`; this affects candidate fit, not broad acquisition.
+
+## Canonical job dedupe — closed for current corpus
 
 Files:
 
@@ -79,93 +77,131 @@ Files:
 - `scripts/merge_duplicate_jobs.py`
 - `tests/test_job_merge.py`
 
-### Pre-merge state
+### First production merge batch
 
-Final refined read-only audit before mutation:
+Pre-merge refined state:
 
 - `relevant_canonical_jobs=163`
 - `already_multi_listing_canonical_jobs=0`
 - `duplicate_candidates_high=8`
 - `duplicate_candidates_medium=8`
 
-Dry-run exposed one false-safe case: teampool jobs 163/168 are same-source near-identical title/body variants but explicit locations disagree (`Wien` vs `Wels`). Merge safety was tightened before mutation.
+Seven explicit fail-closed groups were applied successfully:
 
-### First applied merge batch
+- 131/225 — PEISCHL Fahrzeugbau, survivor 131.
+- 136/240 — Global Hydro, survivor 136.
+- 155/255 — IVM Technical Consultants, survivor 155.
+- 157/227 — Trenkwalder E-Plan, survivor 157.
+- 159/206 — APS Group, survivor 159.
+- 165/208 — Trenkwalder Klagenfurt, survivor 165.
+- 251/252 — Oberaigner German/English StepStone variants, survivor 251.
 
-Seven explicit groups were applied successfully:
-
-- 131/225 — PEISCHL Fahrzeugbau, karriere.at + StepStone, survivor 131.
-- 136/240 — Global Hydro, karriere.at + StepStone, survivor 136.
-- 155/255 — IVM Technical Consultants, karriere.at + StepStone, survivor 155.
-- 157/227 — Trenkwalder E-Plan, jobs.at + StepStone, survivor 157.
-- 159/206 — APS Group, jobs.at + willhaben, survivor 159.
-- 165/208 — Trenkwalder Klagenfurt, jobs.at + willhaben, survivor 165.
-- 251/252 — Oberaigner StepStone German/English variants, survivor 251.
-
-Observed post-merge state matched the prediction exactly:
+Observed post-merge state matched prediction exactly:
 
 - `relevant_canonical_jobs=156`
 - `already_multi_listing_canonical_jobs=7`
 
-No bulk merge was used; every group was explicit and fail-closed.
+The final read-only production audit then confirmed:
 
-### Post-merge unresolved candidates
+- `duplicate_candidates_high=0`
+- `duplicate_candidates_blocked=1`
+- `duplicate_candidates_medium=6`
 
-Immediate post-merge audit had one raw high edge and six medium edges.
+Blocked pair is teampool 163/168: same-source title/body evidence is strong but explicit source locations conflict (`Wien` vs `Wels`). Medium cases include TSMG 3/4, Austro Holding 34/228, Trenkwalder generic `Konstrukteur` edges around 164/165/169, and Anton Paar 67/68. Leave all blocked/medium pairs untouched absent stronger evidence.
 
-The raw high edge is teampool 163/168, but merge safety correctly blocks it:
-
-`same-source explicit locations conflict; jobs=163,168 sources=jobs.at left=city:wien right=city:wels`
-
-Remaining medium cases include TSMG 3/4, Austro Holding 34/228, Trenkwalder generic `Konstrukteur` edges around 164/165/169, and Anton Paar 67/68. Leave all untouched absent stronger evidence.
-
-## Current duplicate evidence and merge policy
+### Merge safety / cleanup
 
 - known different normalized companies are a hard conflict;
-- gender suffixes normalize away;
-- Klagenfurt naming variants canonicalize together;
 - generic titles are conservative;
-- descriptions use token-containment similarity;
 - cross-board exact company/title/location is strong syndication evidence;
-- same-source different listing IDs are possible parallel openings;
+- same-source distinct listing IDs are possible parallel openings;
 - same-source non-generic needs description similarity >=0.82 for high evidence;
 - same-source generic/template needs >=0.95;
 - conflicting normalized companies or salary bundles block merge;
 - same-source explicit location disagreement blocks merge;
-- survivor is chosen by canonical richness;
-- JobListings/raw payloads and non-conflicting richer canonical data are preserved;
-- locations are unioned/deduplicated;
-- stale canonical hash and ambiguous fit score are cleared;
-- `--apply` is always required.
+- `--apply` is always required;
+- all source `JobListing` rows/raw payloads are preserved on the survivor;
+- equivalent locations are deduplicated and richer canonical data retained.
 
-### ORM warning cleanup
+The first apply batch exposed an SQLAlchemy double-delete warning for equivalent `JobLocation` rows. Current code removes duplicate children through the relationship and lets `delete-orphan` own deletion, removing the warning path without changing merge semantics.
 
-The first applied batch exposed `SAWarning` on deduplicated `JobLocation` rows. Root cause was a double-delete path: explicit `session.delete(location)` followed by deletion of the absorbed parent whose relationship already has `cascade="all, delete-orphan"`.
+Audit now reports raw-high-but-unsafe pairs as `blocked` by running the same fail-closed merge plan used for mutation.
 
-Current code removes the duplicate child from the absorbed relationship and lets delete-orphan own the deletion. Merge semantics are unchanged; the warning path is removed.
+Canonical dedupe is intentionally considered closed for the current corpus.
 
-### Audit/merge-safety alignment
+## Normalized job concepts — current primary work
 
-Audit now runs the same fail-closed merge plan for every raw high-evidence pair and reports three classes:
+Goal: separate source wording from candidate preference/fit by normalizing every relevant canonical job into concepts before assigning any can/want score.
 
-- `duplicate_candidates_high` — high evidence and merge-plan safe;
-- `duplicate_candidates_blocked` — high evidence but unsafe, with blockers;
-- `duplicate_candidates_medium` — unresolved evidence.
+Dimensions:
 
-Expected next production audit on the already-merged corpus:
+- `role`
+- `domain`
+- `task`
+- `method`
+- `tool`
 
-- `relevant_canonical_jobs=156`
-- `already_multi_listing_canonical_jobs=7`
-- `duplicate_candidates_high=0`
-- `duplicate_candidates_blocked=1` — teampool 163/168 Wien/Wels
-- `duplicate_candidates_medium=6`
+New files:
 
-CI #382 passed Ruff, Compile and the full test suite for the ORM-delete cleanup and audit/merge-safety alignment.
+- `app/jobs/concepts.py` — ORM vocabulary/alias/evidence models.
+- `app/jobs/concept_catalog.py` — deterministic seed vocabulary + phrase extractor.
+- `migrations/versions/0007_job_concepts.py` — vocabulary/evidence tables.
+- `scripts/normalize_job_concepts.py` — read-only dry-run by default; `--apply` seeds vocabulary and recomputes current-version evidence.
+- `tests/test_job_concepts.py` — normalization/extraction regressions.
+- `migrations/env.py` imports concept models so Alembic metadata remains complete.
+
+### Data model
+
+`JobConcept`:
+
+- canonical `kind + slug` identity;
+- German display label `label_de`;
+- enabled flag.
+
+`JobConceptAlias`:
+
+- many surface forms per concept;
+- normalized alias;
+- optional language;
+- seed/manual provenance;
+- enabled flag.
+
+`JobConceptEvidence`:
+
+- `job_id` + `concept_id`;
+- matched alias;
+- source field (`title` / `description`);
+- confidence;
+- explicit extractor version.
+
+Evidence is recomputable and candidate-independent. Candidate preferences must be attached to canonical concepts later, not raw words.
+
+### Extractor v1
+
+Current extractor version: `concept-seed-2026-08-28-v1`.
+
+It is intentionally deterministic phrase matching first, not an LLM. Text is Unicode/case/punctuation normalized and aliases use word boundaries. This preserves inspectable evidence and avoids the earlier class of substring bugs such as `FEM` matching `female`.
+
+Initial vocabulary covers mechanical roles/domains/tasks/methods/tools plus explicit electrical-engineering evidence, including examples such as:
+
+- roles: Maschinenbauingenieur, mechanischer Konstrukteur, Entwicklungsingenieur, Projektingenieur, technischer Projektleiter, Service Engineer, CAD-Konstrukteur;
+- domains: Maschinenbau, Fahrzeugbau/Automotive, Sonderfahrzeugbau, Schienenfahrzeugtechnik, Sondermaschinenbau, Wasserkraft, Elektrotechnik;
+- tasks: mechanische Konstruktion, Produktentwicklung, Anforderungen/Lasten-/Pflichtenhefte, Lieferantenkoordination, Versuch/Validierung, Montage/Inbetriebnahme, Berechnung/Simulation, technische Projektsteuerung, Teamführung, technische Dokumentation;
+- methods: FEM, FMEA, agile development/Scrum;
+- tools: SolidWorks, CATIA, Creo, Siemens NX, Inventor, AutoCAD, EPLAN.
+
+Important design choice: the Python seed is only bootstrap. `--apply` seeds missing vocabulary/aliases but extraction then reads enabled concepts/aliases back from the DB. Future admin UI edits can therefore change synonyms without modifying Python code. Existing disabled aliases are not forcibly re-enabled by seeding.
+
+CI #401 passed Ruff, Compile and the full test suite for this first normalization slice.
 
 ## Immediate work order
 
 1. Pull current `bootstrap/austria-mvp`.
-2. Run only `python scripts/job_duplicate_audit.py --include-medium --limit 100`.
-3. Confirm expected `156 / 7 / high=0 / blocked=1 / medium=6` state.
-4. Do not merge blocked or medium pairs.
-5. Then consider canonical dedupe closed for the current corpus and move to normalized role/domain/task/method/tool concepts, candidate can/want fit, German profile review and house/job recommendation ranking.
+2. Do **not** run migration `0007` yet.
+3. Run only the read-only concept coverage audit:
+   `python scripts/normalize_job_concepts.py --unmatched-limit 50`
+4. Inspect coverage counts, top concepts and unmatched titles against the real 156-job corpus.
+5. Tighten/expand the generic concept vocabulary only from real corpus evidence; avoid candidate preference scoring at this stage.
+6. Once dry-run coverage is acceptable, apply `alembic upgrade head` and then run `python scripts/normalize_job_concepts.py --apply`.
+7. After persisted concept evidence is validated, add candidate concept preferences using the four-state model: can+want / can+not-want / cannot+want / cannot+not-want.
+8. Then compute intrinsic job fit independent of geography, followed by PostGIS house/job distance and final recommendation ranking.
