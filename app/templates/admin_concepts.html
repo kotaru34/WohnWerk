@@ -46,7 +46,7 @@
 <body>
 <main>
   <h1>Kandidatenprofil</h1>
-  <div class="subtle">{{ profile.label_de }} · Canonical Concepts und Synonyme</div>
+  <div class="subtle">{{ profile.label_de }} · Kanonische Konzepte und Synonyme</div>
 
   <nav class="toolbar" aria-label="Konzeptfilter">
     <strong>Typ:</strong>
@@ -58,7 +58,7 @@
 
   {% if normalization_notice %}
     <div class="notice">
-      Ein Alias wurde geändert. Die persistierte Konzept-Evidenz bleibt absichtlich unverändert, bis die Job-Normalisierung erneut ausgeführt wird.
+      Ein Synonym wurde geändert. Die persistierte Konzept-Evidenz bleibt absichtlich unverändert, bis die Job-Normalisierung erneut ausgeführt wird.
     </div>
   {% endif %}
 
@@ -67,7 +67,7 @@
     <section class="concept" id="concept-{{ row.concept.id }}">
       <div class="concept-head">
         <div>
-          <div class="kind">{{ kind_labels[row.concept.kind] if row.concept.kind in kind_labels else row.concept.kind }}</div>
+          <div class="kind">{{ kind_labels_by_value[row.concept.kind] }}</div>
           <h2>{{ row.concept.label_de }}</h2>
           <code>{{ row.concept.kind }}:{{ row.concept.slug }}</code>
           {% if not row.concept.enabled %}<span class="subtle"> · deaktiviert</span>{% endif %}
