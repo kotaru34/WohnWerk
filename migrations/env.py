@@ -4,9 +4,11 @@ from alembic import context
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
+import app.candidate_activity
 import app.jobs.candidate_fit
 import app.jobs.concepts
 import app.models  # noqa: F401
+import app.property_images
 from app.config import get_settings
 from app.database import Base
 
