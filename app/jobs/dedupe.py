@@ -5,8 +5,14 @@ import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from app.jobs.location_resolution import canonicalize_locality
+
 _GENDER_RE = re.compile(
-    r"(?:\([^)]*(?:m\s*[/|]\s*w|w\s*[/|]\s*m|all genders)[^)]*\)|\ball genders\b)",
+    r"(?:\([^)]*(?:m\s*[/|]\s*w|w\s*[/|]\s*m|m\s*[/|]\s*f|f\s*[/|]\s*m|all genders)[^)]*\)|\ball genders\b)",
+    re.IGNORECASE,
+)
+_TRAILING_GENDER_RE = re.compile(
+    r"\b(?:m|w|f|d)(?:\s*[/|]\s*(?:m|w|f|d)){1,3}\b",
     re.IGNORECASE,
 )
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
@@ -14,6 +20,15 @@ _COMPANY_SUFFIX_RE = re.compile(
     r"\b(?:gmbh\s+und\s+co\s+kg|gmbh\s+co\s+kg|gesmbh|gmbh|mbh|ag|kg|og)\b"
 )
 _TITLE_FILLER = {"at", "bei"}
+_GENERIC_TITLES = {
+    "konstrukteur",
+    "mechanical engineer",
+    "entwicklungsingenieur",
+    "maschinenbautechniker",
+    "projektingenieur",
+    "projektleiter",
+    "design engineer",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +36,7 @@ class DuplicateJobSnapshot:
     job_id: int
     title: str
     company: str | None
+    description: str | None
     postal_codes: frozenset[str]
     cities: frozenset[str]
     sources: tuple[str, ...]
@@ -32,9 +48,11 @@ class DuplicateEvidence:
     right_job_id: int
     confidence: str
     title_similarity: float
+    description_similarity: float
     company_match: bool
     location_match: bool
     location_conflict: bool
+    generic_title: bool
     reasons: tuple[str, ...]
 
 
@@ -49,6 +67,7 @@ def _ascii_words(value: str | None) -> list[str]:
 
 def normalize_job_title(value: str | None) -> str:
     cleaned = _GENDER_RE.sub(" ", value or "")
+    cleaned = _TRAILING_GENDER_RE.sub(" ", cleaned)
     words = [word for word in _ascii_words(cleaned) if word not in _TITLE_FILLER]
     return " ".join(words)
 
@@ -63,7 +82,8 @@ def normalize_company(value: str | None) -> str:
 
 
 def normalize_locality(value: str | None) -> str:
-    return " ".join(_ascii_words(value))
+    canonical = canonicalize_locality(value)
+    return " ".join(_ascii_words(canonical))
 
 
 def title_similarity(left: str | None, right: str | None) -> float:
@@ -76,6 +96,27 @@ def title_similarity(left: str | None, right: str | None) -> float:
     return SequenceMatcher(None, left_normalized, right_normalized).ratio()
 
 
+def description_similarity(left: str | None, right: str | None) -> float:
+    """Return conservative token containment similarity for source descriptions.
+
+    Search-card snippets are often strict subsets of a fuller detail description. A
+    symmetric Jaccard score would underrate that case, so use intersection over the
+    shorter token set. Short descriptions are deliberately ignored as weak evidence.
+    """
+    left_words = set(_ascii_words(left))
+    right_words = set(_ascii_words(right))
+    if len(left_words) < 12 or len(right_words) < 12:
+        return 0.0
+    return len(left_words & right_words) / min(len(left_words), len(right_words))
+
+
+def is_generic_title(value: str | None) -> bool:
+    normalized = normalize_job_title(value)
+    if not normalized:
+        return True
+    return normalized in _GENERIC_TITLES or len(normalized.split()) <= 2
+
+
 def duplicate_evidence(
     left: DuplicateJobSnapshot,
     right: DuplicateJobSnapshot,
@@ -86,11 +127,15 @@ def duplicate_evidence(
     left_company = normalize_company(left.company)
     right_company = normalize_company(right.company)
     company_match = bool(left_company and left_company == right_company)
-    company_conflict = bool(left_company and right_company and left_company != right_company)
+    company_conflict = bool(
+        left_company and right_company and left_company != right_company
+    )
     if company_conflict:
         return None
 
     similarity = title_similarity(left.title, right.title)
+    description_match = description_similarity(left.description, right.description)
+    generic_title = is_generic_title(left.title) and is_generic_title(right.title)
 
     postal_match = bool(left.postal_codes & right.postal_codes)
     city_match = bool(left.cities & right.cities)
@@ -107,6 +152,8 @@ def duplicate_evidence(
         and not city_match
     )
     location_conflict = postal_conflict or city_conflict
+    if location_conflict:
+        return None
 
     reasons: list[str] = []
     if company_match:
@@ -115,20 +162,32 @@ def duplicate_evidence(
         reasons.append("title_normalized_exact")
     elif similarity >= 0.88:
         reasons.append(f"title_similarity={similarity:.3f}")
+    if generic_title:
+        reasons.append("generic_title")
     if location_match:
         reasons.append("location_overlap")
-    if location_conflict:
-        reasons.append("location_conflict")
+    if description_match >= 0.72:
+        reasons.append(f"description_overlap={description_match:.3f}")
 
     high_confidence = (
         company_match and similarity >= 0.94 and location_match
     ) or (
-        company_match and similarity == 1.0 and not location_conflict
-    )
-    medium_confidence = (
-        company_match and similarity >= 0.88 and not location_conflict
+        company_match
+        and similarity >= 0.98
+        and description_match >= 0.72
     ) or (
-        similarity == 1.0 and location_match and not location_conflict
+        company_match
+        and similarity == 1.0
+        and not generic_title
+    )
+
+    medium_confidence = (
+        company_match and similarity >= 0.88
+    ) or (
+        not left_company
+        and not right_company
+        and similarity == 1.0
+        and location_match
     )
 
     if high_confidence:
@@ -143,8 +202,10 @@ def duplicate_evidence(
         right_job_id=right.job_id,
         confidence=confidence,
         title_similarity=similarity,
+        description_similarity=description_match,
         company_match=company_match,
         location_match=location_match,
         location_conflict=location_conflict,
+        generic_title=generic_title,
         reasons=tuple(reasons),
     )
