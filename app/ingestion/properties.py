@@ -114,13 +114,11 @@ def _immmo_continuity_candidates(
 ) -> dict[str, tuple[PropertyListing, str]]:
     """Reconnect IMMMO cards when the meta-search rotates their downstream provider URL.
 
-    IMMMO is a meta-search: the same house can point to different downstream portals on
-    consecutive scans. URL hashes therefore cannot be treated as durable source identity.
-    We only reconnect an unknown incoming card when a staged metadata fingerprint has a
-    unique one-to-one match among active IMMMO listings not yet seen in this crawl run.
-    Ambiguous developments fail closed and continue through the normal new-listing path.
+    This optimization is intentionally restricted to complete reconciliation scans. During
+    an incremental first-pages scan, an active older listing that is merely deeper in the
+    result set is not evidence of provider rotation and must never be merged away.
     """
-    if source.name != "immmo.at":
+    if source.name != "immmo.at" or run.mode != "reconciliation":
         return {}
 
     unknown_items = [
@@ -210,8 +208,9 @@ def ingest_properties(
     Sparse discovery updates are enrichment-only. Cross-source identity is reused when
     either the canonical URL is exactly equal or a provider exposes an unambiguous stable
     object ID (currently s REAL detail IDs). IMMMO additionally gets conservative
-    one-to-one continuity matching because its meta-search may rotate the downstream portal
-    for the same house. General fuzzy/content deduplication is never guessed here.
+    one-to-one continuity matching during complete scans because its meta-search may rotate
+    the downstream portal for the same house. General fuzzy/content deduplication is never
+    guessed here.
     """
     if not items:
         return 0, 0
