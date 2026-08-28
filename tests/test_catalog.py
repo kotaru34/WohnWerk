@@ -7,6 +7,7 @@ from app.catalog import (
     PropertyView,
     _properties_within_radius_for_job_stmt,
 )
+from app.house_filters import HouseFilters
 from app.models import Property
 
 
@@ -70,3 +71,27 @@ def test_job_house_radius_query_is_indexable_postgis_query() -> None:
     assert "row_number() OVER" in sql
     assert "properties.status = 'active'" in sql
     assert "job_locations.job_id = 144" in sql
+
+
+def test_job_house_radius_query_applies_saved_house_filters() -> None:
+    stmt = _properties_within_radius_for_job_stmt(
+        144,
+        50.0,
+        HouseFilters(
+            preis_von=Decimal(30000),
+            preis_bis=Decimal(150000),
+            wohn_von=Decimal(90),
+            grund_von=Decimal(300),
+        ),
+    )
+    sql = str(
+        stmt.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+
+    assert "properties.price_eur >= 30000" in sql
+    assert "properties.price_eur <= 150000" in sql
+    assert "properties.living_area_m2 >= 90" in sql
+    assert "properties.plot_area_m2 >= 300" in sql
