@@ -61,7 +61,7 @@ Blocked teampool 163/168 remains split because source locations conflict (`Wien`
 
 Canonical dedupe is intentionally closed for the current corpus.
 
-## Normalized job concepts
+## Normalized job concepts — production established
 
 Dimensions: `role / domain / task / method / tool`.
 
@@ -87,41 +87,37 @@ Guardrails:
 - deterministic recompute replaces prior `concept-seed-*` evidence only;
 - DB-enabled aliases drive applied extraction.
 
-### Production persisted state — v2
-
 Migration `0007_job_concepts` is applied in production.
 
-Persisted extractor remains `concept-seed-2026-08-28-v2` until the next production command:
-- `156/156` relevant jobs matched
-- `49` distinct concepts
-- `747` evidence rows
-- `219 primary / 528 context`
+### Persisted extractor v3
+
+Current and persisted deterministic extractor: `concept-seed-2026-08-28-v3`.
+
+Production persistence/audit:
+- `relevant_active_jobs=156`
+- `jobs_with_concepts=156`
+- `jobs_without_concepts=0`
+- `distinct_concepts_matched=50`
+- `persisted_evidence_rows=780`
+- `persisted_jobs=156`
+- `persisted_primary=228`
+- `persisted_context=552`
 - `invalid_scope_values=-`
-- only v2 deterministic evidence is persisted
+- deterministic versions contain only `concept-seed-2026-08-28-v3 rows=780`
 
-### Extractor v3 — validated, ready to persist
+Targeted persisted checks:
+- `domain:electronics`: 27 jobs, primary=6, context=24
+- `domain:electrical-engineering`: 40 jobs, primary=7, context=38
 
-Current code extractor: `concept-seed-2026-08-28-v3`.
-
-V3 is intentionally narrow and exists only because live fit ranking exposed missing primary identity evidence:
-- new neutral `domain:electronics`;
+V3 intentionally added only the ranking-demonstrated identity gaps:
+- neutral `domain:electronics`;
 - `Elektronik`, `Electronics`, `Hardware Engineer`, `Hardware Design Engineer` -> electronics;
 - explicit `E-Konstrukteur`, `Elektrokonstrukteur`, `Electrical Design Engineer`, `EMC Engineer`, `EMV-Ingenieur` -> electrical-engineering;
 - EPLAN tool alone still does **not** imply electrical domain.
 
-Validated read-only v3 concept preview on all 156 jobs:
-- `jobs_with_concepts=156`
-- `jobs_without_concepts=0`
-- `distinct_concepts_matched=50`
-- `evidence_rows=780`
-- `evidence_primary=228`
-- `evidence_context=552`
-- `domain:electronics`: 27 jobs, primary=6, context=24
-- `domain:electrical-engineering`: 40 jobs, primary=7, context=38
+Normalization is production-established. Do not reopen broad synonym polishing without a demonstrated generic ranking/precision failure.
 
-V3 normalization is approved for production persistence.
-
-## Candidate concept preferences / fit — validation closed
+## Candidate concept preferences / fit — semantics production-validated
 
 Files:
 - `app/jobs/candidate_fit.py`
@@ -137,9 +133,9 @@ Four states: `can_want / can_not_want / cannot_want / cannot_not_want`.
 
 Absence of a preference row means **unrated**. Candidate profiles are first-class. `Job.job_fit_score` is not source of truth and remains untouched by audits.
 
-Current seed: `candidate-profile-2026-08-28-v2`, 24 rated concepts. `domain:electrical-engineering` and `domain:electronics` are `cannot_not_want`. Generic `designer-engineer` and uncertain tools/roles/domains remain unrated.
+Current bootstrap seed: `candidate-profile-2026-08-28-v2`, 24 rated concepts. `domain:electrical-engineering` and `domain:electronics` are `cannot_not_want`. Generic `designer-engineer` and uncertain tools/roles/domains remain unrated.
 
-### Fit policy v3 — validated
+### Fit policy v3 — closed
 
 Current policy: `candidate-fit-2026-08-28-v3`.
 
@@ -169,9 +165,9 @@ Primary hard incompatibility rule:
 
 Context-only incompatible mentions never create hard constraints. Transferable positive contributions remain visible even when a hard incompatibility caps the final score. Future recommender can filter hard constraints independently from the numeric score.
 
-### Final read-only v3 fit preview — accepted
+### Persisted v3 fit audit — exact match to preview
 
-On all 156 relevant jobs:
+Using persisted v3 evidence on all 156 relevant jobs:
 - `jobs_scored=141`
 - `jobs_unscored=15`
 - `jobs_hard_incompatible=13`
@@ -180,7 +176,7 @@ On all 156 relevant jobs:
 - `preference_coverage_mean=0.586`
 - `preference_coverage_median=0.521`
 
-Mechanical top remained stable and clean. Top examples:
+Mechanical top is stable/clean. Top examples:
 - #144 Mechanical Design Engineer / Product Development -> 100
 - #131 Fahrzeugbau / Mechanical Engineer -> 95
 - #251 Maschinenbau/KFZ Entwicklungsingenieur -> 94
@@ -189,7 +185,7 @@ Mechanical top remained stable and clean. Top examples:
 - #205 Senior Konstrukteur Maschinenbau -> 90
 - #26 Konstrukteur Maschinenbau -> 90
 
-Exactly 13 primary electrical/electronics jobs became hard-incompatible:
+Exactly 13 primary electrical/electronics jobs are hard-incompatible:
 - #15 Head of Electronics
 - #21 EMC Engineer
 - #28 Entwicklungsingenieur Elektrotechnik
@@ -203,17 +199,17 @@ Exactly 13 primary electrical/electronics jobs became hard-incompatible:
 - #254 Entwicklungsingenieur Elektrotechnik
 - #259 Elektronik-Entwicklungsingenieur
 
-All are `hard_incompatible=yes` and score `<=25` (pure incompatible examples #128/#213 naturally score 0).
+All are `hard_incompatible=yes` and score `<=25`; pure incompatible #128/#213 naturally score 0.
 
-Control jobs #80 Toyota Servicetechniker and #82 Field Service Manager have only context electronics/electrical evidence and correctly remain `hard_incompatible=no` with score 32.
+Control jobs #80 Toyota Servicetechniker and #82 Field Service Manager have only context electronics/electrical evidence and remain `hard_incompatible=no` with score 32.
 
-Fit policy tuning is now considered **closed** unless later real user feedback demonstrates a generic semantic failure.
+Fit policy tuning is considered **closed** unless later real feedback demonstrates a generic semantic failure.
 
-## Candidate preference persistence safety
+## Candidate preference persistence safety — ready for production
 
 Migration `0008_candidate_preferences` has **not** been applied yet and was refined before first production use.
 
-`CandidateConceptPreference` now stores:
+`CandidateConceptPreference` stores:
 - `source = seed | manual`
 - nullable `seed_version`
 
@@ -224,28 +220,42 @@ Safety semantics:
 - manual rows are never overwritten by bootstrap;
 - stale seed-managed rows may be removed when the versioned seed intentionally stops rating a concept.
 
-`app/jobs/candidate_profile_store.py` is the reusable service layer for this behavior. `scripts/sync_candidate_profile.py` is a thin read-only-by-default CLI around the same service. The future German admin UI should call the service layer rather than shelling out.
+`app/jobs/candidate_profile_store.py` is the reusable service layer. It provides:
+- seed synchronization;
+- persisted profile lookup;
+- `load_profile_preferences()` for DB-backed scoring.
 
-Regression test proves:
+`scripts/sync_candidate_profile.py` is a thin read-only-by-default CLI over the same service.
+
+`candidate_fit_audit.py` now supports `--persisted-profile` and optional `--profile-slug`. After migration/seed, this must be used to prove DB-backed fit matches the accepted Python-seed ranking. Future manual admin changes will therefore flow directly into scoring without editing Python seed data.
+
+Regression coverage proves:
 - first seed creates all 24 preferences;
 - repeated seed is idempotent;
-- converting a preference to `source=manual` and changing its state survives later seed synchronization.
+- converting a preference to `source=manual` and changing its state survives later seed synchronization;
+- persisted loader initially equals the Python seed exactly;
+- persisted loader reflects manual overrides after later seed synchronization.
 
-CI #451 passes Ruff, Compile and the full test suite after this service-layer/provenance work.
+CI #455 passes Ruff, Compile and the full test suite for DB-backed profile loading/audit.
 
 ## Immediate production sequence
 
 1. Pull latest `bootstrap/austria-mvp`.
-2. Persist validated v3 normalization:
-   `python scripts/normalize_job_concepts.py --apply`
-3. Immediately run persisted concept audit and verify expected v3 counts (`780`, `228/552`, only v3 deterministic evidence).
-4. Run `candidate_fit_audit.py` **without** preview and verify it matches the accepted v3 preview (`141 scored`, `15 unscored`, `13 hard-incompatible`, stable top/bottom).
-5. Only after that, apply migration `0008_candidate_preferences`.
-6. Run `python scripts/sync_candidate_profile.py --apply`.
-7. Run the same script without `--apply` and verify:
-   - 24 persisted preferences;
-   - source counts `seed:24` initially;
-   - seed version `candidate-profile-2026-08-28-v2:24`;
-   - no missing/mismatched/stale/manual override rows.
-8. Then build German admin UI for concept/profile rating and recomputable/materialized fit.
+2. Confirm current migration is still `0007_job_concepts`.
+3. Apply migration `0008_candidate_preferences`.
+4. Run `python scripts/sync_candidate_profile.py --apply`.
+5. Run `python scripts/sync_candidate_profile.py` read-only and verify:
+   - `expected_seed_preferences=24`
+   - `profile_exists=yes`
+   - `persisted_preferences=24`
+   - `missing_seed_concepts=-`
+   - `missing_seed_preferences=-`
+   - `seed_state_mismatches=-`
+   - `manual_overrides=-`
+   - `stale_seed_preferences=-`
+   - `source_counts=seed:24`
+   - `seed_version_counts=candidate-profile-2026-08-28-v2:24`
+6. Run `python scripts/candidate_fit_audit.py --persisted-profile --limit 25` and verify exact accepted corpus summary: `141 scored / 15 unscored / 13 hard-incompatible`, mean `61.14`, median `63`, stable top/bottom.
+7. Once DB-backed scoring matches, candidate preference persistence is production-established.
+8. Build German admin UI for canonical concept/profile rating, alias visibility/editing and recomputable/materialized fit.
 9. After intrinsic fit UI is stable, combine with PostGIS job/property distance, salary and final recommendation ranking.
