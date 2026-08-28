@@ -45,14 +45,22 @@ def test_price_change_falls_back_to_unique_title_and_area() -> None:
     assert matches[0].strategy == "title_area"
 
 
-def test_area_change_falls_back_to_unique_title_and_price() -> None:
+def test_area_change_with_same_price_fails_closed() -> None:
     matches = match_property_continuity(
         [observation("old", area="100")],
         [observation("new", area="104")],
     )
 
-    assert len(matches) == 1
-    assert matches[0].strategy == "title_price"
+    assert matches == []
+
+
+def test_large_provider_area_semantic_change_fails_closed() -> None:
+    matches = match_property_continuity(
+        [observation("old", price="41000", area="212.02")],
+        [observation("new", price="41000", area="7246.04")],
+    )
+
+    assert matches == []
 
 
 def test_price_and_area_change_fail_closed() -> None:
