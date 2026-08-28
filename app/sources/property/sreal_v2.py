@@ -197,6 +197,21 @@ class SRealPropertySource(_base.SRealPropertySource):
             budget_price_above_max += counts["price_above_max"]
             return accepted
 
+        async def materialize_page(
+            client: httpx.AsyncClient,
+            items: list[RawProperty],
+        ) -> tuple[list[RawProperty], int, int, int]:
+            # Keep every search card for discovery/coverage accounting, but only load
+            # expensive detail/image pages for cards whose search price is already in budget.
+            candidates = budget_filter(items)
+            enriched, attempted, succeeded, failed = await self._enrich_page_items(
+                client,
+                candidates,
+            )
+            by_id = {item.source_listing_id: item for item in items}
+            by_id.update({item.source_listing_id: item for item in enriched})
+            return list(by_id.values()), attempted, succeeded, failed
+
         async with httpx.AsyncClient(
             headers=headers,
             timeout=self.timeout_seconds,
@@ -216,10 +231,7 @@ class SRealPropertySource(_base.SRealPropertySource):
                 max_page if reconciliation else self.incremental_pages,
             )
 
-            first_candidates = budget_filter(first.items)
-            first_items, attempted, succeeded, failed = await self._enrich_page_items(
-                client, first_candidates
-            )
+            first_items, attempted, succeeded, failed = await materialize_page(client, first.items)
             detail_attempted += attempted
             detail_succeeded += succeeded
             detail_failed += failed
@@ -237,10 +249,7 @@ class SRealPropertySource(_base.SRealPropertySource):
                 page = parse_sreal_search_page(response.text, page_url=str(response.url))
                 minimum = 0 if page_number == max_page else max(1, int(page_size * 0.75))
                 _base._validate_page(page, page_number=page_number, expected_minimum=minimum)
-                page_candidates = budget_filter(page.items)
-                page_items, attempted, succeeded, failed = await self._enrich_page_items(
-                    client, page_candidates
-                )
+                page_items, attempted, succeeded, failed = await materialize_page(client, page.items)
                 detail_attempted += attempted
                 detail_succeeded += succeeded
                 detail_failed += failed
