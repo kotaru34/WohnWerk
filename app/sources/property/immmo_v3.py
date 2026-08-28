@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlparse
 
@@ -27,6 +28,19 @@ from app.sources.property.immmo_v2 import (
     _VisibleStreamParser,
 )
 from app.sources.property.immmo_v2 import ImmmoPropertySource as _ImmmoPropertySourceV2
+
+LIVING_AREA_PATTERNS = (
+    re.compile(
+        r"\bWohn(?:[-\s]?nutz)?fläche\b\s*(?:von|:)?\s*"
+        r"(?:ca\.?\s*|rund\s+|knapp\s+)?([\d.]+(?:,\d+)?)\s*m(?:²|2)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:ca\.?\s*|rund\s+|knapp\s+)?([\d.]+(?:,\d+)?)\s*m(?:²|2)\s+"
+        r"Wohn(?:[-\s]?nutz)?fläche\b",
+        re.IGNORECASE,
+    ),
+)
 
 
 def _choose_card_anchor(
@@ -85,19 +99,59 @@ def _fallback_title(card_text: str, heading_text: str) -> str:
     return candidate[:500] or heading[:500]
 
 
+def _explicit_living_area(text: str) -> Decimal | None:
+    for pattern in LIVING_AREA_PATTERNS:
+        match = pattern.search(text)
+        if match is not None:
+            return _decimal(match.group(1))
+    return None
+
+
+def _areas_close(left: Decimal | None, right: Decimal | None) -> bool:
+    if left is None or right is None:
+        return False
+    tolerance = max(Decimal("1"), max(abs(left), abs(right)) * Decimal("0.01"))
+    return abs(left - right) <= tolerance
+
+
+def _display_area_semantics(
+    *,
+    display_area: Decimal | None,
+    explicit_living_area: Decimal | None,
+    explicit_plot_area: Decimal | None,
+) -> str:
+    """Describe what IMMMO's unlabeled card-level area appears to represent.
+
+    The primary ``PLZ / N m²`` field is downstream-provider defined. Production evidence
+    shows the same property can surface there as Wohnfläche on one card and Grundstück on
+    another. We therefore never promote it to canonical living area without explicit text.
+    """
+    if explicit_living_area is not None:
+        if _areas_close(display_area, explicit_living_area):
+            return "living_explicit_primary"
+        if _areas_close(display_area, explicit_plot_area):
+            return "living_explicit_display_plot"
+        return "living_explicit_nonprimary"
+    if _areas_close(display_area, explicit_plot_area):
+        return "plot_explicit_primary"
+    return "unknown"
+
+
 def _synthetic_identity(
     *,
     postal_code: str,
     city: str | None,
-    living_area: object | None,
+    display_area: object | None,
     price: object | None,
     title: str,
 ) -> tuple[str, str]:
+    # Keep the legacy card-level area in the fallback fingerprint. Its semantics may be
+    # unknown, but changing this to semantic Wohnfläche would itself create identity churn.
     key = "|".join(
         (
             postal_code,
             city or "",
-            str(living_area or ""),
+            str(display_area or ""),
             str(price or ""),
             title.casefold(),
         )
@@ -144,11 +198,19 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
         if facts is not None:
             postal_code = facts.group("plz")
             city = _clean_text(facts.group("city")).strip(" ,")
-            living_area = _decimal(facts.group("area"))
+            display_area = _decimal(facts.group("area"))
         else:
             postal_code = heading_match.group("plz")
             city = _clean_text(heading_match.group("city")).strip(" ,") or None
-            living_area = None
+            display_area = None
+
+        explicit_living_area = _explicit_living_area(card_text)
+        explicit_plot_area = _plot_area(card_text)
+        area_semantics = _display_area_semantics(
+            display_area=display_area,
+            explicit_living_area=explicit_living_area,
+            explicit_plot_area=explicit_plot_area,
+        )
 
         price_match = PRICE_RE.search(card_text)
         price = _decimal(price_match.group(1)) if price_match else None
@@ -173,7 +235,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             source_listing_id, listing_url = _synthetic_identity(
                 postal_code=postal_code,
                 city=city,
-                living_area=living_area,
+                display_area=display_area,
                 price=price,
                 title=title,
             )
@@ -186,18 +248,26 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             title=title[:500],
             description=None,
             price_eur=price,
-            living_area_m2=living_area,
-            plot_area_m2=_plot_area(card_text),
+            living_area_m2=explicit_living_area,
+            plot_area_m2=explicit_plot_area,
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v9",
+                "format": "immmo-search-discovery-v10",
                 "original_host": original_host,
                 "original_url_missing": original_url_missing,
                 "identity_stable": not original_url_missing,
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
                 "source_heading_kind": _clean_text(heading_match.group("kind")),
+                "display_area_m2": str(display_area) if display_area is not None else None,
+                "display_area_semantics": area_semantics,
+                "explicit_living_area_m2": (
+                    str(explicit_living_area) if explicit_living_area is not None else None
+                ),
+                "explicit_plot_area_m2": (
+                    str(explicit_plot_area) if explicit_plot_area is not None else None
+                ),
             },
         )
 
