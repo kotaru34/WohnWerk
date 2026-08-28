@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Häuser</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
+    a { color: inherit; }
+    h1 { margin: 0 0 4px; }
+    .subtle { opacity: .7; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .filters { margin: 20px 0; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }
+    label { display: grid; gap: 4px; font-size: .8rem; opacity: .82; }
+    input { min-width: 0; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
+    .filter-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+    button, .button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; text-decoration: none; }
+    .result-line { margin: 16px 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; background: Canvas; }
+    .media { aspect-ratio: 16 / 9; background: color-mix(in srgb, CanvasText 7%, Canvas); display: grid; place-items: center; overflow: hidden; }
+    .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .placeholder { opacity: .42; font-size: .86rem; }
+    .body { padding: 14px; }
+    .location { font-size: .84rem; opacity: .68; margin-bottom: 5px; }
+    h2 { margin: 0; font-size: 1rem; line-height: 1.35; }
+    h2 a { text-decoration: none; }
+    h2 a:hover { text-decoration: underline; }
+    .price { font-size: 1.25rem; font-weight: 760; margin: 10px 0 7px; }
+    .facts { display: flex; flex-wrap: wrap; gap: 6px; font-size: .82rem; }
+    .fact { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 8px; }
+    .open { margin-top: 13px; }
+    .open a { font-weight: 650; }
+    .pagination { margin-top: 24px; display: flex; justify-content: center; gap: 10px; align-items: center; }
+    .pagination a { text-decoration: none; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 8px; padding: 7px 10px; }
+    .empty { padding: 40px 0; opacity: .7; }
+    @media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filter-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
+    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } .filter-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/houses" class="active">Häuser</a>
+    <a href="/jobs">Stellen</a>
+  </nav>
+
+  <h1>Häuser</h1>
+  <div class="subtle">Aktive Immobilien aus den gespeicherten WohnWerk-Quellen</div>
+
+  <form class="filters" method="get" action="/houses">
+    <div class="filter-grid">
+      <label>Ort oder PLZ
+        <input name="ort" value="{{ filters.ort }}" placeholder="z. B. Graz oder 8010">
+      </label>
+      <label>Preis von (€)
+        <input type="number" min="0" step="1000" name="preis_von" value="{{ filters.preis_von if filters.preis_von is not none else '' }}">
+      </label>
+      <label>Preis bis (€)
+        <input type="number" min="0" step="1000" name="preis_bis" value="{{ filters.preis_bis if filters.preis_bis is not none else '' }}">
+      </label>
+      <label>Wohnfläche von (m²)
+        <input type="number" min="0" step="1" name="wohn_von" value="{{ filters.wohn_von if filters.wohn_von is not none else '' }}">
+      </label>
+      <label>Wohnfläche bis (m²)
+        <input type="number" min="0" step="1" name="wohn_bis" value="{{ filters.wohn_bis if filters.wohn_bis is not none else '' }}">
+      </label>
+      <label>Grundstück von (m²)
+        <input type="number" min="0" step="1" name="grund_von" value="{{ filters.grund_von if filters.grund_von is not none else '' }}">
+      </label>
+      <label>Grundstück bis (m²)
+        <input type="number" min="0" step="1" name="grund_bis" value="{{ filters.grund_bis if filters.grund_bis is not none else '' }}">
+      </label>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">Filtern</button>
+      <a class="button" href="/houses">Zurücksetzen</a>
+    </div>
+  </form>
+
+  <div class="result-line">
+    <strong>{{ total }} Immobilien</strong>
+    {% if page_count > 1 %}<span class="subtle">Seite {{ page }} von {{ page_count }}</span>{% endif %}
+  </div>
+
+  <div class="grid">
+    {% for item in rows %}
+      {% set house = item.property %}
+      <article class="house">
+        <a class="media" href="/houses/{{ house.id }}" aria-label="{{ house.title }} öffnen">
+          {% if item.image_url %}
+            <img src="{{ item.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          {% else %}
+            <span class="placeholder">Noch kein Vorschaubild gespeichert</span>
+          {% endif %}
+        </a>
+        <div class="body">
+          <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
+          <h2><a href="/houses/{{ house.id }}">{{ house.title }}</a></h2>
+          <div class="price">{{ eur_label(house.price_eur) }}</div>
+          <div class="facts">
+            {% if area_label(house.living_area_m2) %}
+              <span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>
+            {% elif area_label(item.neutral_area_m2) %}
+              <span class="fact">Fläche {{ area_label(item.neutral_area_m2) }}</span>
+            {% endif %}
+            {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grund {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+          </div>
+          <div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty">Keine aktiven Immobilien entsprechen diesen Filtern.</div>
+    {% endfor %}
+  </div>
+
+  {% if page_count > 1 %}
+    <nav class="pagination" aria-label="Seitennavigation">
+      {% if page > 1 %}
+        <a href="/houses?seite={{ page - 1 }}{% if filters.ort %}&ort={{ filters.ort|urlencode }}{% endif %}{% if filters.preis_von is not none %}&preis_von={{ filters.preis_von }}{% endif %}{% if filters.preis_bis is not none %}&preis_bis={{ filters.preis_bis }}{% endif %}{% if filters.wohn_von is not none %}&wohn_von={{ filters.wohn_von }}{% endif %}{% if filters.wohn_bis is not none %}&wohn_bis={{ filters.wohn_bis }}{% endif %}{% if filters.grund_von is not none %}&grund_von={{ filters.grund_von }}{% endif %}{% if filters.grund_bis is not none %}&grund_bis={{ filters.grund_bis }}{% endif %}">Zurück</a>
+      {% endif %}
+      <span>Seite {{ page }} / {{ page_count }}</span>
+      {% if page < page_count %}
+        <a href="/houses?seite={{ page + 1 }}{% if filters.ort %}&ort={{ filters.ort|urlencode }}{% endif %}{% if filters.preis_von is not none %}&preis_von={{ filters.preis_von }}{% endif %}{% if filters.preis_bis is not none %}&preis_bis={{ filters.preis_bis }}{% endif %}{% if filters.wohn_von is not none %}&wohn_von={{ filters.wohn_von }}{% endif %}{% if filters.wohn_bis is not none %}&wohn_bis={{ filters.wohn_bis }}{% endif %}{% if filters.grund_von is not none %}&grund_von={{ filters.grund_von }}{% endif %}{% if filters.grund_bis is not none %}&grund_bis={{ filters.grund_bis }}{% endif %}">Weiter</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</main>
+</body>
+</html>
