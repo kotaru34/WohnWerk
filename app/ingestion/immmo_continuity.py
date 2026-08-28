@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.property_continuity import (
     PropertyContinuityMatch,
     PropertyContinuityObservation,
+    continuity_area_m2,
     match_property_continuity,
 )
 from app.models import (
@@ -22,7 +23,7 @@ from app.models import (
     Source,
 )
 
-CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v3"
+CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v4"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +48,10 @@ def _observation(listing: PropertyListing) -> PropertyContinuityObservation:
         postal_code=property_row.postal_code,
         title=property_row.title,
         price_eur=property_row.price_eur,
-        living_area_m2=property_row.living_area_m2,
+        living_area_m2=continuity_area_m2(
+            listing.raw_payload,
+            property_row.living_area_m2,
+        ),
     )
 
 
