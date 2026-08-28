@@ -165,13 +165,12 @@ def _area_label(value: Decimal | None) -> str | None:
     return f"{value:,.0f} m²".replace(",", ".")
 
 
-def _eligible_fit_rows(db: Session) -> list[JobFitView]:
+def _visible_fit_rows(db: Session) -> list[JobFitView]:
+    """Return every current relevant job except explicit candidate-hidden rows."""
     return [
         row
         for row in load_live_job_fit(db, profile_slug=PROFILE_SLUG)
         if not row.hidden
-        and row.result.score is not None
-        and not row.result.hard_constraints
     ]
 
 
@@ -236,7 +235,7 @@ def _properties_within_radius_for_job_stmt(job_id: int, radius_km: float):
 
 
 def _nearby_jobs(db: Session, property_id: int, radius_km: float) -> list[NearbyJobView]:
-    fit_rows = _eligible_fit_rows(db)
+    fit_rows = _visible_fit_rows(db)
     fit_by_id = {row.job.id: row for row in fit_rows}
     if not fit_by_id:
         return []
@@ -505,7 +504,7 @@ def job_detail(
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
-    fit = next((row for row in _eligible_fit_rows(db) if row.job.id == job_id), None)
+    fit = next((row for row in _visible_fit_rows(db) if row.job.id == job_id), None)
     if fit is None:
         raise HTTPException(status_code=404, detail="Stelle nicht gefunden.")
 
