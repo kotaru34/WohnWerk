@@ -203,6 +203,8 @@ Behavior:
 - whole-card-inside-anchor variant is handled like StepStone so long snippets cannot become titles;
 - always coverage-incomplete / no disappearance authority.
 
+CI #341 passed Ruff, Compile and the full test suite for willhaben.
+
 First live probe should be exactly five requests and zero details.
 
 ## Broad API aggregators — supplementary bonus layer
