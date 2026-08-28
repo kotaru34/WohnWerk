@@ -71,10 +71,18 @@ def main() -> None:
             print(f"listing_url={listing.url}")
             print(f"last_seen_crawl_run_id={listing.last_seen_crawl_run_id}")
             print(f"format={payload.get('format')}")
+            print(f"original_url_missing={payload.get('original_url_missing')}")
             print(f"price_semantics={payload.get('price_semantics')}")
             print(f"source_price_eur={payload.get('source_price_eur')}")
             print(f"product_visible={payload.get('product_visible')}")
             print(f"product_visibility_reason={payload.get('product_visibility_reason')}")
+            print(f"source_liveness_required={payload.get('source_liveness_required')}")
+            print(f"source_liveness_state={payload.get('source_liveness_state')}")
+            print(f"source_liveness_checked_at={payload.get('source_liveness_checked_at')}")
+            print(f"source_liveness_status_code={payload.get('source_liveness_status_code')}")
+            print(f"source_liveness_reason={payload.get('source_liveness_reason')}")
+            print(f"source_liveness_final_url={payload.get('source_liveness_final_url')}")
+            print(f"thumbnail_url={payload.get('thumbnail_url')}")
             print(f"discovery_url={payload.get('discovery_url')}")
 
 
