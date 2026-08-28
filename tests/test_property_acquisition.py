@@ -19,18 +19,21 @@ def _item(price: Decimal | None, listing_id: str) -> RawProperty:
 
 
 def test_property_budget_boundaries_are_inclusive() -> None:
+    assert PROPERTY_MIN_PRICE_EUR == Decimal(30000)
+    assert PROPERTY_MAX_PRICE_EUR == Decimal(300000)
     assert property_budget_decision(PROPERTY_MIN_PRICE_EUR).accepted is True
     assert property_budget_decision(PROPERTY_MAX_PRICE_EUR).accepted is True
     assert property_budget_decision(Decimal("29999.99")).reason == "price_below_min"
-    assert property_budget_decision(Decimal("150000.01")).reason == "price_above_max"
+    assert property_budget_decision(Decimal("300000.01")).reason == "price_above_max"
     assert property_budget_decision(None).reason == "price_unknown"
 
 
 def test_property_budget_filter_rejects_unknown_and_outside_prices() -> None:
     items = [
         _item(Decimal(30000), "min"),
-        _item(Decimal(120000), "inside"),
-        _item(Decimal(150000), "max"),
+        _item(Decimal(120000), "family-budget"),
+        _item(Decimal(240000), "reserve"),
+        _item(Decimal(300000), "max"),
         _item(Decimal(1200), "fake-low"),
         _item(Decimal(349000), "high"),
         _item(None, "unknown"),
@@ -38,9 +41,14 @@ def test_property_budget_filter_rejects_unknown_and_outside_prices() -> None:
 
     accepted, counts = filter_property_items_by_budget(items)
 
-    assert [item.source_listing_id for item in accepted] == ["min", "inside", "max"]
+    assert [item.source_listing_id for item in accepted] == [
+        "min",
+        "family-budget",
+        "reserve",
+        "max",
+    ]
     assert counts == {
-        "accepted": 3,
+        "accepted": 4,
         "price_unknown": 1,
         "price_below_min": 1,
         "price_above_max": 1,
