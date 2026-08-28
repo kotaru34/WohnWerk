@@ -274,13 +274,16 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             else len(page_text)
         )
         card_text = page_text[segment_start:segment_end]
+        heading_postal_code = heading_match.group("plz")
         facts = LOCATION_AREA_RE.search(card_text)
+        if facts is not None and facts.group("plz") != heading_postal_code:
+            facts = None
         if facts is not None:
             postal_code = facts.group("plz")
             city = _clean_text(facts.group("city")).strip(" ,")
             display_area = _decimal(facts.group("area"))
         else:
-            postal_code = heading_match.group("plz")
+            postal_code = heading_postal_code
             city = _clean_text(heading_match.group("city")).strip(" ,") or None
             display_area = None
 
@@ -541,6 +544,7 @@ class ImmmoPropertySource(_ImmmoPropertySourceV2):
             and not result_cap_hit
             and cards_seen == cards_parsed
             and count_plausible
+            and link_quality_plausible
         )
 
         cursor_out = progress_cursor()
