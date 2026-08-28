@@ -42,26 +42,27 @@ LIVING_AREA_PATTERNS = (
     ),
     re.compile(
         rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
-        rf"(?:gewichtete\s+)?{LIVING_AREA_LABEL_PATTERN}\b",
+        rf"(?:gewichtete\s+)?{LIVING_AREA_LABEL_PATTERN}\b(?!\s*:)",
         re.IGNORECASE,
     ),
 )
 
-# Prefer value-before-label plot evidence. IMMMO card text can contain several area labels
-# from one downstream provider, and production audits showed that a later label-first value
-# may refer to a different metric. A nearby "386 m² Grund" or "793 m² Grundstück" is
-# stronger evidence for plot area than a subsequent generic metadata pair.
-PLOT_AREA_VALUE_FIRST_PATTERNS = (
+# Flattened IMMMO card text can look like
+# ``Nutzfläche: 120 m² Grundstücksfläche: 784 m²``. A naive value-before-label
+# regex would incorrectly bind 120 to Grundstücksfläche. Prefer label-before-value
+# evidence and only accept value-before-label forms when the following label does not
+# start a new ``label: value`` metadata field.
+PLOT_AREA_LABEL_FIRST_PATTERNS = (
     re.compile(
-        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
-        rf"(?:groß(?:en|es|e)?\s+)?{PLOT_AREA_LABEL_PATTERN}\b",
+        rf"\b(?:Grundstücksfläche|Grundstück)\b\s*(?:von|:)?\s*"
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}",
         re.IGNORECASE,
     ),
 )
-PLOT_AREA_LABEL_FIRST_PATTERNS = (
+PLOT_AREA_VALUE_FIRST_PATTERNS = (
     re.compile(
-        rf"\bGrundstücksfläche\b\s*(?:von|:)?\s*"
-        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}",
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
+        rf"(?:groß(?:en|es|e)?\s+)?{PLOT_AREA_LABEL_PATTERN}\b(?!\s*:)",
         re.IGNORECASE,
     ),
 )
@@ -132,7 +133,7 @@ def _explicit_living_area(text: str) -> Decimal | None:
 
 
 def _explicit_plot_area(text: str) -> Decimal | None:
-    for patterns in (PLOT_AREA_VALUE_FIRST_PATTERNS, PLOT_AREA_LABEL_FIRST_PATTERNS):
+    for patterns in (PLOT_AREA_LABEL_FIRST_PATTERNS, PLOT_AREA_VALUE_FIRST_PATTERNS):
         for pattern in patterns:
             match = pattern.search(text)
             if match is not None:
@@ -286,7 +287,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             postal_code=postal_code,
             city=city,
             raw_payload={
-                "format": "immmo-search-discovery-v11",
+                "format": "immmo-search-discovery-v12",
                 "original_host": original_host,
                 "original_url_missing": original_url_missing,
                 "identity_stable": not original_url_missing,
