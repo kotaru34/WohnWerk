@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.dialects import postgresql
@@ -93,7 +94,15 @@ def test_spatial_candidate_matching_keeps_fit_and_geography_separate(monkeypatch
     ]
     calls: list[int] = []
 
-    def fake_nearest(_session, job_id: int, _radius_km: float, *, limit: int):
+    def fake_nearest(
+        _session,
+        job_id: int,
+        _radius_km: float,
+        *,
+        limit: int,
+        profile_id: int | None = None,
+    ):
+        assert profile_id == 42
         calls.append(job_id)
         return [
             PropertyDistanceMatch(
@@ -112,6 +121,10 @@ def test_spatial_candidate_matching_keeps_fit_and_geography_separate(monkeypatch
             )
         ]
 
+    monkeypatch.setattr(
+        "app.matching.get_profile",
+        lambda *_args, **_kwargs: SimpleNamespace(id=42, enabled=True),
+    )
     monkeypatch.setattr("app.matching.load_live_job_fit", lambda *_args, **_kwargs: views)
     monkeypatch.setattr("app.matching.nearest_properties_for_job", fake_nearest)
 
