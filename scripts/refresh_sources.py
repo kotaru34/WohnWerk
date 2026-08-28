@@ -64,6 +64,12 @@ def _source_command(run: DueSourceRun) -> list[str]:
     args = [sys.executable, str(PROJECT_ROOT / run.plan.script)]
     if run.reconciliation:
         args.append("--reconcile")
+        # s REAL has a small, authoritative corpus and a validated fail-soft detail
+        # enricher. Fetch details only on the daily full scan so descriptions, exact
+        # area metadata and source-backed preview images stay fresh without turning the
+        # hourly incremental crawl into hundreds of extra requests.
+        if run.plan.source_name == "sreal.at":
+            args.append("--enrich-details")
     return args
 
 
