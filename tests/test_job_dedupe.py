@@ -3,6 +3,7 @@ from app.jobs.dedupe import (
     duplicate_evidence,
     normalize_company,
     normalize_job_title,
+    normalize_locality,
 )
 
 
@@ -11,6 +12,7 @@ def _snapshot(
     *,
     title: str,
     company: str | None,
+    description: str | None = None,
     postal: str | None = None,
     city: str | None = None,
 ) -> DuplicateJobSnapshot:
@@ -18,15 +20,21 @@ def _snapshot(
         job_id=job_id,
         title=title,
         company=company,
+        description=description,
         postal_codes=frozenset([postal]) if postal else frozenset(),
-        cities=frozenset([city]) if city else frozenset(),
+        cities=frozenset([normalize_locality(city)]) if city else frozenset(),
         sources=("test",),
     )
 
 
 def test_normalizers_remove_gender_and_company_legal_suffix_noise() -> None:
     assert normalize_job_title("Mechanical Engineer (m/w/d)") == "mechanical engineer"
+    assert normalize_job_title("Mechanical Engineer m|f|d") == "mechanical engineer"
     assert normalize_company("Example Engineering GmbH & Co KG") == "example engineering"
+
+
+def test_locality_normalizer_equates_klagenfurt_variants() -> None:
+    assert normalize_locality("Klagenfurt") == normalize_locality("Klagenfurt am Wörthersee")
 
 
 def test_same_company_normalized_title_and_location_is_high_confidence() -> None:
@@ -102,3 +110,44 @@ def test_same_company_similar_title_without_location_is_medium_confidence() -> N
 
     assert evidence is not None
     assert evidence.confidence == "medium"
+
+
+def test_generic_title_without_location_overlap_stays_medium() -> None:
+    left = _snapshot(
+        1,
+        title="Konstrukteur (m/w/d)",
+        company="Trenkwalder Personaldienste GmbH",
+    )
+    right = _snapshot(
+        2,
+        title="Konstrukteur (m/w/d)",
+        company="Trenkwalder Personaldienste GmbH",
+        city="Klagenfurt",
+    )
+
+    evidence = duplicate_evidence(left, right)
+
+    assert evidence is not None
+    assert evidence.confidence == "medium"
+    assert evidence.generic_title is True
+
+
+def test_generic_title_with_equivalent_location_is_high_confidence() -> None:
+    left = _snapshot(
+        1,
+        title="Konstrukteur (m/w/d)",
+        company="Trenkwalder Personaldienste GmbH",
+        city="Klagenfurt",
+    )
+    right = _snapshot(
+        2,
+        title="Konstrukteur (m/w/d)",
+        company="Trenkwalder Personaldienste GmbH",
+        city="Klagenfurt am Wörthersee",
+    )
+
+    evidence = duplicate_evidence(left, right)
+
+    assert evidence is not None
+    assert evidence.confidence == "high"
+    assert evidence.location_match is True
