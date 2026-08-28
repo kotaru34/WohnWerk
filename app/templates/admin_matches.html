@@ -54,22 +54,21 @@
 </head>
 <body>
 <main>
-  <nav class="topnav" aria-label="Administration">
-    <a href="/admin/matches" class="active">Kombinationen</a>
-    <a href="/admin/jobs">Stellen</a>
-    <a href="/admin/concepts">Konzepte</a>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/matches" class="active">Kombinationen</a>
+    <a href="/jobs">Stellen</a>
   </nav>
 
   <h1>Stellen & passende Häuser</h1>
   <div class="subtle">{{ profile.label_de }} · live aus der aktuellen WohnWerk-Datenbank</div>
 
   <div class="live">
-    Angezeigt werden nur derzeit aktive Stellen und Immobilien. Neue Anzeigen fließen nach den nächsten Läufen automatisch ein; verschwundene Anzeigen werden aus den Empfehlungen entfernt, bleiben intern für den Lebenszyklus erhalten.
+    Angezeigt werden nur derzeit aktive Stellen und Immobilien. Neue Anzeigen fließen automatisch ein; nicht mehr verfügbare Anzeigen verschwinden aus den Empfehlungen.
   </div>
 
   {% if routing_notice %}<div class="notice">{{ routing_notice }}</div>{% endif %}
 
-  <form class="controls" method="get" action="/admin/matches">
+  <form class="controls" method="get" action="/matches">
     <label>Max. Entfernung
       <input name="radius_km" type="number" min="5" max="100" step="5" value="{{ radius_km|round|int }}">
     </label>
@@ -100,7 +99,7 @@
         </div>
         <div>
           <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
-          <h2 class="job-title">#{{ row.job.id }} · {{ row.job.title }}</h2>
+          <h2 class="job-title">{{ row.job.title }}</h2>
           <div class="badges">
             {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
             {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
