@@ -45,11 +45,6 @@ def _strategy_key(
             return None
         return postal_code, title, row.living_area_m2
 
-    if strategy == "title_price":
-        if row.price_eur is None or len(title) < 16:
-            return None
-        return postal_code, title, row.price_eur
-
     raise ValueError(f"Unknown continuity strategy: {strategy}")
 
 
@@ -61,15 +56,19 @@ def match_property_continuity(
 
     The matcher is deliberately one-to-one and staged. At every stage a key is accepted
     only when exactly one unmatched previous row and exactly one unmatched current row
-    share it. Ambiguous developments or records where both price and area changed fail
-    closed instead of being merged.
+    share it. Provider rotation is accepted when the full metadata fingerprint matches or
+    when postal code, title, and living area match exactly despite a price change.
+
+    Price-only continuity is intentionally rejected. Production IMMMO audits showed that
+    some downstream providers can expose plot/useful area in the field currently parsed as
+    living area, producing very large apparent area changes for otherwise identical cards.
     """
 
     previous_remaining = {row.token: row for row in previous}
     current_remaining = {row.token: row for row in current}
     matches: list[PropertyContinuityMatch] = []
 
-    for strategy in ("exact", "title_area", "title_price"):
+    for strategy in ("exact", "title_area"):
         previous_groups: dict[tuple[object, ...], list[Hashable]] = defaultdict(list)
         current_groups: dict[tuple[object, ...], list[Hashable]] = defaultdict(list)
 
