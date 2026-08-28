@@ -28,11 +28,11 @@ def test_property_budget_boundaries_are_inclusive() -> None:
 
 def test_property_budget_filter_rejects_unknown_and_outside_prices() -> None:
     items = [
-        _item(Decimal("30000"), "min"),
-        _item(Decimal("120000"), "inside"),
-        _item(Decimal("150000"), "max"),
-        _item(Decimal("1200"), "fake-low"),
-        _item(Decimal("349000"), "high"),
+        _item(Decimal(30000), "min"),
+        _item(Decimal(120000), "inside"),
+        _item(Decimal(150000), "max"),
+        _item(Decimal(1200), "fake-low"),
+        _item(Decimal(349000), "high"),
         _item(None, "unknown"),
     ]
 
