@@ -45,14 +45,23 @@ def test_price_change_falls_back_to_unique_title_and_area() -> None:
     assert matches[0].strategy == "title_area"
 
 
-def test_price_and_area_change_can_use_distinctive_unique_title() -> None:
+def test_area_change_falls_back_to_unique_title_and_price() -> None:
+    matches = match_property_continuity(
+        [observation("old", area="100")],
+        [observation("new", area="104")],
+    )
+
+    assert len(matches) == 1
+    assert matches[0].strategy == "title_price"
+
+
+def test_price_and_area_change_fail_closed() -> None:
     matches = match_property_continuity(
         [observation("old", price="395000", area="100")],
         [observation("new", price="379000", area="104")],
     )
 
-    assert len(matches) == 1
-    assert matches[0].strategy == "title_only"
+    assert matches == []
 
 
 def test_ambiguous_development_rows_fail_closed() -> None:
@@ -66,12 +75,3 @@ def test_ambiguous_development_rows_fail_closed() -> None:
     ]
 
     assert match_property_continuity(previous, current) == []
-
-
-def test_short_title_does_not_match_on_title_only() -> None:
-    matches = match_property_continuity(
-        [observation("old", title="Haus in Wien", price="500000", area="100")],
-        [observation("new", title="Haus in Wien", price="490000", area="101")],
-    )
-
-    assert matches == []
