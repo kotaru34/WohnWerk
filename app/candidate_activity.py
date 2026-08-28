@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, UniqueConstraint, exists, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
@@ -152,6 +152,27 @@ def load_property_states(
         )
         for row in rows
     }
+
+
+def property_curation_condition(profile_id: int, view: str):
+    hidden = exists(
+        select(CandidatePropertyPreference.id).where(
+            CandidatePropertyPreference.profile_id == profile_id,
+            CandidatePropertyPreference.property_id == Property.id,
+            CandidatePropertyPreference.hidden.is_(True),
+        )
+    )
+    if view == "ausgeblendet":
+        return hidden
+    if view == "favoriten":
+        return exists(
+            select(CandidatePropertyPreference.id).where(
+                CandidatePropertyPreference.profile_id == profile_id,
+                CandidatePropertyPreference.property_id == Property.id,
+                CandidatePropertyPreference.favorite.is_(True),
+            )
+        )
+    return ~hidden
 
 
 def hidden_property_ids(session: Session, profile_id: int) -> set[int]:
