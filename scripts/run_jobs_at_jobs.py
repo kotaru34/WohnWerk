@@ -8,10 +8,21 @@ from sqlalchemy import select
 from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.job.jobs_at import BASE_URL, JobsAtJobSource
+from app.sources.job.jobs_at import BASE_URL, JobsAtJobSource, JobsAtSearch
 
 SOURCE_NAME = "jobs.at"
 ADAPTER_PATH = "app.sources.job.jobs_at.JobsAtJobSource"
+
+# Keep the HTTP footprint fixed while making the first-page frontier useful.
+# These are intentionally broad, human-style searches; the adapter still opens
+# details only after the cheap title prefilter and caps detail requests per query.
+SEARCHES = [
+    JobsAtSearch("maschinenbau", "Maschinenbau"),
+    JobsAtSearch("konstrukteur", "Konstrukteur"),
+    JobsAtSearch("cad-konstrukteur", "CAD Konstrukteur"),
+    JobsAtSearch("mechanischer-konstrukteur", "Mechanischer Konstrukteur"),
+    JobsAtSearch("solidworks", "SolidWorks"),
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,7 +51,7 @@ def get_or_create_source() -> int:
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
-            "scope": "focused Austrian engineering searches on public jobs.at pages",
+            "scope": "broad Austrian mechanical-engineering searches on public jobs.at pages",
             "acquisition": (
                 "low-impact first-page search frontier; detail only after title prefilter"
             ),
@@ -49,6 +60,7 @@ def get_or_create_source() -> int:
             ),
             "reconciliation_interval_hours": None,
             "detail_policy": "title candidate first, detail page second",
+            "searches": [search.slug for search in SEARCHES],
         }
         if source is None:
             source = Source(
@@ -79,6 +91,7 @@ async def async_main() -> int:
 
     source_id = get_or_create_source()
     adapter = JobsAtJobSource(
+        searches=SEARCHES,
         request_delay_seconds=max(0.0, args.delay),
         max_details_per_shard=args.max_details_per_query,
     )
