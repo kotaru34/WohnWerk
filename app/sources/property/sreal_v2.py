@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from app.property_acquisition import filter_property_items_by_budget
 from app.sources.base import RawProperty, SourceBatch, SourceShardSpec
 from app.sources.property import sreal as _base
 from app.sources.property.immmo import _clean_text, _decimal
@@ -178,7 +179,23 @@ class SRealPropertySource(_base.SRealPropertySource):
         detail_attempted = 0
         detail_succeeded = 0
         detail_failed = 0
+        budget_accepted = 0
+        budget_price_unknown = 0
+        budget_price_below_min = 0
+        budget_price_above_max = 0
         result_cap_hit = False
+
+        def budget_filter(items: list[RawProperty]) -> list[RawProperty]:
+            nonlocal budget_accepted
+            nonlocal budget_price_unknown
+            nonlocal budget_price_below_min
+            nonlocal budget_price_above_max
+            accepted, counts = filter_property_items_by_budget(items)
+            budget_accepted += counts["accepted"]
+            budget_price_unknown += counts["price_unknown"]
+            budget_price_below_min += counts["price_below_min"]
+            budget_price_above_max += counts["price_above_max"]
+            return accepted
 
         async with httpx.AsyncClient(
             headers=headers,
@@ -199,8 +216,9 @@ class SRealPropertySource(_base.SRealPropertySource):
                 max_page if reconciliation else self.incremental_pages,
             )
 
+            first_candidates = budget_filter(first.items)
             first_items, attempted, succeeded, failed = await self._enrich_page_items(
-                client, first.items
+                client, first_candidates
             )
             detail_attempted += attempted
             detail_succeeded += succeeded
@@ -219,8 +237,9 @@ class SRealPropertySource(_base.SRealPropertySource):
                 page = parse_sreal_search_page(response.text, page_url=str(response.url))
                 minimum = 0 if page_number == max_page else max(1, int(page_size * 0.75))
                 _base._validate_page(page, page_number=page_number, expected_minimum=minimum)
+                page_candidates = budget_filter(page.items)
                 page_items, attempted, succeeded, failed = await self._enrich_page_items(
-                    client, page.items
+                    client, page_candidates
                 )
                 detail_attempted += attempted
                 detail_succeeded += succeeded
@@ -250,6 +269,10 @@ class SRealPropertySource(_base.SRealPropertySource):
                 "discovery_duplicate_detail_anchors": duplicate_detail_anchors,
                 "discovery_metadata_fallbacks": metadata_fallbacks,
                 "discovery_max_page": max_page,
+                "acquisition_budget_accepted": budget_accepted,
+                "acquisition_budget_price_unknown": budget_price_unknown,
+                "acquisition_budget_price_below_min": budget_price_below_min,
+                "acquisition_budget_price_above_max": budget_price_above_max,
                 "detail_enrichment_attempted": detail_attempted,
                 "detail_enrichment_succeeded": detail_succeeded,
                 "detail_enrichment_failed": detail_failed,
