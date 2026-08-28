@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WohnWerk – Stellenranking</title>
+  <title>WohnWerk – Stellen</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0; background: Canvas; color: CanvasText; }
@@ -46,7 +46,7 @@
     .hidden-badge { opacity: .68; }
     .drivers { font-size: .86rem; line-height: 1.55; }
     .positive { opacity: .92; }
-    .negative { opacity: .75; }
+    .negative { opacity: .72; }
     .right { font-size: .88rem; line-height: 1.55; }
     .right a { color: inherit; }
     .right section + section { margin-top: 10px; }
@@ -66,13 +66,13 @@
 </head>
 <body>
 <main>
-  <nav class="topnav" aria-label="Administration">
-    <a href="/admin/jobs" class="active">Stellen</a>
-    <a href="/admin/concepts">Konzepte</a>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/matches">Kombinationen</a>
+    <a href="/jobs" class="active">Stellen</a>
   </nav>
 
-  <h1>Stellenranking</h1>
-  <div class="subtle">{{ profile.label_de }} · Live aus persistiertem Profil und aktueller Konzept-Evidenz berechnet</div>
+  <h1>Passende Stellen</h1>
+  <div class="subtle">{{ profile.label_de }} · nach dem hinterlegten Profil bewertet</div>
 
   <div class="stats">
     <div class="stat"><strong>{{ stats.gesamt }}</strong>relevante Stellen</div>
@@ -83,11 +83,11 @@
 
   <nav class="filters" aria-label="Stellenfilter">
     {% for value, label in job_filters.items() %}
-      <a href="/admin/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">
+      <a href="/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">
         {{ label }}{% if value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
       </a>
     {% endfor %}
-    <form method="get" action="/admin/jobs">
+    <form method="get" action="/jobs">
       <input type="hidden" name="ansicht" value="{{ selected_filter }}">
       <input name="suche" value="{{ search }}" placeholder="Titel, Firma oder Ort">
       <button type="submit">Suchen</button>
@@ -126,7 +126,7 @@
 
       <div>
         <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
-        <h2>#{{ row.job.id }} · {{ row.job.title }}</h2>
+        <h2>{{ row.job.title }}</h2>
         <div class="meta">
           {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
           {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
@@ -136,9 +136,9 @@
         </div>
         {% if row.drivers %}
           <div class="drivers">
-            <strong>Treiber:</strong>
+            <strong>Warum diese Bewertung:</strong>
             {% for driver in row.drivers %}
-              <span class="{{ 'positive' if driver.contribution >= 0 else 'negative' }}">{{ driver.label_de }} {{ '%+.2f'|format(driver.contribution) }}</span>{% if not loop.last %} · {% endif %}
+              <span class="{{ 'positive' if driver.contribution >= 0 else 'negative' }}">{{ driver.label_de }}{% if driver.contribution < 0 %} (weniger passend){% endif %}</span>{% if not loop.last %} · {% endif %}
             {% endfor %}
           </div>
         {% endif %}
@@ -146,14 +146,14 @@
 
       <div class="right">
         <div class="actions">
-          <form method="post" action="/admin/jobs/{{ row.job.id }}/favorite">
+          <form method="post" action="/jobs/{{ row.job.id }}/favorite">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="favorite" value="{{ '0' if row.favorite else '1' }}">
             <input type="hidden" name="return_view" value="{{ selected_filter }}">
             <input type="hidden" name="return_search" value="{{ search }}">
             <button class="favorite {% if row.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if row.favorite else 'Als Favorit merken' }}</button>
           </form>
-          <form method="post" action="/admin/jobs/{{ row.job.id }}/hidden">
+          <form method="post" action="/jobs/{{ row.job.id }}/hidden">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="hidden" value="{{ '0' if row.hidden else '1' }}">
             <input type="hidden" name="return_view" value="{{ selected_filter }}">
@@ -163,7 +163,7 @@
         </div>
         {% if row.links %}
           <section>
-            <strong>Quellen</strong><br>
+            <strong>Stellenanzeige</strong><br>
             {% for link in row.links %}
               <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}
             {% endfor %}
