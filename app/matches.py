@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
@@ -31,6 +31,7 @@ DbDependency = Annotated[Session, Depends(get_db)]
 class PropertySourceLink:
     label: str
     url: str
+    display_area_m2: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +40,32 @@ class PropertyMatchView:
     road_distance_km: float | None
     road_duration_minutes: float | None
     links: tuple[PropertySourceLink, ...] = ()
+
+    @property
+    def neutral_area_m2(self) -> Decimal | None:
+        """Return an unlabeled source area only when canonical Wohnfläche is unknown."""
+        if self.spatial.living_area_m2 is not None:
+            return None
+        values = {
+            link.display_area_m2
+            for link in self.links
+            if link.display_area_m2 is not None
+        }
+        if len(values) != 1:
+            return None
+        return next(iter(values))
+
+    @property
+    def visible_plot_area_m2(self) -> Decimal | None:
+        """Avoid relabeling the same ambiguous IMMMO display area as Grundstück."""
+        plot = self.spatial.plot_area_m2
+        neutral = self.neutral_area_m2
+        if plot is None or neutral is None:
+            return plot
+        tolerance = max(Decimal(1), max(abs(plot), abs(neutral)) * Decimal("0.01"))
+        if abs(plot - neutral) <= tolerance:
+            return None
+        return plot
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +84,15 @@ def _profile_or_503(db: Session):
     return profile
 
 
+def _payload_decimal(value: object | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
 def _property_links(
     db: Session,
     property_ids: set[int],
@@ -65,7 +101,12 @@ def _property_links(
         return {}
 
     rows = db.execute(
-        select(PropertyListing.property_id, PropertyListing.url, Source.name)
+        select(
+            PropertyListing.property_id,
+            PropertyListing.url,
+            PropertyListing.raw_payload,
+            Source.name,
+        )
         .join(Source, Source.id == PropertyListing.source_id)
         .where(
             PropertyListing.property_id.in_(property_ids),
@@ -76,11 +117,20 @@ def _property_links(
 
     links: dict[int, list[PropertySourceLink]] = defaultdict(list)
     seen: dict[int, set[str]] = defaultdict(set)
-    for property_id, url, source_name in rows:
+    for property_id, url, raw_payload, source_name in rows:
         if not url or url in seen[property_id]:
             continue
         seen[property_id].add(url)
-        links[property_id].append(PropertySourceLink(label=source_name, url=url))
+        display_area = None
+        if source_name == "immmo.at":
+            display_area = _payload_decimal((raw_payload or {}).get("display_area_m2"))
+        links[property_id].append(
+            PropertySourceLink(
+                label=source_name,
+                url=url,
+                display_area_m2=display_area,
+            )
+        )
     return {property_id: tuple(items) for property_id, items in links.items()}
 
 
