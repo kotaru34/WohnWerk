@@ -35,6 +35,14 @@ def _gate_accepted(listing: JobListing) -> bool:
     return isinstance(gate, dict) and gate.get("accepted") is True
 
 
+def _relevant_active_listings(job: Job) -> list[JobListing]:
+    return [
+        listing
+        for listing in job.listings
+        if listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
+    ]
+
+
 def _snapshot(job: Job, source_names: dict[int, str]) -> DuplicateJobSnapshot:
     postals = frozenset(
         location.postal_code for location in job.locations if location.postal_code
@@ -48,8 +56,7 @@ def _snapshot(job: Job, source_names: dict[int, str]) -> DuplicateJobSnapshot:
         sorted(
             {
                 source_names.get(listing.source_id, f"source:{listing.source_id}")
-                for listing in job.listings
-                if listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
+                for listing in _relevant_active_listings(job)
             }
         )
     )
@@ -57,6 +64,7 @@ def _snapshot(job: Job, source_names: dict[int, str]) -> DuplicateJobSnapshot:
         job_id=job.id,
         title=job.title,
         company=job.company,
+        description=job.description,
         postal_codes=postals,
         cities=cities,
         sources=sources,
@@ -72,6 +80,15 @@ def _location_label(snapshot: DuplicateJobSnapshot) -> str:
     return " ".join(parts) or "-"
 
 
+def _print_listing_refs(job: Job, source_names: dict[int, str]) -> None:
+    for listing in _relevant_active_listings(job):
+        source_name = source_names.get(listing.source_id, f"source:{listing.source_id}")
+        print(
+            f"      listing source={source_name} id={listing.source_listing_id} "
+            f"url={listing.url}"
+        )
+
+
 def main() -> None:
     args = parse_args()
     with SessionLocal() as session:
@@ -85,25 +102,12 @@ def main() -> None:
             )
         )
 
-        relevant_jobs = [
-            job
-            for job in jobs
-            if any(
-                listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
-                for listing in job.listings
-            )
-        ]
+        relevant_jobs = [job for job in jobs if _relevant_active_listings(job)]
         snapshots = [_snapshot(job, source_names) for job in relevant_jobs]
+        jobs_by_id = {job.id: job for job in relevant_jobs}
 
         already_multi_listing = sum(
-            1
-            for job in relevant_jobs
-            if sum(
-                1
-                for listing in job.listings
-                if listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
-            )
-            > 1
+            1 for job in relevant_jobs if len(_relevant_active_listings(job)) > 1
         )
 
         high = []
@@ -135,6 +139,8 @@ def main() -> None:
             print(
                 f"[{index}] confidence={evidence.confidence} "
                 f"similarity={evidence.title_similarity:.3f} "
+                f"description_similarity={evidence.description_similarity:.3f} "
+                f"generic_title={'yes' if evidence.generic_title else 'no'} "
                 f"reasons={','.join(evidence.reasons)}"
             )
             print(
@@ -142,11 +148,13 @@ def main() -> None:
                 f"company={left.company or '-'} location={_location_label(left)}"
             )
             print(f"    {left.title}")
+            _print_listing_refs(jobs_by_id[left.job_id], source_names)
             print(
                 f"  right job={right.job_id} sources={','.join(right.sources) or '-'} "
                 f"company={right.company or '-'} location={_location_label(right)}"
             )
             print(f"    {right.title}")
+            _print_listing_refs(jobs_by_id[right.job_id], source_names)
 
 
 if __name__ == "__main__":
