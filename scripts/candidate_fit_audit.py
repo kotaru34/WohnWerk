@@ -8,8 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.database import SessionLocal
-from app.jobs.candidate_fit import DEFAULT_FIT_POLICY, FitEvidence, JobFitResult, score_job_concepts
-from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES, PROFILE_SEED_VERSION
+from app.jobs.candidate_fit import (
+    DEFAULT_FIT_POLICY,
+    CandidatePreferenceState,
+    FitEvidence,
+    JobFitResult,
+    score_job_concepts,
+)
+from app.jobs.candidate_profile_seed import (
+    PROFILE_PREFERENCES,
+    PROFILE_SEED_VERSION,
+    PROFILE_SLUG,
+)
+from app.jobs.candidate_profile_store import load_profile_preferences
 from app.jobs.concept_catalog import (
     CONCEPT_SEEDS,
     EXTRACTOR_VERSION,
@@ -23,6 +34,8 @@ from app.jobs.concepts import (
     concept_evidence_semantics,
 )
 from app.models import Job, JobListing, ListingStatus
+
+PreferenceMap = dict[tuple[ConceptKind, str], CandidatePreferenceState]
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +59,19 @@ def parse_args() -> argparse.Namespace:
             "Compute evidence in memory from the current seed extractor instead of requiring "
             "that extractor version to already be persisted. Read-only."
         ),
+    )
+    parser.add_argument(
+        "--persisted-profile",
+        action="store_true",
+        help=(
+            "Load candidate preferences from candidate_profiles/candidate_concept_preferences "
+            "instead of the Python bootstrap seed. Requires migration 0008 and a synced profile."
+        ),
+    )
+    parser.add_argument(
+        "--profile-slug",
+        default=PROFILE_SLUG,
+        help=f"Persisted candidate profile slug (default: {PROFILE_SLUG}).",
     )
     return parser.parse_args()
 
@@ -121,7 +147,7 @@ def _preview_evidence_by_job(jobs: list[Job]) -> dict[int, list[FitEvidence]]:
     return result
 
 
-def _seed_validation(session, *, preview: bool) -> tuple[int, list[str]]:
+def _seed_validation(session, *, preview: bool) -> list[str]:
     if preview:
         concepts = {(seed.kind, seed.slug) for seed in CONCEPT_SEEDS}
     else:
@@ -129,12 +155,20 @@ def _seed_validation(session, *, preview: bool) -> tuple[int, list[str]]:
             (ConceptKind(concept.kind), concept.slug)
             for concept in session.scalars(select(JobConcept).where(JobConcept.enabled.is_(True)))
         }
-    missing = [
+    return sorted(
         f"{kind.value}:{slug}"
         for kind, slug in PROFILE_PREFERENCES
         if (kind, slug) not in concepts
-    ]
-    return len(PROFILE_PREFERENCES), sorted(missing)
+    )
+
+
+def _resolve_preferences(session, args: argparse.Namespace) -> tuple[PreferenceMap, str, list[str]]:
+    if args.persisted_profile:
+        preferences = load_profile_preferences(session, args.profile_slug)
+        return preferences, f"persisted_profile:{args.profile_slug}", []
+
+    missing_seed = _seed_validation(session, preview=args.preview_current_extractor)
+    return dict(PROFILE_PREFERENCES), "python_seed", missing_seed
 
 
 def _driver_label(result: JobFitResult, limit: int = 5) -> str:
@@ -172,21 +206,20 @@ def main() -> None:
             evidence_by_job = _persisted_evidence_by_job(session, set(jobs_by_id))
             evidence_mode = "persisted_current_extractor"
 
-        ratings_count, missing_seed = _seed_validation(
-            session, preview=args.preview_current_extractor
-        )
+        preferences, preference_mode, missing_seed = _resolve_preferences(session, args)
         results = {
-            job.id: score_job_concepts(evidence_by_job.get(job.id, []), PROFILE_PREFERENCES)
+            job.id: score_job_concepts(evidence_by_job.get(job.id, []), preferences)
             for job in jobs
         }
 
         scored = [result for result in results.values() if result.score is not None]
         hard_incompatible = [result for result in scored if result.hard_constraints]
         print(f"profile_seed_version={PROFILE_SEED_VERSION}")
+        print(f"preference_mode={preference_mode}")
         print(f"fit_policy_version={DEFAULT_FIT_POLICY.version}")
         print(f"extractor_version={EXTRACTOR_VERSION}")
         print(f"evidence_mode={evidence_mode}")
-        print(f"rated_concepts={ratings_count}")
+        print(f"rated_concepts={len(preferences)}")
         print(f"missing_seed_concepts={','.join(missing_seed) if missing_seed else '-'}")
         print(
             "state_values="
@@ -283,7 +316,7 @@ def main() -> None:
                     )
                 print("      evidence:")
                 for item in evidence_by_job.get(job_id, []):
-                    state = PROFILE_PREFERENCES.get((item.kind, item.slug))
+                    state = preferences.get((item.kind, item.slug))
                     state_label = state.value if state is not None else "unrated"
                     print(
                         f"        {item.kind.value}:{item.slug} scope={item.scope} "
