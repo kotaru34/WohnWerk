@@ -144,6 +144,25 @@ def test_parse_stepstone_search_page_handles_region_then_city_without_inventing_
     assert jobs[0].locations[0].location_text == "Niederösterreich, Mödling"
 
 
+def test_parse_stepstone_search_page_rejects_obvious_foreign_location() -> None:
+    content = """
+    <html><body>
+      <h1>71 Treffer für Mechanical Engineer Jobs</h1>
+      <a href="/stellenangebote--Servicetechniker-Muenchen-Virturail--665544-inline.html">
+        Servicetechniker:in – Maschinenbau / Anlagenbau / Mechatronik
+      </a>
+      <div>VirtuRail GmbH</div>
+      <div>München</div>
+      <p>Technischer Service und Inbetriebnahme mechanischer Anlagen und Baugruppen.</p>
+    </body></html>
+    """
+
+    jobs, reported = parse_stepstone_search_page(content, search_label="Mechanical Engineer")
+
+    assert reported == 71
+    assert jobs == []
+
+
 @pytest.mark.asyncio
 async def test_stepstone_frontier_uses_one_request_per_search_and_cross_query_dedupe() -> None:
     requests: list[str] = []
