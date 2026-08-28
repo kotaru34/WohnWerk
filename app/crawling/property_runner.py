@@ -16,7 +16,21 @@ from app.crawling.shards import sync_source_shards
 from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
+from app.property_acquisition import filter_property_items_by_budget
 from app.sources.base import PropertySource, RawProperty, SourceFetchError
+
+
+def _budget_filter_with_cursor(
+    items: list[RawProperty],
+    cursor: dict,
+) -> tuple[list[RawProperty], dict]:
+    accepted, counts = filter_property_items_by_budget(items)
+    next_cursor = dict(cursor)
+    next_cursor["acquisition_budget_accepted"] = counts["accepted"]
+    next_cursor["acquisition_budget_price_unknown"] = counts["price_unknown"]
+    next_cursor["acquisition_budget_price_below_min"] = counts["price_below_min"]
+    next_cursor["acquisition_budget_price_above_max"] = counts["price_above_max"]
+    return accepted, next_cursor
 
 
 async def run_property_source(
@@ -55,27 +69,31 @@ async def run_property_source(
                 cursor=shard.cursor,
                 reconciliation=reconciliation,
             )
+            accepted_items, next_cursor = _budget_filter_with_cursor(
+                batch.items,
+                batch.next_cursor,
+            )
             new_count, updated_count = ingest_properties(
                 session,
                 source=source,
                 run=run,
-                items=batch.items,
+                items=accepted_items,
             )
 
             now = datetime.now(UTC)
             shard_run.status = RunStatus.SUCCESS
             shard_run.finished_at = now
             shard_run.pages_fetched = batch.pages_fetched
-            shard_run.items_seen = len(batch.items)
+            shard_run.items_seen = len(accepted_items)
             shard_run.items_new = new_count
             shard_run.items_updated = updated_count
             shard_run.source_reported_count = batch.source_reported_count
             shard_run.result_cap_hit = batch.result_cap_hit
             shard_run.coverage_complete = batch.coverage_complete
-            shard_run.next_cursor = batch.next_cursor
+            shard_run.next_cursor = next_cursor
 
-            shard.cursor = batch.next_cursor
-            shard.last_item_count = len(batch.items)
+            shard.cursor = next_cursor
+            shard.last_item_count = len(accepted_items)
             shard.last_success_at = now
             shard.consecutive_failures = 0
             if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
@@ -88,6 +106,8 @@ async def run_property_source(
             session.rollback()
             partial_new = 0
             partial_updated = 0
+            partial_seen = 0
+            partial_cursor = exc.next_cursor if isinstance(exc, SourceFetchError) else {}
             if isinstance(exc, SourceFetchError) and exc.partial_items:
                 partial_source = session.get(Source, source_id)
                 partial_run = session.get(CrawlRun, run_id)
@@ -95,11 +115,16 @@ async def run_property_source(
                     raise RuntimeError(
                         f"Could not reload partial-run state for {source.name}/{spec.key}"
                     ) from exc
+                partial_items, partial_cursor = _budget_filter_with_cursor(
+                    cast(list[RawProperty], exc.partial_items),
+                    exc.next_cursor,
+                )
+                partial_seen = len(partial_items)
                 partial_new, partial_updated = ingest_properties(
                     session,
                     source=partial_source,
                     run=partial_run,
-                    items=cast(list[RawProperty], exc.partial_items),
+                    items=partial_items,
                 )
 
             failed_shard_run = session.get(CrawlShardRun, shard_run_id)
@@ -115,11 +140,11 @@ async def run_property_source(
             failed_shard_run.error = f"{type(exc).__name__}: {exc}"
             if isinstance(exc, SourceFetchError):
                 failed_shard_run.pages_fetched = exc.pages_fetched
-                failed_shard_run.items_seen = exc.items_seen
+                failed_shard_run.items_seen = partial_seen
                 failed_shard_run.items_new = partial_new
                 failed_shard_run.items_updated = partial_updated
                 failed_shard_run.source_reported_count = exc.source_reported_count
-                failed_shard_run.next_cursor = exc.next_cursor
+                failed_shard_run.next_cursor = partial_cursor
             failed_shard.consecutive_failures += 1
 
         session.commit()
