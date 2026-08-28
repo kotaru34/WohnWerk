@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
+
+from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import SourceCategory
+from app.models import Source, SourceCategory
 from app.refresh import DueSourceRun, due_source_runs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LOCK_PATH = Path("/run/lock/wohnwerk-refresh.lock")
+DEFAULT_LOCK_PATH = Path("/run/wohnwerk-refresh/refresh.lock")
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,11 +31,6 @@ def parse_args() -> argparse.Namespace:
             "Run due WohnWerk acquisition sources and refresh derived job matching data. "
             "Source poll/reconciliation cadence is read from the database."
         )
-    )
-    parser.add_argument(
-        "--all-due",
-        action="store_true",
-        help="Compatibility marker; due-source selection is the default behavior.",
     )
     parser.add_argument(
         "--reconciliation-retry-minutes",
@@ -68,7 +67,7 @@ def _source_command(run: DueSourceRun) -> list[str]:
     return args
 
 
-def _acquire_lock(path: Path):
+def _acquire_lock(path: Path) -> TextIO | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("w")
     try:
@@ -76,16 +75,13 @@ def _acquire_lock(path: Path):
     except BlockingIOError:
         handle.close()
         return None
-    handle.write(str(Path("/proc/self").resolve().name))
+    handle.write(str(os.getpid()))
     handle.flush()
     return handle
 
 
 def _source_category(source_name: str) -> str | None:
     with SessionLocal() as session:
-        from app.models import Source
-        from sqlalchemy import select
-
         return session.scalar(select(Source.category).where(Source.name == source_name))
 
 
