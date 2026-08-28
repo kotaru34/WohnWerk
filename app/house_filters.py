@@ -24,11 +24,11 @@ FILTER_QUERY_KEYS = frozenset(
 @dataclass(frozen=True, slots=True)
 class HouseFilters:
     ort: str = ""
-    preis_von: Decimal | None = Decimal("30000")
-    preis_bis: Decimal | None = Decimal("150000")
-    wohn_von: Decimal | None = Decimal("90")
+    preis_von: Decimal | None = Decimal(30000)
+    preis_bis: Decimal | None = Decimal(150000)
+    wohn_von: Decimal | None = Decimal(90)
     wohn_bis: Decimal | None = None
-    grund_von: Decimal | None = Decimal("300")
+    grund_von: Decimal | None = Decimal(300)
     grund_bis: Decimal | None = None
 
     def as_cookie_payload(self) -> dict[str, str | None]:
@@ -53,7 +53,9 @@ def _decimal_text(value: Decimal | None) -> str | None:
 
 
 def _safe_decimal(value: object) -> Decimal | None:
-    if value in {None, ""}:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, (str, int, float, Decimal)):
         return None
     try:
         parsed = Decimal(str(value))
@@ -135,7 +137,9 @@ def house_filter_summary(filters: HouseFilters) -> str:
         parts.append(filters.ort)
     if filters.preis_von is not None or filters.preis_bis is not None:
         if filters.preis_von is not None and filters.preis_bis is not None:
-            parts.append(f"Preis {filters.preis_von:,.0f}–{filters.preis_bis:,.0f} €".replace(",", "."))
+            parts.append(
+                f"Preis {filters.preis_von:,.0f}–{filters.preis_bis:,.0f} €".replace(",", ".")
+            )
         elif filters.preis_von is not None:
             parts.append(f"Preis ab {filters.preis_von:,.0f} €".replace(",", "."))
         else:
