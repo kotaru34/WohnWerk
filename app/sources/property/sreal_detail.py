@@ -10,14 +10,30 @@ from app.sources.base import RawProperty
 from app.sources.property.immmo import _clean_text, _decimal
 
 DETAIL_PATH_RE = re.compile(r"^/de/immobilie/(?P<listing_id>[^/]+)/", re.IGNORECASE)
-LIVING_AREA_RE = re.compile(
-    r"\bWohnfläche\s+(?P<value>[\d.]+(?:,\d+)?)\s*m\s*(?:²|2)\b",
-    re.IGNORECASE,
-)
-PLOT_AREA_RE = re.compile(
-    r"\bGrundfläche\s+(?P<value>[\d.]+(?:,\d+)?)\s*m\s*(?:²|2)\b",
-    re.IGNORECASE,
-)
+AREA_VALUE = r"(?P<value>[\d.]+(?:,\d+)?)"
+AREA_PREFIX = r"(?:ca\.?\s*|rund\s+|knapp\s+|etwa\s+)?"
+AREA_UNIT = r"\s*m\s*(?:²|2)\b"
+LIVING_LABEL = r"(?:Wohnfläche|Wohnnutzfläche|Wohn[\s/-]*Nutzfläche)"
+USABLE_LABEL = r"Nutzfläche"
+PLOT_LABEL = r"(?:Grundfläche|Grundstücksfläche|Grundstück)"
+
+
+def _area_patterns(label: str) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    return (
+        re.compile(
+            rf"\b{label}\s*(?::|von)?\s*{AREA_PREFIX}{AREA_VALUE}{AREA_UNIT}",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"\b{AREA_PREFIX}{AREA_VALUE}{AREA_UNIT}\s+{label}\b(?!\s*:)",
+            re.IGNORECASE,
+        ),
+    )
+
+
+LIVING_AREA_PATTERNS = _area_patterns(LIVING_LABEL)
+USABLE_AREA_PATTERNS = _area_patterns(USABLE_LABEL)
+PLOT_AREA_PATTERNS = _area_patterns(PLOT_LABEL)
 PRICE_RE = re.compile(
     r"\bKaufpreis\s+(?P<value>[\d.]+(?:,\d+)?)\s*€",
     re.IGNORECASE,
@@ -119,6 +135,7 @@ class SRealDetail:
     city: str | None
     price_eur: Decimal | None
     living_area_m2: Decimal | None
+    usable_area_m2: Decimal | None
     plot_area_m2: Decimal | None
     description: str | None
     primary_image_url: str | None
@@ -153,6 +170,14 @@ def _primary_image(parser: _VisibleTextParser, *, page_url: str) -> str | None:
     return absolute
 
 
+def _area_value(text: str, patterns: tuple[re.Pattern[str], re.Pattern[str]]) -> Decimal | None:
+    for pattern in patterns:
+        match = pattern.search(text)
+        if match is not None:
+            return _decimal(match.group("value"))
+    return None
+
+
 def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
     parser = _VisibleTextParser()
     parser.feed(html)
@@ -165,9 +190,14 @@ def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
         re.IGNORECASE,
     )
     location = location_re.search(text)
+    description = _description(parser)
 
-    living = LIVING_AREA_RE.search(text)
-    plot = PLOT_AREA_RE.search(text)
+    # Prefer a semantically explicit Wohn-/Wohnnutzfläche anywhere on the detail page,
+    # including value-before-label prose such as "ca. 140 m² Wohnfläche". Generic
+    # Nutzfläche is retained separately and is never silently renamed to Wohnfläche.
+    living_area = _area_value(text, LIVING_AREA_PATTERNS)
+    usable_area = _area_value(text, USABLE_AREA_PATTERNS)
+    plot_area = _area_value(text, PLOT_AREA_PATTERNS)
     price = PRICE_RE.search(text)
 
     return SRealDetail(
@@ -175,9 +205,10 @@ def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
         postal_code=location.group("plz") if location else None,
         city=_clean_text(location.group("city")).strip(" ,") if location else None,
         price_eur=_decimal(price.group("value")) if price else None,
-        living_area_m2=_decimal(living.group("value")) if living else None,
-        plot_area_m2=_decimal(plot.group("value")) if plot else None,
-        description=_description(parser),
+        living_area_m2=living_area,
+        usable_area_m2=usable_area,
+        plot_area_m2=plot_area,
+        description=description,
         primary_image_url=_primary_image(parser, page_url=page_url),
     )
 
@@ -196,9 +227,21 @@ def enrich_sreal_property(item: RawProperty, detail: SRealDetail) -> RawProperty
             "detail_living_area_m2": (
                 str(detail.living_area_m2) if detail.living_area_m2 is not None else None
             ),
+            "detail_usable_area_m2": (
+                str(detail.usable_area_m2) if detail.usable_area_m2 is not None else None
+            ),
             "detail_plot_area_m2": (
                 str(detail.plot_area_m2) if detail.plot_area_m2 is not None else None
             ),
+            "detail_area_semantics": {
+                "living": "explicit_wohn_or_wohnnutzflaeche"
+                if detail.living_area_m2 is not None
+                else None,
+                "usable": "explicit_nutzflaeche" if detail.usable_area_m2 is not None else None,
+                "plot": "explicit_grund_or_grundstuecksflaeche"
+                if detail.plot_area_m2 is not None
+                else None,
+            },
             "primary_image_url": detail.primary_image_url,
         }
     )
