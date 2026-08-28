@@ -27,7 +27,8 @@ _JOB_PATH_RE = re.compile(
     r"(?P<path>/jobs/job/[^\"'?#]+/(?P<id>\d+))(?:[/?#]|$)"
 )
 _RESULT_COUNT_RE = re.compile(
-    r"(?<!\d)(?P<count>\d{1,3}(?:\.\d{3})*|\d+)\s+(?:Anzeigen|Jobs\b)",
+    r"(?<!\d)(?P<count>\d{1,3}(?:\.\d{3})*|\d+)\s+"
+    r"(?:Anzeigen\b|Jobs\s+für\b)",
     re.IGNORECASE,
 )
 _META_RE = re.compile(r"^(?P<date>\d{2}\.\d{2}\.)\s*\|\s*(?P<rest>.+)$")
