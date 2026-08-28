@@ -12,7 +12,7 @@ from app.jobs.candidate_fit import (
     CandidateProfile,
 )
 from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES, PROFILE_SEED_VERSION
-from app.jobs.concept_catalog import normalize_concept_text
+from app.jobs.concept_catalog import EXTRACTOR_VERSION, normalize_concept_text
 from app.jobs.concepts import ConceptKind, JobConcept, JobConceptAlias, JobConceptEvidence
 
 
@@ -37,15 +37,19 @@ def list_concepts_for_admin(
     concepts = list(session.scalars(concept_stmt.order_by(JobConcept.kind, JobConcept.label_de)))
     concept_ids = [concept.id for concept in concepts]
 
-    preferences = {
-        preference.concept_id: preference
-        for preference in session.scalars(
-            select(CandidateConceptPreference).where(
-                CandidateConceptPreference.profile_id == profile.id,
-                CandidateConceptPreference.concept_id.in_(concept_ids),
+    preferences = (
+        {
+            preference.concept_id: preference
+            for preference in session.scalars(
+                select(CandidateConceptPreference).where(
+                    CandidateConceptPreference.profile_id == profile.id,
+                    CandidateConceptPreference.concept_id.in_(concept_ids),
+                )
             )
-        )
-    } if concept_ids else {}
+        }
+        if concept_ids
+        else {}
+    )
 
     counts: dict[int, tuple[int, int, int]] = {}
     if concept_ids:
@@ -56,7 +60,10 @@ def list_concepts_for_admin(
                 func.sum(case((JobConceptEvidence.scope == "primary", 1), else_=0)),
                 func.sum(case((JobConceptEvidence.scope == "context", 1), else_=0)),
             )
-            .where(JobConceptEvidence.concept_id.in_(concept_ids))
+            .where(
+                JobConceptEvidence.concept_id.in_(concept_ids),
+                JobConceptEvidence.extractor_version == EXTRACTOR_VERSION,
+            )
             .group_by(JobConceptEvidence.concept_id)
         )
         counts = {
