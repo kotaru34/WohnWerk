@@ -63,11 +63,7 @@ def _fallback_card_metadata(
 
 
 def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
-    """Parse one s REAL result page by unique provider-issued listing ID.
-
-    A result card may contain multiple anchors to the same detail page (for example an
-    image link and a text link). Those are one property, not multiple visible cards.
-    """
+    """Parse one s REAL result page by unique provider-issued listing ID."""
     parser = _base._AnchorParser()
     parser.feed(html)
 
@@ -93,6 +89,7 @@ def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
             if facts is not None:
                 break
 
+        search_usable_area = None
         if facts is not None:
             area = _decimal(facts.area)
             area_kind = facts.area_kind.casefold()
@@ -102,6 +99,7 @@ def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
             city = facts.city
             living_area = area if area_kind == "wohnfläche" else None
             plot_area = area if area_kind == "grundfläche" else None
+            search_usable_area = area if area_kind == "nutzfläche" else None
             metadata_complete = True
         else:
             metadata_fallbacks += 1
@@ -132,6 +130,9 @@ def parse_sreal_search_page(html: str, *, page_url: str) -> SRealPage:
                     "identity_stable": True,
                     "search_metadata_complete": metadata_complete,
                     "search_anchor_count": len(anchors),
+                    "search_usable_area_m2": (
+                        str(search_usable_area) if search_usable_area is not None else None
+                    ),
                 },
             )
         )
@@ -186,12 +187,10 @@ class SRealPropertySource(_base.SRealPropertySource):
         result_cap_hit = False
 
         def detail_candidates(items: list[RawProperty]) -> list[RawProperty]:
-            """Skip detail I/O only when the search price already proves rejection.
+            """Return only explicitly in-budget cards for expensive detail/image I/O.
 
-            Search-card parsing can occasionally miss a price. Those unknown-price cards
-            are still enriched because the authoritative detail page may provide a valid
-            in-budget purchase price. The central runner applies the final acquisition gate
-            after enrichment, so unknown-after-detail items still never enter the database.
+            Every search card still returns to the central runner and is persisted for
+            lifecycle/continuity. Unknown or out-of-range prices are deliberately crawler-only.
             """
             nonlocal budget_accepted
             nonlocal budget_price_unknown
@@ -206,7 +205,6 @@ class SRealPropertySource(_base.SRealPropertySource):
                     output.append(item)
                 elif decision.reason == "price_unknown":
                     budget_price_unknown += 1
-                    output.append(item)
                 elif decision.reason == "price_below_min":
                     budget_price_below_min += 1
                 else:
@@ -217,9 +215,8 @@ class SRealPropertySource(_base.SRealPropertySource):
             client: httpx.AsyncClient,
             items: list[RawProperty],
         ) -> tuple[list[RawProperty], int, int, int]:
-            # Keep every search card for discovery/coverage accounting. Avoid detail/image
-            # requests only for cards already proven outside budget. Unknown search prices
-            # still get one detail chance so parser incompleteness cannot hide a valid house.
+            # Discovery accounting remains complete; only product-eligible cards trigger
+            # separate detail/image requests.
             candidates = detail_candidates(items)
             enriched, attempted, succeeded, failed = await self._enrich_page_items(
                 client,
