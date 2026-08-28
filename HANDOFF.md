@@ -13,11 +13,12 @@ This is the authoritative recovery point for a fresh context.
 WohnWerk is a private/self-hosted Austria-first property + job acquisition, personalization and matching system for the candidate/father.
 
 - App/user UI is German-only.
+- Father-facing product has two independent catalogs: **Häuser** and **Stellen**.
 - Source lifecycle, discovery relevance and candidate fit are separate concerns.
 - Failed/partial crawls never mass-deactivate authoritative data.
 - Missing from a frontier search is not proof of disappearance.
-- Hidden/favorite curation survives lifecycle/canonical merges.
-- Do not invent coordinates or semantic property attributes.
+- Hidden/favorite job curation survives lifecycle/canonical merges.
+- Do not invent coordinates, images or semantic property attributes.
 - Geography/commute remains separate from intrinsic job fit.
 - No permanent Job×Property pair table unless future measurements justify it.
 
@@ -32,7 +33,7 @@ Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 - `wohnwerk-liveness.timer`: daily frontier liveness probe
 - health endpoint: `/health`
 
-Latest verified runtime after the IMMMO repair:
+Latest verified runtime before the house-first UI deploy:
 - web service active and listening on 127.0.0.1:8000
 - `/health` returns `status=ok`, `country=AT`
 - refresh timer active/waiting with a real next trigger
@@ -69,22 +70,18 @@ Safe strategies only:
 - exact: PLZ + normalized title + price + provider-neutral display-area fingerprint
 - title_area: PLZ + normalized title + display-area fingerprint
 
-Price-only continuity was removed because provider changes can also change area semantics.
-
 Run #47 historical repair:
 - raw new: 2267
 - deterministic continuity matches: 1471
 - reclassified genuinely-new rows: 1466
 - effective new after repair: 801
 
-v3 idempotency verification on run #47:
-- `deterministic_pairs=0`
-
-Subsequent full scans stabilized naturally; latest controlled scans had no identity churn (`new=0`, `continuity_merged=0`). Do not reopen continuity unless new production evidence shows a concrete regression.
+v3 idempotency verification on run #47: `deterministic_pairs=0`.
+Subsequent full scans stabilized naturally; controlled scans had `new=0`, `continuity_merged=0`. Do not reopen continuity without concrete new production evidence.
 
 ## IMMMO area semantics — CLOSED
 
-Critical source fact: IMMMO's card-level `PLZ / N m²` is a provider-defined display area. It can represent Wohnfläche, Nutzfläche or Grundstück depending on the downstream portal/card. It must not be blindly stored as Wohnfläche.
+IMMMO's card-level `PLZ / N m²` is a provider-defined display area. It can represent Wohnfläche, Nutzfläche or Grundstück and must not be blindly stored as Wohnfläche.
 
 Current parser payload format: `immmo-search-discovery-v12`.
 
@@ -93,11 +90,6 @@ Current semantics:
 - explicit Grundstück / Grundstücksfläche -> `plot_area_m2`
 - generic primary card area -> `raw_payload.display_area_m2`
 - ambiguous display area is not promoted to Wohnfläche
-
-Parser v12 also protects flattened metadata such as:
-- `Wohnnutzfläche: 87.75 m² Grundstücksfläche: 410 m²`
-- `Nutzfläche: 120 m² Grundstücksfläche: 784 m²`
-so a previous numeric field is not incorrectly attached to the next label.
 
 Run #62 full v12 reconciliation:
 - status success / coverage ok
@@ -108,23 +100,41 @@ Run #62 full v12 reconciliation:
 - explicit living: 6,112
 - explicit plot: 3,030
 
-Historical legacy repair: `immmo-area-semantics-2026-08-28-v2`.
+Historical repair: `immmo-area-semantics-2026-08-28-v2`.
 
-The controlled repair cleared 7,395 IMMMO-only canonical `living_area_m2` values whose current audited v12 listings had no explicit living-area evidence. Source/display values were retained in listing raw payload; repair metadata records the previous canonical value.
-
-Repair checks:
-- safety dry-run candidates: 7395
+Controlled repair:
+- dry-run candidates: 7,395
 - applied: `canonical_living_cleared=7395`
 - repeat dry-run: `unverified_immmo_only=0`
 
-Post-repair audit on run #62:
+Post-repair audit:
 - canonical_living_mismatch=0
 - suspicious_plot_as_living=0
 - suspicious_immmo_only=0
 - unverified_canonical_living=0
 - unverified_immmo_only=0
 
-UI semantics now support neutral `Fläche N m² (Typ nicht eindeutig)` when canonical Wohnfläche is unknown but a single unambiguous source display-area exists. Do not call this value Wohnfläche.
+UI must display ambiguous single-source card area as neutral `Fläche`, never as Wohnfläche.
+
+## Property image policy
+
+Do not invent or web-search an image by title. A catalog image must be tied to the exact source listing.
+
+The father-facing catalog reads the first source-backed payload field among:
+- `primary_image_url`
+- `image_url`
+- `thumbnail_url`
+
+If none exists, the card shows a placeholder.
+
+s REAL detail enrichment now extracts a source-backed main image from `og:image`, `twitter:image`/`twitter:image:src` or `rel=image_src` and persists it as `raw_payload.primary_image_url`.
+
+To avoid aggressive source traffic:
+- hourly/incremental s REAL runs do **not** fetch all detail pages
+- full s REAL reconciliation adds `--enrich-details`
+- this keeps exact metadata/images fresh roughly daily on the small s REAL corpus
+
+IMMMO image extraction is not enabled yet. Do not destabilize the validated IMMMO parser merely for cosmetic coverage; add it only with a deterministic card-to-image association and regression tests.
 
 ## Jobs, concepts and candidate fit
 
@@ -136,7 +146,6 @@ Candidate profile:
 - father profile: ~30 years mechanical engineering / technical project leadership, product development, mechanical design, project steering, machinery/vehicle/rail/special equipment, team/vendor/specification/schedule/FEM/FMEA/test/assembly/commissioning experience
 
 Current fit policy: `candidate-fit-2026-08-28-v3`.
-
 Concept extractor: `concept-seed-2026-08-28-v3`.
 
 Candidate curation:
@@ -167,7 +176,7 @@ Frontier job sources:
 - stepstone.at
 - willhaben-jobs
 
-Scheduler runs every 15 minutes and decides source due-ness from DB state. Job success triggers resolver/concept processing and live fit remains recomputable.
+Scheduler runs every 15 minutes and decides source due-ness from DB state. Successful job acquisition triggers location/concept post-processing.
 
 Known future acquisition expansion:
 - Workday
@@ -186,13 +195,11 @@ Job location semantics:
 - unresolved/countrywide remains ungeocoded
 
 Road semantics:
-- PostGIS geography is the cheap Luftlinie prefilter
-- local OSRM Table API performs fastest-driving refinement
-- 50 km configured radius is enforced on road distance after refinement
-- prefilter default: 75 properties/job
-- same-PLZ/same-centroid pairs can legitimately report 0 km / 0 min; this is a centroid limitation, not a routing failure
+- PostGIS geography provides scalable Luftlinie inclusion/prefilter
+- local OSRM Table API adds fastest-driving distance/time
+- same-PLZ/same-centroid pairs can legitimately report 0 km / 0 min
 
-Latest post-repair road audit (50 km, 20 jobs, 5 houses/job, prefilter 75):
+Latest post-repair road audit:
 - routing_status=ok
 - routing_seconds=0.749
 - active_properties=14,414
@@ -204,28 +211,105 @@ Latest post-repair road audit (50 km, 20 jobs, 5 houses/job, prefilter 75):
 - jobs_with_located_location=151
 - job_location_ratio=0.844
 
-The routing layer remains fast and healthy after the property cleanup.
+## Father-facing UX — CURRENT TARGET
 
-## Current UI state
+The old `Kombinationen` page is no longer the primary product model. It may remain available as a legacy/debug surface.
 
-Current protected German surfaces:
-- `/admin/matches` — job + nearby-house combinations
-- `/admin/jobs` — ranked jobs, filters, favorite/hide actions
-- `/admin/concepts` — technical candidate concept review/admin
+Normal navigation is:
+- **Häuser**
+- **Stellen**
 
-Root currently redirects to the matching surface.
+Root `/` redirects to `/houses`.
 
-The matching page is already road-aware and fail-soft to Luftlinie. Property area presentation is provenance-aware after the v12 repair.
+### `/houses`
 
-## Immediate next steps
+Independent active-property catalog, 36 cards/page.
 
-1. Move father-facing browsing away from the `/admin/*` namespace without rewriting the proven auth/curation internals:
-   - `/matches` for combinations
-   - `/jobs` for ranked jobs and favorite/hide curation
-   - keep `/admin/concepts` as the technical/admin surface
-   - preserve legacy `/admin/matches` and `/admin/jobs` compatibility redirects/aliases
-2. Make root `/` lead to `/matches`.
-3. Add `Kombinationen` + `Stellen` navigation consistently on father-facing pages; do not surface `Konzepte` as a normal user tab.
-4. Keep Basic auth for now; improve auth naming/UX separately if needed.
-5. After father-facing navigation is stable, continue broad job acquisition (Workday/Greenhouse/direct career pages).
-6. Later improve location precision only with source-backed street/address evidence; do not fake street-level routing from centroids.
+Filters:
+- `ort`: city or postal code
+- price min/max
+- verified Wohnfläche min/max
+- explicit Grundstück min/max
+
+Cards show:
+- source-backed image when available, otherwise placeholder
+- location
+- title
+- price
+- verified Wohnfläche, otherwise neutral source `Fläche` when available
+- explicit Grundstück where semantically safe
+
+### `/houses/{property_id}`
+
+Full active-property detail page:
+- image/placeholder
+- title/location/price/areas
+- source links
+- description if stored
+- radius selector, default 50 km
+- all eligible geolocated jobs within the selected radius
+- intrinsic fit score and salary/source data
+- OSRM road distance/time when available
+
+Radius inclusion is currently Luftlinie between resolved PLZ/locality centroids. This is deliberate and scalable. Road time is supplementary and must not be misrepresented as street-address precision.
+
+### `/jobs`
+
+Existing ranked job list remains the main job catalog:
+- fit filters
+- search
+- favorite/hide curation
+- eligible jobs link to their detail page
+
+### `/jobs/{job_id}`
+
+Full eligible-job detail page:
+- job fit/salary/location/source links
+- radius selector, default 50 km
+- all active geolocated houses inside the selected Luftlinie radius
+- 40 houses/page
+- only the current page is road-refined through OSRM
+
+This avoids giant all-to-all routing matrices while still giving useful travel information.
+
+### Technical/admin surfaces
+
+Keep protected legacy/admin tools available:
+- `/admin/concepts`
+- `/admin/jobs`
+- `/admin/matches`
+- `/matches` may remain as legacy/debug combinations view
+
+Basic auth remains shared for now.
+
+## New house-first implementation
+
+Main code:
+- `app/catalog.py`
+- `app/templates/houses.html`
+- `app/templates/house_detail.html`
+- `app/templates/job_detail.html`
+
+Existing `app/templates/admin_jobs.html` is reused for `/jobs`, now with house-first navigation and links to `/jobs/{id}`.
+
+Tests cover:
+- father-facing route registration/root redirect
+- job curation redirect behavior
+- source-backed image/neutral-area presentation
+- duplicate ambiguous Fläche/Grund suppression
+- PostGIS `ST_DWithin` + nearest-location radius query
+- s REAL main-image extraction
+- reconciliation-only s REAL detail enrichment command
+
+## Immediate production steps after current CI is green
+
+1. Pull branch on production and run Ruff/compile/tests. No migration required.
+2. Restart `wohnwerk.service` and verify `/health`.
+3. Verify `/` redirects to `/houses` and `/houses` + `/jobs` are Basic-auth protected.
+4. Open `/houses` in browser and exercise filters/pagination.
+5. Open one house and verify nearby jobs/radius semantics.
+6. Open one eligible job and verify paginated nearby houses + current-page road refinement.
+7. Run one controlled s REAL `--reconcile --enrich-details` with refresh timer paused to immediately backfill available source-backed images.
+8. Count/list payloads with `primary_image_url` and visually verify several cards.
+9. Restore refresh timer.
+10. Only then consider deterministic IMMMO card-image extraction to raise image coverage beyond the s REAL subset.
