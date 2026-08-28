@@ -22,7 +22,7 @@ from app.models import (
     Source,
 )
 
-CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v2"
+CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +51,22 @@ def _observation(listing: PropertyListing) -> PropertyContinuityObservation:
     )
 
 
+def _previous_complete_reconciliation(session: Session, run: CrawlRun) -> CrawlRun | None:
+    return session.scalar(
+        select(CrawlRun)
+        .where(
+            CrawlRun.source_id == run.source_id,
+            CrawlRun.id != run.id,
+            CrawlRun.mode == CrawlMode.RECONCILIATION,
+            CrawlRun.coverage_status == CoverageStatus.OK,
+            CrawlRun.finished_at.is_not(None),
+            CrawlRun.started_at < run.started_at,
+        )
+        .order_by(CrawlRun.started_at.desc())
+        .limit(1)
+    )
+
+
 def find_immmo_continuity_pairs(
     session: Session,
     run: CrawlRun,
@@ -61,6 +77,17 @@ def find_immmo_continuity_pairs(
     if run.mode != CrawlMode.RECONCILIATION or run.coverage_status != CoverageStatus.OK:
         return []
 
+    previous_run = _previous_complete_reconciliation(session, run)
+    if previous_run is None or previous_run.finished_at is None:
+        return []
+    continuity_cutoff = previous_run.finished_at
+
+    # Keep the two sides of the comparison stable across repeated repair invocations.
+    # A provider-rotation row must have appeared after the previous complete scan and be
+    # visible in this one. The historical side must predate that completed scan and be
+    # absent now. After a merge the old lifecycle row keeps its original first_seen_at,
+    # so it cannot become a new "current" candidate and unlock cascading second-pass
+    # matches merely because last_seen_crawl_run_id was updated to this run.
     current = list(
         session.scalars(
             select(PropertyListing)
@@ -68,6 +95,7 @@ def find_immmo_continuity_pairs(
                 PropertyListing.source_id == source.id,
                 PropertyListing.status == ListingStatus.ACTIVE,
                 PropertyListing.last_seen_crawl_run_id == run.id,
+                PropertyListing.first_seen_at > continuity_cutoff,
             )
             .order_by(PropertyListing.id)
         )
@@ -79,6 +107,7 @@ def find_immmo_continuity_pairs(
                 PropertyListing.source_id == source.id,
                 PropertyListing.status == ListingStatus.ACTIVE,
                 PropertyListing.last_seen_crawl_run_id.is_distinct_from(run.id),
+                PropertyListing.first_seen_at <= continuity_cutoff,
                 PropertyListing.last_seen_at < run.started_at,
             )
             .order_by(PropertyListing.id)
@@ -173,6 +202,16 @@ def apply_immmo_continuity_pairs(
     new_rows_reclassified = 0
     deleted_properties = 0
 
+    previous_run = _previous_complete_reconciliation(session, run)
+    if previous_run is None or previous_run.finished_at is None:
+        return ImmmoContinuitySummary(
+            matched=0,
+            new_rows_reclassified=0,
+            deleted_properties=0,
+            strategies={},
+        )
+    continuity_cutoff = previous_run.finished_at
+
     for pair in pairs:
         previous = session.get(PropertyListing, pair.previous_listing_id)
         current = session.get(PropertyListing, pair.current_listing_id)
@@ -182,7 +221,11 @@ def apply_immmo_continuity_pairs(
             continue
         if current.last_seen_crawl_run_id != run.id:
             continue
+        if current.first_seen_at <= continuity_cutoff:
+            continue
         if previous.last_seen_crawl_run_id == run.id:
+            continue
+        if previous.first_seen_at > continuity_cutoff:
             continue
 
         target = previous.property
