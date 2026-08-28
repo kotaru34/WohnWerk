@@ -1,4 +1,4 @@
-"""Add property curation, usable area, local image cache and seen baseline.
+"""Add property curation, local image cache and seen/new state.
 
 Revision ID: 0010_property_curation_images_seen
 Revises: 0009_candidate_job_preferences
@@ -14,28 +14,64 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "properties",
-        sa.Column("usable_area_m2", sa.Numeric(10, 2), nullable=True),
-    )
-    op.add_column(
-        "candidate_profiles",
+    op.create_table(
+        "candidate_novelty_baselines",
+        sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column(
-            "novelty_started_at",
+            "profile_id",
+            sa.Integer(),
+            sa.ForeignKey("candidate_profiles.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
+        sa.Column(
+            "started_at",
             sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.func.now(),
         ),
     )
-    op.add_column(
-        "candidate_job_preferences",
-        sa.Column("viewed_at", sa.DateTime(timezone=True), nullable=True),
+    op.create_index(
+        "ix_candidate_novelty_baselines_profile_id",
+        "candidate_novelty_baselines",
+        ["profile_id"],
+    )
+    op.execute(
+        sa.text(
+            "INSERT INTO candidate_novelty_baselines (profile_id, started_at) "
+            "SELECT id, now() FROM candidate_profiles"
+        )
+    )
+
+    op.create_table(
+        "candidate_job_views",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column(
+            "profile_id",
+            sa.Integer(),
+            sa.ForeignKey("candidate_profiles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "job_id",
+            sa.Integer(),
+            sa.ForeignKey("jobs.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "viewed_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.UniqueConstraint("profile_id", "job_id", name="uq_candidate_job_view_profile_job"),
     )
     op.create_index(
-        "ix_candidate_job_preferences_profile_viewed",
-        "candidate_job_preferences",
-        ["profile_id", "viewed_at"],
+        "ix_candidate_job_views_profile_id",
+        "candidate_job_views",
+        ["profile_id"],
     )
+    op.create_index("ix_candidate_job_views_job_id", "candidate_job_views", ["job_id"])
 
     op.create_table(
         "candidate_property_preferences",
@@ -177,10 +213,12 @@ def downgrade() -> None:
     )
     op.drop_table("candidate_property_preferences")
 
+    op.drop_index("ix_candidate_job_views_job_id", table_name="candidate_job_views")
+    op.drop_index("ix_candidate_job_views_profile_id", table_name="candidate_job_views")
+    op.drop_table("candidate_job_views")
+
     op.drop_index(
-        "ix_candidate_job_preferences_profile_viewed",
-        table_name="candidate_job_preferences",
+        "ix_candidate_novelty_baselines_profile_id",
+        table_name="candidate_novelty_baselines",
     )
-    op.drop_column("candidate_job_preferences", "viewed_at")
-    op.drop_column("candidate_profiles", "novelty_started_at")
-    op.drop_column("properties", "usable_area_m2")
+    op.drop_table("candidate_novelty_baselines")
