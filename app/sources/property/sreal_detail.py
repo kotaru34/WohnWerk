@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from app.sources.base import RawProperty
 from app.sources.property.immmo import _clean_text, _decimal
@@ -23,6 +23,7 @@ PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5"}
+IMAGE_META_KEYS = {"og:image", "twitter:image", "twitter:image:src"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,7 @@ class _VisibleTextParser(HTMLParser):
         self._hidden_depth = 0
         self._heading_stack: list[_HeadingFrame] = []
         self.headings: list[_Heading] = []
+        self.primary_image_url: str | None = None
 
     @property
     def text(self) -> str:
@@ -63,13 +65,25 @@ class _VisibleTextParser(HTMLParser):
             self._heading_stack[-1].parts.append(cleaned)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        del attrs
         tag = tag.casefold()
         if tag in {"script", "style", "noscript", "template"}:
             self._hidden_depth += 1
             return
         if self._hidden_depth:
             return
+
+        attributes = {key.casefold(): value or "" for key, value in attrs}
+        if tag == "meta" and self.primary_image_url is None:
+            meta_key = (attributes.get("property") or attributes.get("name") or "").casefold()
+            content = attributes.get("content", "").strip()
+            if meta_key in IMAGE_META_KEYS and content:
+                self.primary_image_url = content
+        elif tag == "link" and self.primary_image_url is None:
+            rel = attributes.get("rel", "").casefold()
+            href = attributes.get("href", "").strip()
+            if "image_src" in rel.split() and href:
+                self.primary_image_url = href
+
         if tag in HEADING_TAGS:
             self._heading_stack.append(_HeadingFrame(tag=tag, start=self._length))
 
@@ -107,6 +121,7 @@ class SRealDetail:
     living_area_m2: Decimal | None
     plot_area_m2: Decimal | None
     description: str | None
+    primary_image_url: str | None
 
 
 def _listing_id(page_url: str) -> str:
@@ -126,6 +141,16 @@ def _description(parser: _VisibleTextParser) -> str | None:
         value = _clean_text(parser.text[heading.end:end])
         return value or None
     return None
+
+
+def _primary_image(parser: _VisibleTextParser, *, page_url: str) -> str | None:
+    if not parser.primary_image_url:
+        return None
+    absolute = urljoin(page_url, parser.primary_image_url)
+    parsed = urlparse(absolute)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+    return absolute
 
 
 def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
@@ -153,6 +178,7 @@ def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
         living_area_m2=_decimal(living.group("value")) if living else None,
         plot_area_m2=_decimal(plot.group("value")) if plot else None,
         description=_description(parser),
+        primary_image_url=_primary_image(parser, page_url=page_url),
     )
 
 
@@ -173,6 +199,7 @@ def enrich_sreal_property(item: RawProperty, detail: SRealDetail) -> RawProperty
             "detail_plot_area_m2": (
                 str(detail.plot_area_m2) if detail.plot_area_m2 is not None else None
             ),
+            "primary_image_url": detail.primary_image_url,
         }
     )
 
