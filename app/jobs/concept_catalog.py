@@ -107,7 +107,13 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.DOMAIN,
         "automotive",
         "Fahrzeugbau / Automotive",
-        ("Fahrzeugbau", "Automotive", "KFZ Technik", "KFZ-Technik", "Vehicle Engineering"),
+        (
+            "Fahrzeugbau",
+            "Automotive",
+            "KFZ Technik",
+            "KFZ-Technik",
+            "Vehicle Engineering",
+        ),
     ),
     ConceptSeed(
         ConceptKind.DOMAIN,
@@ -119,7 +125,12 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.DOMAIN,
         "rail-vehicles",
         "Schienenfahrzeugtechnik",
-        ("Schienenfahrzeugtechnik", "Schienenfahrzeugbau", "Rail Vehicle", "Railway Vehicle"),
+        (
+            "Schienenfahrzeugtechnik",
+            "Schienenfahrzeugbau",
+            "Rail Vehicle",
+            "Railway Vehicle",
+        ),
     ),
     ConceptSeed(
         ConceptKind.DOMAIN,
@@ -171,7 +182,12 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.TASK,
         "supplier-coordination",
         "Lieferantenkoordination",
-        ("Lieferantenkoordination", "Lieferantenmanagement", "Supplier Coordination", "Supplier Management"),
+        (
+            "Lieferantenkoordination",
+            "Lieferantenmanagement",
+            "Supplier Coordination",
+            "Supplier Management",
+        ),
     ),
     ConceptSeed(
         ConceptKind.TASK,
@@ -231,7 +247,12 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
     ConceptSeed(ConceptKind.TOOL, "catia", "CATIA", ("CATIA",)),
     ConceptSeed(ConceptKind.TOOL, "creo", "Creo", ("Creo", "PTC Creo")),
     ConceptSeed(ConceptKind.TOOL, "siemens-nx", "Siemens NX", ("Siemens NX", "NX CAD")),
-    ConceptSeed(ConceptKind.TOOL, "inventor", "Autodesk Inventor", ("Autodesk Inventor", "Inventor")),
+    ConceptSeed(
+        ConceptKind.TOOL,
+        "inventor",
+        "Autodesk Inventor",
+        ("Autodesk Inventor", "Inventor"),
+    ),
     ConceptSeed(ConceptKind.TOOL, "autocad", "AutoCAD", ("AutoCAD",)),
     ConceptSeed(ConceptKind.TOOL, "eplan", "EPLAN", ("EPLAN", "E-Plan")),
 )
@@ -244,13 +265,17 @@ def _contains_alias(normalized_text: str, normalized_alias: str) -> bool:
     return re.search(pattern, normalized_text) is not None
 
 
-def extract_concepts(snapshot: JobTextSnapshot) -> list[ConceptMatch]:
+def extract_concepts(
+    snapshot: JobTextSnapshot,
+    *,
+    catalog: tuple[ConceptSeed, ...] = CONCEPT_SEEDS,
+) -> list[ConceptMatch]:
     fields = (
         ("title", normalize_concept_text(snapshot.title), 1.0),
         ("description", normalize_concept_text(snapshot.description), 0.8),
     )
     matches: list[ConceptMatch] = []
-    for concept in CONCEPT_SEEDS:
+    for concept in catalog:
         aliases = sorted(
             ((alias, normalize_concept_text(alias)) for alias in concept.aliases),
             key=lambda item: len(item[1]),
