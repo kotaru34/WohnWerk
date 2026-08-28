@@ -46,6 +46,18 @@ LIVING_AREA_PATTERNS = (
         re.IGNORECASE,
     ),
 )
+USABLE_AREA_PATTERNS = (
+    re.compile(
+        rf"\bNutzfläche\b\s*(?:von|:)?\s*"
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"{AREA_PREFIX_PATTERN}{AREA_NUMBER_PATTERN}{AREA_UNIT_PATTERN}\s+"
+        rf"Nutzfläche\b(?!\s*:)",
+        re.IGNORECASE,
+    ),
+)
 
 # Flattened IMMMO card text can look like
 # ``Nutzfläche: 120 m² Grundstücksfläche: 784 m²``. A naive value-before-label
@@ -132,6 +144,14 @@ def _explicit_living_area(text: str) -> Decimal | None:
     return None
 
 
+def _explicit_usable_area(text: str) -> Decimal | None:
+    for pattern in USABLE_AREA_PATTERNS:
+        match = pattern.search(text)
+        if match is not None:
+            return _decimal(match.group(1))
+    return None
+
+
 def _explicit_plot_area(text: str) -> Decimal | None:
     for patterns in (PLOT_AREA_LABEL_FIRST_PATTERNS, PLOT_AREA_VALUE_FIRST_PATTERNS):
         for pattern in patterns:
@@ -154,12 +174,7 @@ def _display_area_semantics(
     explicit_living_area: Decimal | None,
     explicit_plot_area: Decimal | None,
 ) -> str:
-    """Describe what IMMMO's unlabeled card-level area appears to represent.
-
-    The primary ``PLZ / N m²`` field is downstream-provider defined. Production evidence
-    shows the same property can surface there as Wohnfläche on one card and Grundstück on
-    another. We therefore never promote it to canonical living area without explicit text.
-    """
+    """Describe what IMMMO's unlabeled card-level area appears to represent."""
     if explicit_living_area is not None:
         if _areas_close(display_area, explicit_living_area):
             return "living_explicit_primary"
@@ -239,6 +254,11 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             display_area = None
 
         explicit_living_area = _explicit_living_area(card_text)
+        explicit_usable_area = _explicit_usable_area(card_text)
+        # Combined labels such as Wohn-/Nutzfläche are living evidence first. Do not
+        # duplicate the same number as a separate generic Nutzfläche.
+        if _areas_close(explicit_usable_area, explicit_living_area):
+            explicit_usable_area = None
         explicit_plot_area = _explicit_plot_area(card_text)
         area_semantics = _display_area_semantics(
             display_area=display_area,
@@ -298,6 +318,9 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
                 "display_area_semantics": area_semantics,
                 "explicit_living_area_m2": (
                     str(explicit_living_area) if explicit_living_area is not None else None
+                ),
+                "explicit_usable_area_m2": (
+                    str(explicit_usable_area) if explicit_usable_area is not None else None
                 ),
                 "explicit_plot_area_m2": (
                     str(explicit_plot_area) if explicit_plot_area is not None else None
