@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     ai_base_url: str = "http://ai-vm:8001"
     ai_timeout_seconds: int = 120
 
+    # The write-capable admin surface stays fail-closed until a password is configured.
+    admin_username: str = "admin"
+    admin_password: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
