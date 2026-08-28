@@ -17,19 +17,31 @@ from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.property_acquisition import annotate_property_items_by_budget
+from app.property_liveness import prepare_immmo_item_liveness
 from app.sources.base import PropertySource, RawProperty, SourceFetchError
 
 
-def _annotate_budget_with_cursor(
+async def _annotate_visibility_with_cursor(
+    session: Session,
+    source: Source,
     items: list[RawProperty],
     cursor: dict,
 ) -> dict:
+    liveness = await prepare_immmo_item_liveness(session, source, items)
     counts = annotate_property_items_by_budget(items)
     next_cursor = dict(cursor)
-    next_cursor["product_visible"] = counts["accepted"]
+    next_cursor["product_visible"] = sum(
+        (item.raw_payload or {}).get("product_visible") is True for item in items
+    )
+    next_cursor["product_price_accepted"] = counts["accepted"]
     next_cursor["product_price_unknown"] = counts["price_unknown"]
     next_cursor["product_price_below_min"] = counts["price_below_min"]
     next_cursor["product_price_above_max"] = counts["price_above_max"]
+    if source.name == "immmo.at":
+        next_cursor["source_liveness_attempted"] = liveness.attempted
+        next_cursor["source_liveness_live"] = liveness.live
+        next_cursor["source_liveness_dead"] = liveness.dead
+        next_cursor["source_liveness_unknown"] = liveness.unknown
     return next_cursor
 
 
@@ -42,9 +54,10 @@ async def run_property_source(
 ) -> tuple[CrawlRun, CoverageSummary]:
     """Run all enabled shards sequentially and account for incomplete coverage.
 
-    All parsed property observations are persisted for lifecycle and continuity. The
-    father-facing visibility budget is stored as source-observation metadata and must not
-    shrink `seen` coverage or make out-of-budget listings look disappeared.
+    All parsed property observations are persisted for lifecycle and continuity. Father-facing
+    visibility is stored as source-observation metadata and must not shrink `seen` coverage.
+    IMMMO additionally verifies genuinely new downstream URLs before exposing them as product
+    listings; synthetic fallback identities remain crawler-only.
     """
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
@@ -74,7 +87,12 @@ async def run_property_source(
                 cursor=shard.cursor,
                 reconciliation=reconciliation,
             )
-            next_cursor = _annotate_budget_with_cursor(batch.items, batch.next_cursor)
+            next_cursor = await _annotate_visibility_with_cursor(
+                session,
+                source,
+                batch.items,
+                batch.next_cursor,
+            )
             new_count, updated_count = ingest_properties(
                 session,
                 source=source,
@@ -118,7 +136,9 @@ async def run_property_source(
                         f"Could not reload partial-run state for {source.name}/{spec.key}"
                     ) from exc
                 partial_items = cast(list[RawProperty], exc.partial_items)
-                partial_cursor = _annotate_budget_with_cursor(
+                partial_cursor = await _annotate_visibility_with_cursor(
+                    session,
+                    partial_source,
                     partial_items,
                     exc.next_cursor,
                 )
