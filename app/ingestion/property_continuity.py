@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Hashable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Hashable
 
 
 @dataclass(frozen=True, slots=True)
