@@ -8,9 +8,10 @@ from sqlalchemy import select
 from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.property.sreal_v2 import BASE_URL, SRealPropertySource
+from app.sources.property.sreal_v2 import BASE_URL
+from app.sources.property.thumbnail_capture import SRealThumbnailPropertySource
 
-ADAPTER_PATH = "app.sources.property.sreal_v2.SRealPropertySource"
+ADAPTER_PATH = "app.sources.property.thumbnail_capture.SRealThumbnailPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,7 +80,7 @@ def get_or_create_source() -> Source:
 async def async_main() -> int:
     args = parse_args()
     source = get_or_create_source()
-    adapter = SRealPropertySource(
+    adapter = SRealThumbnailPropertySource(
         request_delay_seconds=args.delay,
         incremental_pages=args.incremental_pages,
         hard_max_pages=args.hard_max_pages,
