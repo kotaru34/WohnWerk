@@ -72,6 +72,10 @@ def upgrade() -> None:
             "concept_id",
             name="uq_candidate_preference_profile_concept",
         ),
+        sa.CheckConstraint(
+            "state IN ('can_want', 'can_not_want', 'cannot_want', 'cannot_not_want')",
+            name="ck_candidate_preference_state",
+        ),
     )
     op.create_index(
         "ix_candidate_concept_preferences_profile_id",
