@@ -66,7 +66,7 @@ def test_merge_plan_prefers_richer_duplicate_as_survivor() -> None:
         company="Example GmbH",
         city="Linz",
         description="Mechanische Konstruktion und Produktentwicklung. " * 20,
-        salary_min=Decimal("4200"),
+        salary_min=Decimal(4200),
     )
 
     plan = build_merge_plan([sparse, rich], source_names={10: "a", 20: "b"})
@@ -102,14 +102,14 @@ def test_merge_plan_blocks_conflicting_salary_bundles() -> None:
         title="Senior Konstrukteur Maschinenbau",
         company="Example GmbH",
         city="Linz",
-        salary_min=Decimal("4000"),
+        salary_min=Decimal(4000),
     )
     right = _job(
         20,
         title="Senior Konstrukteur Maschinenbau",
         company="Example GmbH",
         city="Linz",
-        salary_min=Decimal("5000"),
+        salary_min=Decimal(5000),
     )
 
     plan = build_merge_plan([left, right], source_names={10: "a", 20: "b"})
