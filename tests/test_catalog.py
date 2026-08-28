@@ -57,6 +57,33 @@ def test_property_view_hides_ambiguous_duplicate_plot_label() -> None:
     assert view.visible_plot_area_m2 is None
 
 
+def test_property_view_shows_distinct_nutzflaeche_but_not_duplicate_living_area() -> None:
+    property_row = Property(id=9, title="Haus", living_area_m2=Decimal(140))
+    duplicate = PropertyView(
+        property=property_row,
+        sources=(
+            PropertySourceView(
+                label="sreal.at",
+                url="https://example.test/a",
+                usable_area_m2=Decimal(140),
+            ),
+        ),
+    )
+    distinct = PropertyView(
+        property=property_row,
+        sources=(
+            PropertySourceView(
+                label="sreal.at",
+                url="https://example.test/a",
+                usable_area_m2=Decimal(175),
+            ),
+        ),
+    )
+
+    assert duplicate.visible_usable_area_m2 is None
+    assert distinct.visible_usable_area_m2 == Decimal(175)
+
+
 def test_job_house_radius_query_is_indexable_postgis_query() -> None:
     stmt = _properties_within_radius_for_job_stmt(144, 50.0)
     sql = str(
@@ -70,6 +97,8 @@ def test_job_house_radius_query_is_indexable_postgis_query() -> None:
     assert "ST_Distance" in sql
     assert "row_number() OVER" in sql
     assert "properties.status = 'active'" in sql
+    assert "product_visibility_policy" in sql
+    assert "product_visible" in sql
     assert "job_locations.job_id = 144" in sql
 
 
