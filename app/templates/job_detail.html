@@ -19,8 +19,11 @@
     .coverage { font-size: .78rem; opacity: .68; margin-top: 8px; }
     .company { opacity: .7; margin-bottom: 4px; }
     h1 { margin: 0 0 9px; line-height: 1.2; }
-    .badges { display: flex; flex-wrap: wrap; gap: 6px; }
-    .badge { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; font-size: .82rem; }
+    .badges, .status-line { display: flex; flex-wrap: wrap; gap: 6px; }
+    .badge, .status { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; font-size: .82rem; }
+    .status { opacity: .72; }
+    .status.new { opacity: 1; font-weight: 750; border-color: color-mix(in srgb, AccentColor 55%, CanvasText 20%); background: color-mix(in srgb, AccentColor 10%, Canvas); }
+    .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
     .hard { border-color: color-mix(in srgb, #d33 60%, transparent); background: color-mix(in srgb, #d33 10%, Canvas); }
     .links { font-size: .9rem; line-height: 1.55; }
     .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
@@ -32,7 +35,9 @@
     button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
     .result-line { display: flex; justify-content: space-between; gap: 12px; margin: 18px 0 12px; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; }
+    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; transition: background .15s ease, border-color .15s ease; }
+    .house.unviewed { border-color: color-mix(in srgb, AccentColor 34%, CanvasText 18%); }
+    .house.viewed { background: color-mix(in srgb, CanvasText 2%, Canvas); }
     .media { aspect-ratio: 16 / 9; background: color-mix(in srgb, CanvasText 7%, Canvas); display: grid; place-items: center; overflow: hidden; }
     .media img { width: 100%; height: 100%; object-fit: cover; }
     .placeholder { opacity: .42; font-size: .84rem; }
@@ -42,6 +47,10 @@
     .price { font-size: 1.2rem; font-weight: 750; margin: 8px 0; }
     .facts { display: flex; flex-wrap: wrap; gap: 5px; font-size: .78rem; }
     .fact { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 7px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+    .actions form { margin: 0; }
+    .actions button { padding: 6px 8px; font-size: .8rem; }
+    .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
     .distance { margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); font-size: .84rem; }
     .distance strong { display: block; font-size: 1.05rem; }
     .pagination { margin-top: 24px; display: flex; justify-content: center; gap: 10px; align-items: center; }
@@ -73,6 +82,7 @@
       {% endif %}
     </div>
     <div>
+      <div class="status-line"><span class="status">Gesehen</span></div>
       <div class="company">{{ fit.job.company or 'Firma unbekannt' }}</div>
       <h1>{{ fit.job.title }}</h1>
       <div class="badges">
@@ -96,7 +106,7 @@
     <div>
       <h2>Häuser im Umkreis</h2>
       <div class="semantics">
-        WohnWerk zeigt hier nur aktuelle Immobilien mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Zusätzlich gilt dein gespeicherter Hausfilter: <strong>{{ house_filter_summary }}</strong>. Die Auswahl erfolgt zunächst per Luftlinie; Straßenzeit wird für die aktuelle Seite zusätzlich berechnet.
+        WohnWerk zeigt hier nur aktuelle, nicht ausgeblendete Immobilien mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Zusätzlich gilt dein gespeicherter Hausfilter: <strong>{{ house_filter_summary }}</strong>. Die Auswahl erfolgt zunächst per Luftlinie; Straßenzeit wird für die aktuelle Seite zusätzlich berechnet.
       </div>
     </div>
     <form class="radius" method="get" action="/jobs/{{ fit.job.id }}">
@@ -116,15 +126,22 @@
     {% for item in houses %}
       {% set view = item.property %}
       {% set house = view.property %}
-      <article class="house">
+      {% set state = states.get(house.id) %}
+      {% set viewed = state and state.viewed %}
+      <article class="house {{ 'viewed' if viewed else 'unviewed' }}" id="house-{{ house.id }}">
         <a class="media" href="/houses/{{ house.id }}?radius_km={{ radius_km|round|int }}">
-          {% if view.image_url %}
-            <img src="{{ view.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          {% if image_urls.get(house.id) %}
+            <img src="{{ image_urls.get(house.id) }}" alt="" loading="lazy">
           {% else %}
-            <span class="placeholder">Noch kein Vorschaubild gespeichert</span>
+            <span class="placeholder">Vorschaubild wird im Hintergrund geladen</span>
           {% endif %}
         </a>
         <div class="body">
+          <div class="status-line">
+            {% if house.id in new_ids %}<span class="status new">Neu</span>{% endif %}
+            <span class="status">{{ 'Gesehen' if viewed else 'Noch nicht angesehen' }}</span>
+            {% if state and state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
+          </div>
           <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
           <h3><a href="/houses/{{ house.id }}?radius_km={{ radius_km|round|int }}">{{ house.title }}</a></h3>
           <div class="price">{{ eur_label(house.price_eur) }}</div>
@@ -136,6 +153,20 @@
             {% endif %}
             {% if area_label(view.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(view.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(view.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(view.visible_plot_area_m2) }}</span>{% endif %}
+          </div>
+          <div class="actions">
+            <form method="post" action="/houses/{{ house.id }}/favorite">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="favorite" value="{{ '0' if state and state.favorite else '1' }}">
+              <input type="hidden" name="return_to" value="/jobs/{{ fit.job.id }}?radius_km={{ radius_km|round|int }}&seite={{ page }}#house-{{ house.id }}">
+              <button class="favorite {% if state and state.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if state and state.favorite else 'Als Favorit merken' }}</button>
+            </form>
+            <form method="post" action="/houses/{{ house.id }}/hidden">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="hidden" value="1">
+              <input type="hidden" name="return_to" value="/jobs/{{ fit.job.id }}?radius_km={{ radius_km|round|int }}&seite={{ page }}">
+              <button type="submit">Ausblenden</button>
+            </form>
           </div>
           <div class="distance">
             {% if item.road_duration_minutes is not none %}
