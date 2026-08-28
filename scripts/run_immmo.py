@@ -9,9 +9,9 @@ from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
 from app.sources.property.immmo import BASE_URL
-from app.sources.property.immmo_v3 import ImmmoPropertySource
+from app.sources.property.thumbnail_capture import ImmmoThumbnailPropertySource
 
-ADAPTER_PATH = "app.sources.property.immmo_v3.ImmmoPropertySource"
+ADAPTER_PATH = "app.sources.property.thumbnail_capture.ImmmoThumbnailPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,7 +75,7 @@ def get_or_create_source() -> Source:
 async def async_main() -> int:
     args = parse_args()
     source = get_or_create_source()
-    adapter = ImmmoPropertySource(
+    adapter = ImmmoThumbnailPropertySource(
         request_delay_seconds=args.delay,
         incremental_pages=args.incremental_pages,
         hard_max_pages_per_shard=args.hard_max_pages_per_shard,
@@ -108,9 +108,7 @@ async def async_main() -> int:
             if isinstance(continuity, dict):
                 strategies = continuity.get("strategies") or {}
                 strategy_label = (
-                    ",".join(
-                        f"{key}:{value}" for key, value in sorted(strategies.items())
-                    )
+                    ",".join(f"{key}:{value}" for key, value in sorted(strategies.items()))
                     if isinstance(strategies, dict)
                     else "-"
                 )
