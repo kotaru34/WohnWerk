@@ -33,7 +33,7 @@ def _decimal(value: object | None) -> Decimal | None:
 def _close(left: Decimal | None, right: Decimal | None) -> bool:
     if left is None or right is None:
         return False
-    tolerance = max(Decimal("1"), max(abs(left), abs(right)) * Decimal("0.01"))
+    tolerance = max(Decimal(1), max(abs(left), abs(right)) * Decimal("0.01"))
     return abs(left - right) <= tolerance
 
 
