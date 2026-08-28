@@ -134,6 +134,10 @@ def _kind_or_none(value: str | None) -> ConceptKind | None:
         raise HTTPException(status_code=400, detail="Ungültiger Konzepttyp.") from exc
 
 
+def _is_manually_rated(row) -> bool:
+    return row.preference is not None and row.preference.source == "manual"
+
+
 def _concept_redirect(
     concept_id: int,
     *,
@@ -174,16 +178,17 @@ def concepts_page(
         raise HTTPException(status_code=400, detail="Ungültiger Bewertungsfilter.")
 
     all_rows = list_concepts_for_admin(db, profile, kind=selected_kind)
+    rated_count = sum(_is_manually_rated(row) for row in all_rows)
     stats = {
         "gesamt": len(all_rows),
-        "bewertet": sum(row.preference is not None for row in all_rows),
-        "unbewertet": sum(row.preference is None for row in all_rows),
+        "bewertet": rated_count,
+        "unbewertet": len(all_rows) - rated_count,
     }
     rows = all_rows
     if bewertung == "bewertet":
-        rows = [row for row in rows if row.preference is not None]
+        rows = [row for row in rows if _is_manually_rated(row)]
     elif bewertung == "unbewertet":
-        rows = [row for row in rows if row.preference is None]
+        rows = [row for row in rows if not _is_manually_rated(row)]
 
     return templates.TemplateResponse(
         request=request,
