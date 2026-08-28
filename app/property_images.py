@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import mimetypes
 import os
 import random
@@ -11,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, or_, select
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, and_, or_, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.candidate_activity import hidden_property_ids
@@ -29,6 +30,7 @@ CONTENT_TYPE_EXTENSIONS = {
     "image/avif": ".avif",
     "image/gif": ".gif",
 }
+MAX_LISTING_PAGES_PER_PROPERTY = 3
 
 
 class PropertyImage(Base):
@@ -87,8 +89,10 @@ class _ImageMetaParser(HTMLParser):
 def _payload_image_url(payload: dict | None) -> str | None:
     for key in ("primary_image_url", "image_url", "thumbnail_url"):
         value = (payload or {}).get(key)
-        if isinstance(value, str) and value.startswith(("https://", "http://")):
-            return value
+        if isinstance(value, str):
+            safe = _safe_http_url(value)
+            if safe:
+                return safe
     return None
 
 
@@ -96,7 +100,23 @@ def _safe_http_url(value: str | None) -> str | None:
     if not value:
         return None
     parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        return None
+    if hostname == "localhost" or hostname.endswith(".local"):
+        return None
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None and (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+    ):
         return None
     return value
 
@@ -131,9 +151,7 @@ def local_image_path(session: Session, property_id: int) -> Path | None:
     settings = get_settings()
     root = Path(settings.property_image_dir).resolve()
     candidate = (root / row.local_filename).resolve()
-    if candidate.parent != root:
-        return None
-    if not candidate.is_file():
+    if candidate.parent != root or not candidate.is_file():
         return None
     return candidate
 
@@ -162,9 +180,13 @@ def _candidate_property_ids(session: Session, *, limit: int) -> list[int]:
 
     retryable = or_(
         PropertyImage.id.is_(None),
-        PropertyImage.status != "cached",
-        PropertyImage.retry_after.is_(None),
-        PropertyImage.retry_after <= now,
+        and_(
+            PropertyImage.status != "cached",
+            or_(
+                PropertyImage.retry_after.is_(None),
+                PropertyImage.retry_after <= now,
+            ),
+        ),
     )
     stmt = (
         select(Property.id)
@@ -216,6 +238,8 @@ async def _discover_image_url(
         return None
     response = await client.get(page_url)
     response.raise_for_status()
+    if _safe_http_url(str(response.url)) is None:
+        return None
     content_type = response.headers.get("content-type", "").casefold()
     if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
         return None
@@ -233,8 +257,12 @@ async def _download_image(
     property_id: int,
 ) -> str:
     settings = get_settings()
+    if _safe_http_url(image_url) is None:
+        raise ValueError("unsafe image URL")
     async with client.stream("GET", image_url) as response:
         response.raise_for_status()
+        if _safe_http_url(str(response.url)) is None:
+            raise ValueError("unsafe redirected image URL")
         content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().casefold()
         extension = CONTENT_TYPE_EXTENSIONS.get(content_type)
         if extension is None:
@@ -271,7 +299,10 @@ async def cache_missing_property_images(
 ) -> ImageCacheResult:
     settings = get_settings()
     limit = max(1, limit or settings.property_image_worker_limit)
-    delay = max(0.0, delay_seconds if delay_seconds is not None else settings.property_image_worker_delay_seconds)
+    delay = max(
+        0.0,
+        delay_seconds if delay_seconds is not None else settings.property_image_worker_delay_seconds,
+    )
     property_ids = _candidate_property_ids(session, limit=limit)
 
     attempted = cached = missing = failed = skipped = 0
@@ -287,6 +318,7 @@ async def cache_missing_property_images(
     ) as client:
         for property_id in property_ids:
             listings = sorted(_active_listings(session, property_id), key=_listing_priority)
+            listings = listings[:MAX_LISTING_PAGES_PER_PROPERTY]
             if not listings:
                 skipped += 1
                 continue
