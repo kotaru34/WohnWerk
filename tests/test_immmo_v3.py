@@ -120,8 +120,8 @@ def test_explicit_living_area_wins_when_primary_display_is_plot_area() -> None:
     )
     farmhouse = next(item for item in page.items if item.postal_code == "6391")
 
-    assert farmhouse.living_area_m2 == Decimal("130")
-    assert farmhouse.plot_area_m2 == Decimal("748")
+    assert farmhouse.living_area_m2 == Decimal(130)
+    assert farmhouse.plot_area_m2 == Decimal(748)
     assert farmhouse.raw_payload["display_area_m2"] == "748"
     assert farmhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
     assert farmhouse.raw_payload["explicit_living_area_m2"] == "130"
