@@ -74,6 +74,7 @@
         {% elif area_label(house.neutral_area_m2) %}
           <span class="fact">Fläche {{ area_label(house.neutral_area_m2) }} · Typ nicht eindeutig</span>
         {% endif %}
+        {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
         {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
       </div>
       {% if house.sources %}
