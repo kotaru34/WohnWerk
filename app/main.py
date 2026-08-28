@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from app.admin import router as admin_router
 from app.catalog import router as catalog_router
 from app.config import get_settings
+from app.http_normalization import NormalizeHouseQueryMiddleware
 from app.matches import router as matches_router
 from app.site import router as site_router
 
@@ -14,6 +15,7 @@ app = FastAPI(
     description="Austria-first home and job matching service",
     version="0.1.0",
 )
+app.add_middleware(NormalizeHouseQueryMiddleware)
 app.include_router(catalog_router)
 app.include_router(site_router)
 app.include_router(admin_router)
