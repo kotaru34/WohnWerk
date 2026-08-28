@@ -156,6 +156,69 @@ def _company_blockers(jobs: list[Job]) -> list[str]:
     return ["conflicting normalized companies across merge group"]
 
 
+def _relevant_source_ids(job: Job) -> set[int]:
+    return {
+        listing.source_id
+        for listing in job.listings
+        if listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
+    }
+
+
+def _location_evidence_keys(job: Job) -> set[str]:
+    """Return conservative explicit location keys for merge-safety checks.
+
+    Prefer source-backed PLZ/city. If a sparse row has only human-readable text such as
+    `Wien, Österreich`, use its first locality component as a fallback. Countrywide and
+    remote-only labels normalize to no locality and therefore do not create a conflict.
+    """
+    keys: set[str] = set()
+    for location in job.locations:
+        if location.postal_code:
+            keys.add(f"plz:{location.postal_code}")
+        if city := normalize_locality(location.city):
+            keys.add(f"city:{city}")
+            continue
+        if location.location_text:
+            first_component = location.location_text.split(",", 1)[0].strip()
+            if fallback := normalize_locality(first_component):
+                keys.add(f"city:{fallback}")
+    return keys
+
+
+def _same_source_location_blockers(
+    jobs: list[Job],
+    source_names: dict[int, str],
+) -> list[str]:
+    """Block same-source merges when explicit locations disagree.
+
+    Different listing IDs from one source can be parallel openings that reuse the same
+    title and staffing template. Strong description overlap alone is therefore not
+    enough when their explicit physical locations are disjoint.
+    """
+    blockers: list[str] = []
+    for index, left in enumerate(jobs):
+        for right in jobs[index + 1 :]:
+            shared_sources = _relevant_source_ids(left) & _relevant_source_ids(right)
+            if not shared_sources:
+                continue
+            left_locations = _location_evidence_keys(left)
+            right_locations = _location_evidence_keys(right)
+            if not left_locations or not right_locations:
+                continue
+            if left_locations & right_locations:
+                continue
+            source_labels = ",".join(
+                sorted(source_names.get(source_id, f"source:{source_id}") for source_id in shared_sources)
+            )
+            blockers.append(
+                "same-source explicit locations conflict; "
+                f"jobs={left.id},{right.id} sources={source_labels} "
+                f"left={','.join(sorted(left_locations))} "
+                f"right={','.join(sorted(right_locations))}"
+            )
+    return blockers
+
+
 def _evidence_blockers(jobs: list[Job], source_names: dict[int, str]) -> list[str]:
     if len(jobs) < 2:
         return ["merge group must contain at least two jobs"]
@@ -219,6 +282,7 @@ def build_merge_plan(
     blockers = [
         *_company_blockers(jobs),
         *_salary_blockers(jobs),
+        *_same_source_location_blockers(jobs, source_names),
         *_evidence_blockers(jobs, source_names),
     ]
     salary_source = _choose_salary_source(jobs)
