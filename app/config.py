@@ -28,10 +28,12 @@ class Settings(BaseSettings):
     routing_prefilter_properties_per_job: int = 75
 
     property_image_dir: str = "/var/lib/wohnwerk/property-images"
-    property_image_timeout_seconds: float = 20.0
-    property_image_max_bytes: int = 12 * 1024 * 1024
-    property_image_worker_limit: int = 30
-    property_image_worker_delay_seconds: float = 1.0
+    property_image_timeout_seconds: float = 10.0
+    property_image_max_bytes: int = 3 * 1024 * 1024
+    property_image_worker_limit: int = 240
+    property_image_worker_delay_seconds: float = 0.0
+    property_image_worker_concurrency: int = 12
+    property_image_discovery_concurrency: int = 4
 
     # The write-capable admin surface stays fail-closed until a password is configured.
     admin_username: str = "admin"
