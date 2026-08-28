@@ -22,7 +22,7 @@ from app.models import (
     Source,
 )
 
-CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v1"
+CONTINUITY_VERSION = "immmo-continuity-2026-08-28-v2"
 
 
 @dataclass(frozen=True, slots=True)
