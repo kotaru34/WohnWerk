@@ -175,13 +175,14 @@ def duplicate_evidence(
 
     # Two different boards carrying the same company/title/location are commonly the
     # same syndicated vacancy. Inside one source, however, separate listing IDs can be
-    # legitimate parallel openings with identical titles, so require strong body-text
-    # overlap before calling a same-source pair high-confidence.
+    # legitimate parallel openings with identical titles. Generic staffing/template
+    # titles are especially risky, so they need near-identical body text as evidence.
     if shared_source:
+        minimum_description_overlap = 0.95 if generic_title else 0.82
         high_confidence = (
             company_match
             and similarity >= 0.94
-            and description_match >= 0.82
+            and description_match >= minimum_description_overlap
         )
     else:
         high_confidence = (
