@@ -50,11 +50,6 @@ def _strategy_key(
             return None
         return postal_code, title, row.price_eur
 
-    if strategy == "title_only":
-        if len(title) < 28:
-            return None
-        return postal_code, title
-
     raise ValueError(f"Unknown continuity strategy: {strategy}")
 
 
@@ -66,15 +61,15 @@ def match_property_continuity(
 
     The matcher is deliberately one-to-one and staged. At every stage a key is accepted
     only when exactly one unmatched previous row and exactly one unmatched current row
-    share it. Ambiguous developments or duplicated cards therefore fail closed instead of
-    being merged. Stronger metadata combinations are tried before weaker title continuity.
+    share it. Ambiguous developments or records where both price and area changed fail
+    closed instead of being merged.
     """
 
     previous_remaining = {row.token: row for row in previous}
     current_remaining = {row.token: row for row in current}
     matches: list[PropertyContinuityMatch] = []
 
-    for strategy in ("exact", "title_area", "title_price", "title_only"):
+    for strategy in ("exact", "title_area", "title_price"):
         previous_groups: dict[tuple[object, ...], list[Hashable]] = defaultdict(list)
         current_groups: dict[tuple[object, ...], list[Hashable]] = defaultdict(list)
 
