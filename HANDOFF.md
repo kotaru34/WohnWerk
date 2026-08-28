@@ -187,6 +187,8 @@ Negative evidence intentionally has no optimism floor: a primary `cannot_not_wan
 
 `candidate_fit_audit.py --job-id` now prints every persisted concept for the job, including `unrated`, not only scored drivers. This allows the next pass to distinguish weighting problems from missing taxonomy evidence.
 
+Regression tests cover positive saturation, corroborating multi-concept fit, primary hard-negative veto, context attenuation, unrated coverage and duplicate-evidence collapse.
+
 CI #428 passed Ruff, Compile and the full suite for policy v2 and expanded audit evidence.
 
 ## Immediate work order
