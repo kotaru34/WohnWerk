@@ -75,7 +75,7 @@ def _location_label(snapshot: DuplicateJobSnapshot) -> str:
 def main() -> None:
     args = parse_args()
     with SessionLocal() as session:
-        source_names = dict(session.execute(select(Source.id, Source.name)))
+        source_names = dict(session.execute(select(Source.id, Source.name)).all())
         jobs = list(
             session.scalars(
                 select(Job)
