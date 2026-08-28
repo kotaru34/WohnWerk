@@ -60,8 +60,8 @@ def test_admin_concept_rating_filter_highlights_remaining_work(monkeypatch) -> N
             assert page.status_code == 200
             assert "Noch offenes Fachgebiet" in page.text
             assert "Maschinenbau" not in page.text
-            assert "1 bewertet" in page.text
-            assert "1 noch unbewertet" in page.text
+            assert "1 vom Kandidaten bestätigt" in page.text
+            assert "1 noch offen" in page.text
             assert 'class="concept unrated"' in page.text
 
             rated_page = client.get("/admin/concepts?bewertung=bewertet")
