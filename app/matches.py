@@ -6,7 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ from app.routing import OSRMClient, RoutingError
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
-DbDependency = Annotated[Session, get_db]
+DbDependency = Annotated[Session, Depends(get_db)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +196,7 @@ def _area_label(value: Decimal | None) -> str | None:
 def matches_page(
     request: Request,
     _: AdminDependency,
-    db: Annotated[Session, get_db],
+    db: DbDependency,
     radius_km: Annotated[float, Query(ge=5.0, le=100.0)] = 50.0,
     stellen: Annotated[int, Query(ge=1, le=100)] = 20,
     haeuser: Annotated[int, Query(ge=1, le=10)] = 5,
