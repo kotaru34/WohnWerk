@@ -50,6 +50,29 @@ def test_matching_title_anchor_remains_authoritative() -> None:
     assert item.raw_payload["identity_stable"] is True
 
 
+def test_shortened_title_anchor_can_still_prove_identity() -> None:
+    html = """
+    <html><body>
+      <p>1 bis 12 von 1</p>
+      <h3>Haus kaufen in 8010 Graz</h3>
+      <div>Haus mit großem Garten in ruhiger Lage und schöner Aussicht</div>
+      <a href="https://portal.example/house">Haus mit großem Garten in ruhiger Lage</a>
+      <div>€ 149.000,-</div>
+      <div>8010 Graz / 120m²</div>
+    </body></html>
+    """
+
+    page = parse_immmo_search_page(
+        html,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Steiermark",
+    )
+
+    item = page.items[0]
+    assert item.url == "https://portal.example/house"
+    assert item.raw_payload["original_url_missing"] is False
+    assert item.raw_payload["identity_stable"] is True
+
+
 def test_structured_facts_from_another_postal_code_fail_closed() -> None:
     html = """
     <html><body>
