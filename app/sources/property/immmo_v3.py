@@ -186,6 +186,22 @@ def _display_area_semantics(
     return "unknown"
 
 
+def _summary_price(card_text: str, facts: re.Match[str] | None) -> Decimal | None:
+    """Accept only the dedicated search-card price before the PLZ/area facts row.
+
+    IMMMO flattens downstream descriptions into the same visible card segment. Those
+    descriptions may contain unrelated monetary values such as annual rental income,
+    provision or running costs. If the card itself says ``Preis auf Anfrage`` there is no
+    numeric purchase price before the structured PLZ/area row, so all later euro amounts
+    must remain descriptive text rather than becoming ``price_eur``.
+    """
+    if facts is None:
+        return None
+    summary = card_text[: facts.start()]
+    price_match = PRICE_RE.search(summary)
+    return _decimal(price_match.group(1)) if price_match else None
+
+
 def _synthetic_identity(
     *,
     postal_code: str,
@@ -266,8 +282,7 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             explicit_plot_area=explicit_plot_area,
         )
 
-        price_match = PRICE_RE.search(card_text)
-        price = _decimal(price_match.group(1)) if price_match else None
+        price = _summary_price(card_text, facts)
         chosen = _choose_card_anchor(
             anchors,
             heading_start=heading.start,
@@ -314,6 +329,8 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
                 "discovery_url": page_url,
                 "source_postal_code": postal_code,
                 "source_heading_kind": _clean_text(heading_match.group("kind")),
+                "price_semantics": "summary_numeric" if price is not None else "unknown",
+                "source_price_eur": str(price) if price is not None else None,
                 "display_area_m2": str(display_area) if display_area is not None else None,
                 "display_area_semantics": area_semantics,
                 "explicit_living_area_m2": (
