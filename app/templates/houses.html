@@ -11,23 +11,32 @@
     a { color: inherit; }
     h1 { margin: 0 0 4px; }
     .subtle { opacity: .7; }
-    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
-    .topnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
-    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
-    .filters { margin: 20px 0; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .topnav, .viewnav { display: flex; flex-wrap: wrap; gap: 8px; }
+    .topnav { margin-bottom: 20px; }
+    .viewnav { margin: 16px 0 0; }
+    .topnav a, .viewnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active, .viewnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .filters { margin: 14px 0 20px; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
     .filter-note { margin-bottom: 12px; font-size: .82rem; opacity: .7; }
-    .filter-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; }
+    .filter-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 10px; }
     label { display: grid; gap: 4px; font-size: .8rem; opacity: .82; }
     input { min-width: 0; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
     .filter-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
     button, .button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; text-decoration: none; }
     .result-line { margin: 16px 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; background: Canvas; }
+    .house { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; overflow: hidden; background: Canvas; transition: border-color .15s ease, background .15s ease; }
+    .house.unviewed { border-color: color-mix(in srgb, AccentColor 36%, CanvasText 18%); box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 7%, transparent); }
+    .house.viewed { background: color-mix(in srgb, CanvasText 2%, Canvas); }
+    .house.viewed h2, .house.viewed .location { opacity: .82; }
     .media { aspect-ratio: 16 / 9; background: color-mix(in srgb, CanvasText 7%, Canvas); display: grid; place-items: center; overflow: hidden; }
     .media img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .placeholder { opacity: .42; font-size: .86rem; }
     .body { padding: 14px; }
+    .status-line { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
+    .status { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 2px 7px; font-size: .74rem; opacity: .72; }
+    .status.new { opacity: 1; font-weight: 750; border-color: color-mix(in srgb, AccentColor 55%, CanvasText 20%); background: color-mix(in srgb, AccentColor 10%, Canvas); }
+    .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
     .location { font-size: .84rem; opacity: .68; margin-bottom: 5px; }
     h2 { margin: 0; font-size: 1rem; line-height: 1.35; }
     h2 a { text-decoration: none; }
@@ -37,11 +46,17 @@
     .fact { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 8px; }
     .open { margin-top: 13px; }
     .open a { font-weight: 650; }
+    .actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+    .actions form { margin: 0; }
+    .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
+    .actions .hide { opacity: .78; }
     .pagination { margin-top: 24px; display: flex; justify-content: center; gap: 10px; align-items: center; }
     .pagination a { text-decoration: none; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 8px; padding: 7px 10px; }
     .empty { padding: 40px 0; opacity: .7; }
-    @media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filter-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); } }
-    @media (max-width: 650px) { .grid { grid-template-columns: 1fr; } .filter-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1150px) { .filter-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
+    @media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 700px) { .filter-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); } }
+    @media (max-width: 650px) { .grid, .filter-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -54,9 +69,18 @@
   <h1>Häuser</h1>
   <div class="subtle">Aktuelle Angebote mit eindeutigem Kaufpreis im WohnWerk-Auswahlbereich</div>
 
+  <nav class="viewnav" aria-label="Häuseransicht">
+    {% for value, label in house_views.items() %}
+      <a href="/houses?ansicht={{ value }}" class="{% if selected_view == value %}active{% endif %}">
+        {{ label }}{% if value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+
   <form class="filters" method="get" action="/houses">
+    <input type="hidden" name="ansicht" value="{{ selected_view }}">
     <div class="filter-note">
-      WohnWerk hält den vollständigen Quellenbestand für die Aktualitätsprüfung im Hintergrund. Im Katalog erscheinen nur aktuelle Angebote mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Die Felder unten sind zusätzliche, frei wählbare Filter und starten leer.
+      WohnWerk hält den vollständigen Quellenbestand für die Aktualitätsprüfung im Hintergrund. Im Katalog erscheinen nur aktuelle Angebote mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Die Felder unten sind zusätzliche, frei wählbare und gespeicherte Filter.
     </div>
     <div class="filter-grid">
       <label>Ort oder PLZ
@@ -74,6 +98,12 @@
       <label>Wohnfläche bis (m²)
         <input type="number" min="0" step="1" name="wohn_bis" value="{{ filters.wohn_bis if filters.wohn_bis is not none else '' }}">
       </label>
+      <label>Nutzfläche von (m²)
+        <input type="number" min="0" step="1" name="nutz_von" value="{{ filters.nutz_von if filters.nutz_von is not none else '' }}">
+      </label>
+      <label>Nutzfläche bis (m²)
+        <input type="number" min="0" step="1" name="nutz_bis" value="{{ filters.nutz_bis if filters.nutz_bis is not none else '' }}">
+      </label>
       <label>Grundstück von (m²)
         <input type="number" min="0" step="1" name="grund_von" value="{{ filters.grund_von if filters.grund_von is not none else '' }}">
       </label>
@@ -83,7 +113,7 @@
     </div>
     <div class="filter-actions">
       <button type="submit">Filtern & speichern</button>
-      <a class="button" href="/houses?filter_reset=1">Filter löschen</a>
+      <a class="button" href="/houses?filter_reset=1&ansicht={{ selected_view }}">Filter löschen</a>
     </div>
   </form>
 
@@ -95,17 +125,30 @@
   <div class="grid">
     {% for item in rows %}
       {% set house = item.property %}
-      <article class="house">
-        <a class="media" href="/houses/{{ house.id }}" aria-label="{{ house.title }} öffnen">
-          {% if item.image_url %}
-            <img src="{{ item.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      {% set state = states.get(house.id) %}
+      {% set viewed = state and state.viewed %}
+      {% set hidden = state and state.hidden %}
+      <article class="house {{ 'viewed' if viewed else 'unviewed' }}" id="house-{{ house.id }}">
+        {% if not hidden %}
+          <a class="media" href="/houses/{{ house.id }}" aria-label="{{ house.title }} öffnen">
+        {% else %}
+          <div class="media">
+        {% endif %}
+          {% if image_urls.get(house.id) %}
+            <img src="{{ image_urls.get(house.id) }}" alt="" loading="lazy">
           {% else %}
-            <span class="placeholder">Noch kein Vorschaubild gespeichert</span>
+            <span class="placeholder">Vorschaubild wird im Hintergrund geladen</span>
           {% endif %}
-        </a>
+        {% if not hidden %}</a>{% else %}</div>{% endif %}
         <div class="body">
+          <div class="status-line">
+            {% if house.id in new_ids %}<span class="status new">Neu</span>{% endif %}
+            <span class="status">{{ 'Gesehen' if viewed else 'Noch nicht angesehen' }}</span>
+            {% if state and state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
+            {% if hidden %}<span class="status">Ausgeblendet</span>{% endif %}
+          </div>
           <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
-          <h2><a href="/houses/{{ house.id }}">{{ house.title }}</a></h2>
+          <h2>{% if not hidden %}<a href="/houses/{{ house.id }}">{{ house.title }}</a>{% else %}{{ house.title }}{% endif %}</h2>
           <div class="price">{{ eur_label(house.price_eur) }}</div>
           <div class="facts">
             {% if area_label(house.living_area_m2) %}
@@ -116,23 +159,33 @@
             {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
           </div>
-          <div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>
+          {% if not hidden %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
+          <div class="actions">
+            <form method="post" action="/houses/{{ house.id }}/favorite">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="favorite" value="{{ '0' if state and state.favorite else '1' }}">
+              <input type="hidden" name="return_to" value="/houses?ansicht={{ selected_view }}&seite={{ page }}#house-{{ house.id }}">
+              <button class="favorite {% if state and state.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if state and state.favorite else 'Als Favorit merken' }}</button>
+            </form>
+            <form method="post" action="/houses/{{ house.id }}/hidden">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="hidden" value="{{ '0' if hidden else '1' }}">
+              <input type="hidden" name="return_to" value="/houses?ansicht={{ selected_view }}&seite={{ page }}#house-{{ house.id }}">
+              <button class="hide" type="submit">{{ 'Wieder einblenden' if hidden else 'Ausblenden' }}</button>
+            </form>
+          </div>
         </div>
       </article>
     {% else %}
-      <div class="empty">Keine aktuellen Immobilien entsprechen diesen Filtern.</div>
+      <div class="empty">Keine aktuellen Immobilien entsprechen dieser Ansicht und den Filtern.</div>
     {% endfor %}
   </div>
 
   {% if page_count > 1 %}
     <nav class="pagination" aria-label="Seitennavigation">
-      {% if page > 1 %}
-        <a href="/houses?seite={{ page - 1 }}{% if filters.ort %}&ort={{ filters.ort|urlencode }}{% endif %}{% if filters.preis_von is not none %}&preis_von={{ filters.preis_von }}{% endif %}{% if filters.preis_bis is not none %}&preis_bis={{ filters.preis_bis }}{% endif %}{% if filters.wohn_von is not none %}&wohn_von={{ filters.wohn_von }}{% endif %}{% if filters.wohn_bis is not none %}&wohn_bis={{ filters.wohn_bis }}{% endif %}{% if filters.grund_von is not none %}&grund_von={{ filters.grund_von }}{% endif %}{% if filters.grund_bis is not none %}&grund_bis={{ filters.grund_bis }}{% endif %}">Zurück</a>
-      {% endif %}
+      {% if page > 1 %}<a href="/houses?ansicht={{ selected_view }}&seite={{ page - 1 }}">Zurück</a>{% endif %}
       <span>Seite {{ page }} / {{ page_count }}</span>
-      {% if page < page_count %}
-        <a href="/houses?seite={{ page + 1 }}{% if filters.ort %}&ort={{ filters.ort|urlencode }}{% endif %}{% if filters.preis_von is not none %}&preis_von={{ filters.preis_von }}{% endif %}{% if filters.preis_bis is not none %}&preis_bis={{ filters.preis_bis }}{% endif %}{% if filters.wohn_von is not none %}&wohn_von={{ filters.wohn_von }}{% endif %}{% if filters.wohn_bis is not none %}&wohn_bis={{ filters.wohn_bis }}{% endif %}{% if filters.grund_von is not none %}&grund_von={{ filters.grund_von }}{% endif %}{% if filters.grund_bis is not none %}&grund_bis={{ filters.grund_bis }}{% endif %}">Weiter</a>
-      {% endif %}
+      {% if page < page_count %}<a href="/houses?ansicht={{ selected_view }}&seite={{ page + 1 }}">Weiter</a>{% endif %}
     </nav>
   {% endif %}
 </main>
