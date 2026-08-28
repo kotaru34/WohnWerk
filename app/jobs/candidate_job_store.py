@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -104,3 +105,41 @@ def set_job_hidden(
     hidden: bool,
 ) -> None:
     _save_sparse_state(session, profile, job_id, hidden=hidden)
+
+
+def merge_candidate_job_states(
+    session: Session,
+    *,
+    survivor_id: int,
+    absorbed_ids: tuple[int, ...],
+) -> None:
+    """Move sparse candidate curation onto a canonical merge survivor.
+
+    Curation is conservative across duplicate identities: a favorite on any member remains
+    a favorite, and a hidden marker on any member remains hidden. The helper deliberately
+    does not commit so canonical merge and curation migration stay in one transaction.
+    """
+
+    job_ids = {survivor_id, *absorbed_ids}
+    rows = list(
+        session.scalars(
+            select(CandidateJobPreference)
+            .where(CandidateJobPreference.job_id.in_(job_ids))
+            .order_by(CandidateJobPreference.profile_id, CandidateJobPreference.id)
+        )
+    )
+    by_profile: dict[int, list[CandidateJobPreference]] = defaultdict(list)
+    for row in rows:
+        by_profile[row.profile_id].append(row)
+
+    for profile_rows in by_profile.values():
+        favorite = any(row.favorite for row in profile_rows)
+        hidden = any(row.hidden for row in profile_rows)
+        survivor_row = next((row for row in profile_rows if row.job_id == survivor_id), None)
+        target = survivor_row or profile_rows[0]
+        target.job_id = survivor_id
+        target.favorite = favorite
+        target.hidden = hidden
+        for row in profile_rows:
+            if row is not target:
+                session.delete(row)
