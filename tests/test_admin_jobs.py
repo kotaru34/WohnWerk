@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -109,6 +111,10 @@ def test_admin_jobs_live_ranking_filters_and_labels(monkeypatch) -> None:
     def override_db():
         yield session
 
+    monkeypatch.setattr(
+        "app.admin.get_settings",
+        lambda: SimpleNamespace(admin_username="admin", admin_password="test"),
+    )
     monkeypatch.setattr("app.admin.load_live_job_fit", lambda *_args, **_kwargs: _views())
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[require_admin] = lambda: None
