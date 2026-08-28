@@ -1,5 +1,5 @@
 [Unit]
-Description=WohnWerk property thumbnail cache
+Description=WohnWerk property liveness and thumbnail background work
 Wants=network-online.target
 After=network-online.target postgresql.service
 
@@ -10,6 +10,7 @@ Group=www-data
 WorkingDirectory=/opt/wohnwerk
 EnvironmentFile=/opt/wohnwerk/.env
 Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/wohnwerk/.venv/bin/python scripts/check_property_liveness.py
 ExecStart=/opt/wohnwerk/.venv/bin/python scripts/cache_property_images.py
 StateDirectory=wohnwerk
 StateDirectoryMode=0750
