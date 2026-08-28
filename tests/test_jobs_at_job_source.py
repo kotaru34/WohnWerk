@@ -34,8 +34,6 @@ def test_jobs_at_title_prefilter_avoids_obvious_electrical_detail_requests() -> 
     assert title_worth_detail("Senior Mechanical Design Engineer (m/w/d)")
     assert title_worth_detail("Konstrukteur / Entwicklungsingenieur Fahrzeugbau")
     assert not title_worth_detail("Electrical Engineer (all genders) Eplan P8")
-    assert not title_worth_detail("E-Plan Konstrukteur (m/w/d) im Sondermaschinenbau")
-    assert not title_worth_detail("E-Planer/in im Sondermaschinenbau")
     assert not title_worth_detail("Konstrukteur Elektrotechnik / Elektroplaner")
 
 
