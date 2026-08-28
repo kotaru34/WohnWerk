@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
+import app.jobs.concepts  # noqa: F401
 import app.models  # noqa: F401
 from app.config import get_settings
 from app.database import Base
