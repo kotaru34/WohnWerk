@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
@@ -42,10 +43,11 @@ STATE_LABELS = {
     CandidatePreferenceState.CANNOT_NOT_WANT: "Kann ich nicht / möchte ich nicht",
 }
 
+CredentialsDependency = Annotated[HTTPBasicCredentials | None, Depends(security)]
+DbDependency = Annotated[Session, Depends(get_db)]
 
-def require_admin(
-    credentials: HTTPBasicCredentials | None = Depends(security),
-) -> None:
+
+def require_admin(credentials: CredentialsDependency) -> None:
     settings = get_settings()
     if not settings.admin_password:
         raise HTTPException(
@@ -61,6 +63,9 @@ def require_admin(
             detail="Ungültige Zugangsdaten.",
             headers={"WWW-Authenticate": 'Basic realm="WohnWerk Admin"'},
         )
+
+
+AdminDependency = Annotated[None, Depends(require_admin)]
 
 
 def _profile_or_503(db: Session):
@@ -95,10 +100,10 @@ def _redirect(concept_id: int, *, kind: str = "", aliases_changed: bool = False)
 @router.get("/concepts")
 def concepts_page(
     request: Request,
-    kind: str | None = Query(default=None),
-    hinweis: str | None = Query(default=None),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    kind: Annotated[str | None, Query()] = None,
+    hinweis: Annotated[str | None, Query()] = None,
 ):
     profile = _profile_or_503(db)
     selected_kind = _kind_or_none(kind)
@@ -123,10 +128,10 @@ def concepts_page(
 @router.post("/concepts/{concept_id}/preference")
 def set_preference(
     concept_id: int,
-    state_value: str = Form(alias="state"),
-    return_kind: str = Form(default=""),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    state_value: Annotated[str, Form(alias="state")],
+    return_kind: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
     try:
@@ -142,9 +147,9 @@ def set_preference(
 @router.post("/concepts/{concept_id}/preference/reset")
 def reset_preference(
     concept_id: int,
-    return_kind: str = Form(default=""),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    return_kind: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
     try:
@@ -157,11 +162,11 @@ def reset_preference(
 @router.post("/concepts/{concept_id}/aliases")
 def add_alias(
     concept_id: int,
-    alias: str = Form(),
-    language: str = Form(default=""),
-    return_kind: str = Form(default=""),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    alias: Annotated[str, Form()],
+    language: Annotated[str, Form()] = "",
+    return_kind: Annotated[str, Form()] = "",
 ):
     try:
         add_manual_alias(db, concept_id, alias, language=language or None)
@@ -175,11 +180,11 @@ def add_alias(
 @router.post("/aliases/{alias_id}/toggle")
 def toggle_alias(
     alias_id: int,
-    concept_id: int = Form(),
-    enabled: str = Form(),
-    return_kind: str = Form(default=""),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    concept_id: Annotated[int, Form()],
+    enabled: Annotated[str, Form()],
+    return_kind: Annotated[str, Form()] = "",
 ):
     try:
         set_alias_enabled(db, alias_id, enabled=enabled == "1")
@@ -191,15 +196,15 @@ def toggle_alias(
 @router.post("/aliases/{alias_id}/delete")
 def remove_alias(
     alias_id: int,
-    concept_id: int = Form(),
-    return_kind: str = Form(default=""),
-    _: None = Depends(require_admin),
-    db: Session = Depends(get_db),
+    _: AdminDependency,
+    db: DbDependency,
+    concept_id: Annotated[int, Form()],
+    return_kind: Annotated[str, Form()] = "",
 ):
     try:
         delete_manual_alias(db, alias_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Alias nicht gefunden.") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Seed-Aliase können nur deaktiviert werden.") from exc
+        raise HTTPException(status_code=400, detail="Standard-Synonyme können nur deaktiviert werden.") from exc
     return _redirect(concept_id, kind=return_kind, aliases_changed=True)
