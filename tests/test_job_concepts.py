@@ -4,6 +4,7 @@ from app.jobs.concept_catalog import (
     extract_concepts,
     normalize_concept_text,
 )
+from app.jobs.concepts import ConceptEvidenceScope, ConceptKind, concept_evidence_semantics
 
 
 def _slugs(snapshot: JobTextSnapshot) -> set[tuple[str, str]]:
@@ -60,10 +61,43 @@ def test_title_and_description_keep_separate_recomputable_evidence() -> None:
     assert any(match.slug == "solidworks" and match.field == "description" for match in matches)
 
 
+def test_evidence_scope_distinguishes_identity_from_description_context() -> None:
+    title_scope, title_confidence = concept_evidence_semantics(ConceptKind.ROLE, "title")
+    role_scope, role_confidence = concept_evidence_semantics(ConceptKind.ROLE, "description")
+    domain_scope, domain_confidence = concept_evidence_semantics(
+        ConceptKind.DOMAIN, "description"
+    )
+    task_scope, task_confidence = concept_evidence_semantics(ConceptKind.TASK, "description")
+
+    assert (title_scope, title_confidence) == (ConceptEvidenceScope.PRIMARY, 1.0)
+    assert (role_scope, role_confidence) == (ConceptEvidenceScope.CONTEXT, 0.45)
+    assert (domain_scope, domain_confidence) == (ConceptEvidenceScope.CONTEXT, 0.55)
+    assert (task_scope, task_confidence) == (ConceptEvidenceScope.CONTEXT, 0.80)
+
+
+def test_description_education_alternative_is_context_not_primary_domain() -> None:
+    matches = extract_concepts(
+        JobTextSnapshot(
+            job_id=4,
+            title="Entwicklungsingenieur Maschinenbau",
+            description="Studium Maschinenbau, Mechatronik oder Elektrotechnik erforderlich.",
+        )
+    )
+    electrical = next(
+        match
+        for match in matches
+        if match.slug == "electrical-engineering" and match.field == "description"
+    )
+    scope, confidence = concept_evidence_semantics(electrical.kind, electrical.field)
+
+    assert scope == ConceptEvidenceScope.CONTEXT
+    assert confidence == 0.55
+
+
 def test_fem_does_not_match_female_word_fragment() -> None:
     slugs = _slugs(
         JobTextSnapshot(
-            job_id=4,
+            job_id=5,
             title="Female Mechanical Engineer",
             description="Inclusive engineering team.",
         )
@@ -76,7 +110,7 @@ def test_fem_does_not_match_female_word_fragment() -> None:
 def test_eplan_tool_does_not_imply_electrical_domain_by_itself() -> None:
     slugs = _slugs(
         JobTextSnapshot(
-            job_id=5,
+            job_id=6,
             title="E-Plan Konstrukteur im Sondermaschinenbau",
             description="Planung mit EPLAN.",
         )
@@ -91,7 +125,7 @@ def test_eplan_tool_does_not_imply_electrical_domain_by_itself() -> None:
 def test_maschinenbautechniker_maps_to_role_and_mechanical_domain() -> None:
     slugs = _slugs(
         JobTextSnapshot(
-            job_id=6,
+            job_id=7,
             title="Maschinenbautechniker/in (m/w/d)",
             description=None,
         )
@@ -104,7 +138,7 @@ def test_maschinenbautechniker_maps_to_role_and_mechanical_domain() -> None:
 def test_spaced_service_techniker_is_normalized_as_service_role() -> None:
     slugs = _slugs(
         JobTextSnapshot(
-            job_id=7,
+            job_id=8,
             title="Außendienst Service Techniker - Pharma & Life Sciences (m/w/d)",
             description=None,
         )
@@ -116,7 +150,7 @@ def test_spaced_service_techniker_is_normalized_as_service_role() -> None:
 def test_generic_konstrukteur_role_does_not_imply_mechanical_domain() -> None:
     slugs = _slugs(
         JobTextSnapshot(
-            job_id=8,
+            job_id=9,
             title="Senior Konstrukteur (m/w/d)",
             description=None,
         )
@@ -129,21 +163,21 @@ def test_generic_konstrukteur_role_does_not_imply_mechanical_domain() -> None:
 def test_real_unmatched_patterns_gain_neutral_concepts() -> None:
     plant_designer = _slugs(
         JobTextSnapshot(
-            job_id=9,
+            job_id=10,
             title="Senior Konstrukteur (m/w/d) im Maschinen- & Anlagenbau",
             description=None,
         )
     )
     calculation = _slugs(
         JobTextSnapshot(
-            job_id=10,
+            job_id=11,
             title="Berechnungsingenieur Toleranzen 2D/3D (m/w/d)",
             description=None,
         )
     )
     building_services = _slugs(
         JobTextSnapshot(
-            job_id=11,
+            job_id=12,
             title="Ingenieur:in Gebäudetechnik / HKLS-Technik (m/w/d)",
             description=None,
         )
