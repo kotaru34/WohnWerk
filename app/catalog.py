@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.templating import Jinja2Templates
 from geoalchemy2 import Geometry
 from sqlalchemy import and_, cast, func, or_, select
@@ -18,11 +18,7 @@ from app.database import get_db
 from app.geo import radius_metres
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
-from app.matching import (
-    PropertyDistanceMatch,
-    SpatialJobMatch,
-    properties_within_radius_for_job_stmt,
-)
+from app.matching import PropertyDistanceMatch, SpatialJobMatch
 from app.models import JobLocation, ListingStatus, Property, PropertyListing, Source
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
@@ -30,7 +26,7 @@ from app.routing import OSRMClient, RoutingError, RoutingPoint
 router = APIRouter(tags=["site"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
-DbDependency = Annotated[Session, get_db]
+DbDependency = Annotated[Session, Depends(get_db)]
 HOUSE_PAGE_SIZE = 36
 NEARBY_HOUSE_PAGE_SIZE = 40
 
@@ -132,13 +128,12 @@ def _property_sources(
     output: dict[int, list[PropertySourceView]] = {}
     seen_urls: dict[int, set[str]] = {}
     for property_id, url, raw_payload, source_name in rows:
-        if not url:
+        property_id = int(property_id)
+        if not url or url in seen_urls.setdefault(property_id, set()):
             continue
-        if url in seen_urls.setdefault(int(property_id), set()):
-            continue
-        seen_urls[int(property_id)].add(url)
+        seen_urls[property_id].add(url)
         payload = raw_payload or {}
-        output.setdefault(int(property_id), []).append(
+        output.setdefault(property_id, []).append(
             PropertySourceView(
                 label=source_name,
                 url=url,
@@ -180,6 +175,66 @@ def _eligible_fit_rows(db: Session) -> list[JobFitView]:
     ]
 
 
+def _properties_within_radius_for_job_stmt(job_id: int, radius_km: float):
+    if job_id <= 0:
+        raise ValueError("job_id must be greater than zero")
+    distance_m = func.ST_Distance(Property.location, JobLocation.location)
+    candidates = (
+        select(
+            Property.id.label("property_id"),
+            Property.title.label("title"),
+            Property.postal_code.label("postal_code"),
+            Property.city.label("city"),
+            Property.price_eur.label("price_eur"),
+            Property.living_area_m2.label("living_area_m2"),
+            Property.plot_area_m2.label("plot_area_m2"),
+            JobLocation.id.label("job_location_id"),
+            JobLocation.postal_code.label("job_postal_code"),
+            JobLocation.city.label("job_city"),
+            JobLocation.location_text.label("job_location_text"),
+            (distance_m / 1000.0).label("distance_km"),
+            func.row_number()
+            .over(
+                partition_by=Property.id,
+                order_by=(distance_m.asc(), JobLocation.id.asc()),
+            )
+            .label("nearest_location_rank"),
+        )
+        .select_from(Property)
+        .join(
+            JobLocation,
+            and_(
+                JobLocation.job_id == job_id,
+                JobLocation.location.is_not(None),
+                func.ST_DWithin(
+                    Property.location,
+                    JobLocation.location,
+                    radius_metres(radius_km),
+                ),
+            ),
+        )
+        .where(
+            Property.status == ListingStatus.ACTIVE,
+            Property.location.is_not(None),
+        )
+        .subquery("catalog_property_job_candidates")
+    )
+    return select(
+        candidates.c.property_id,
+        candidates.c.title,
+        candidates.c.postal_code,
+        candidates.c.city,
+        candidates.c.price_eur,
+        candidates.c.living_area_m2,
+        candidates.c.plot_area_m2,
+        candidates.c.job_location_id,
+        candidates.c.job_postal_code,
+        candidates.c.job_city,
+        candidates.c.job_location_text,
+        candidates.c.distance_km,
+    ).where(candidates.c.nearest_location_rank == 1)
+
+
 def _nearby_jobs(db: Session, property_id: int, radius_km: float) -> list[NearbyJobView]:
     fit_rows = _eligible_fit_rows(db)
     fit_by_id = {row.job.id: row for row in fit_rows}
@@ -190,7 +245,6 @@ def _nearby_jobs(db: Session, property_id: int, radius_km: float) -> list[Nearby
     candidates = (
         select(
             JobLocation.job_id.label("job_id"),
-            JobLocation.id.label("job_location_id"),
             JobLocation.postal_code.label("postal_code"),
             JobLocation.city.label("city"),
             JobLocation.location_text.label("location_text"),
@@ -265,7 +319,6 @@ def _route_jobs_from_property(
         db.execute(
             select(
                 JobLocation.job_id,
-                JobLocation.id,
                 func.ST_X(geometry).label("longitude"),
                 func.ST_Y(geometry).label("latitude"),
             )
@@ -273,14 +326,14 @@ def _route_jobs_from_property(
             .order_by(JobLocation.job_id, JobLocation.id)
         )
     )
-    locations_by_job: dict[int, list[tuple[int, RoutingPoint]]] = {}
+    locations_by_job: dict[int, list[RoutingPoint]] = {}
     unique_points: list[RoutingPoint] = []
-    point_index: dict[RoutingPoint, int] = {}
+    point_index: set[RoutingPoint] = set()
     for row in location_rows:
         point = RoutingPoint(longitude=float(row.longitude), latitude=float(row.latitude))
-        locations_by_job.setdefault(int(row.job_id), []).append((int(row.id), point))
+        locations_by_job.setdefault(int(row.job_id), []).append(point)
         if point not in point_index:
-            point_index[point] = len(unique_points)
+            point_index.add(point)
             unique_points.append(point)
 
     if not unique_points:
@@ -302,27 +355,30 @@ def _route_jobs_from_property(
     by_point = dict(zip(unique_points, estimates, strict=True))
     refined: list[NearbyJobView] = []
     for item in jobs:
-        best = None
-        for _location_id, point in locations_by_job.get(item.fit.job.id, []):
-            estimate = by_point.get(point)
-            if estimate is None or not estimate.reachable:
-                continue
-            key = (estimate.duration_minutes or math.inf, estimate.distance_km or math.inf)
-            if best is None or key < best[0]:
-                best = (key, estimate)
-        if best is None:
+        reachable = [
+            by_point[point]
+            for point in locations_by_job.get(item.fit.job.id, [])
+            if point in by_point and by_point[point].reachable
+        ]
+        if not reachable:
             refined.append(item)
-        else:
-            estimate = best[1]
-            refined.append(
-                NearbyJobView(
-                    fit=item.fit,
-                    distance_km=item.distance_km,
-                    location_label=item.location_label,
-                    road_distance_km=estimate.distance_km,
-                    road_duration_minutes=estimate.duration_minutes,
-                )
+            continue
+        estimate = min(
+            reachable,
+            key=lambda value: (
+                value.duration_minutes if value.duration_minutes is not None else math.inf,
+                value.distance_km if value.distance_km is not None else math.inf,
+            ),
+        )
+        refined.append(
+            NearbyJobView(
+                fit=item.fit,
+                distance_km=item.distance_km,
+                location_label=item.location_label,
+                road_distance_km=estimate.distance_km,
+                road_duration_minutes=estimate.duration_minutes,
             )
+        )
     refined.sort(
         key=lambda item: (
             item.road_duration_minutes if item.road_duration_minutes is not None else math.inf,
@@ -338,7 +394,7 @@ def _route_jobs_from_property(
 def houses_page(
     request: Request,
     _: AdminDependency,
-    db: Session = Query(None),
+    db: DbDependency,
     ort: Annotated[str, Query()] = "",
     preis_von: Annotated[Decimal | None, Query(ge=0)] = None,
     preis_bis: Annotated[Decimal | None, Query(ge=0)] = None,
@@ -371,9 +427,7 @@ def houses_page(
     if grund_bis is not None:
         conditions.append(Property.plot_area_m2 <= grund_bis)
 
-    total = int(
-        db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0
-    )
+    total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
     page_count = max(1, math.ceil(total / HOUSE_PAGE_SIZE))
     if seite > page_count and total:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden.")
@@ -415,7 +469,7 @@ def house_detail(
     property_id: int,
     request: Request,
     _: AdminDependency,
-    db: Session = Query(None),
+    db: DbDependency,
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
 ):
     property_row = db.scalar(
@@ -447,7 +501,7 @@ def job_detail(
     job_id: int,
     request: Request,
     _: AdminDependency,
-    db: Session = Query(None),
+    db: DbDependency,
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
@@ -455,7 +509,7 @@ def job_detail(
     if fit is None:
         raise HTTPException(status_code=404, detail="Stelle nicht gefunden.")
 
-    base = properties_within_radius_for_job_stmt(job_id, radius_km)
+    base = _properties_within_radius_for_job_stmt(job_id, radius_km)
     total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
     page_count = max(1, math.ceil(total / NEARBY_HOUSE_PAGE_SIZE))
     if seite > page_count and total:
@@ -463,7 +517,10 @@ def job_detail(
 
     rows = list(
         db.execute(
-            base.order_by(base.selected_columns.distance_km.asc(), base.selected_columns.property_id.asc())
+            base.order_by(
+                base.selected_columns.distance_km.asc(),
+                base.selected_columns.property_id.asc(),
+            )
             .offset((seite - 1) * NEARBY_HOUSE_PAGE_SIZE)
             .limit(NEARBY_HOUSE_PAGE_SIZE)
         ).mappings()
@@ -503,16 +560,9 @@ def job_detail(
         except RoutingError:
             road_by_property = {}
 
-    properties = {
-        row.id: row
-        for row in db.scalars(
-            select(Property).where(Property.id.in_({item.property_id for item in spatial}))
-        )
-    }
-    property_views = {
-        item.property.id: item
-        for item in _property_views(db, list(properties.values()))
-    }
+    property_ids = {item.property_id for item in spatial}
+    properties = list(db.scalars(select(Property).where(Property.id.in_(property_ids))))
+    property_views = {item.property.id: item for item in _property_views(db, properties)}
     houses = [
         NearbyHouseView(
             spatial=item,
