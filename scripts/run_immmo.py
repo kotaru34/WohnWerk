@@ -104,6 +104,23 @@ async def async_main() -> int:
             f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
         )
         if args.reconcile:
+            continuity = (run.run_metadata or {}).get("immmo_continuity")
+            if isinstance(continuity, dict):
+                strategies = continuity.get("strategies") or {}
+                strategy_label = (
+                    ",".join(
+                        f"{key}:{value}" for key, value in sorted(strategies.items())
+                    )
+                    if isinstance(strategies, dict)
+                    else "-"
+                )
+                print(
+                    "continuity_merged="
+                    f"{continuity.get('matched', 0)} "
+                    "new_rows_reclassified="
+                    f"{continuity.get('new_rows_reclassified', 0)} "
+                    f"strategies={strategy_label or '-'}"
+                )
             print(f"disappeared={run.items_disappeared}")
 
     return 0 if summary.run_status != "failed" else 1
