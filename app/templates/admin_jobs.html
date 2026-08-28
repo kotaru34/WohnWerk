@@ -21,26 +21,43 @@
     .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; margin-bottom: 16px; }
     .filters form { margin-left: auto; display: flex; gap: 7px; }
     input { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
-    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 11px; background: ButtonFace; color: ButtonText; cursor: pointer; }
-    .job { display: grid; grid-template-columns: 86px minmax(0, 1fr) minmax(250px, .6fr); gap: 16px; align-items: start; padding: 16px; margin: 10px 0; }
-    .score { font-size: 2rem; font-weight: 750; line-height: 1; }
-    .score.unrated { font-size: 1.2rem; opacity: .55; }
-    .coverage { margin-top: 6px; font-size: .82rem; opacity: .68; }
+    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 7px 10px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    button:hover { border-color: color-mix(in srgb, CanvasText 45%, transparent); }
+    .job { display: grid; grid-template-columns: 116px minmax(0, 1fr) minmax(250px, .62fr); gap: 18px; align-items: start; padding: 16px; margin: 10px 0; border-left-width: 4px; transition: background .15s ease, border-color .15s ease; }
+    .job.fit-excellent { border-left-color: #649474; background: color-mix(in srgb, #649474 5%, Canvas); }
+    .job.fit-good { border-left-color: #738ba3; background: color-mix(in srgb, #738ba3 4%, Canvas); }
+    .job.fit-medium { border-left-color: #9b8d69; background: color-mix(in srgb, #9b8d69 3%, Canvas); }
+    .job.fit-low { border-left-color: #8a7770; }
+    .job.fit-hard { border-left-color: #a35f5f; background: color-mix(in srgb, #a35f5f 5%, Canvas); }
+    .job.fit-unrated { border-left-color: color-mix(in srgb, CanvasText 24%, transparent); }
+    .score-label { font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; opacity: .62; margin-bottom: 4px; }
+    .score-line { display: flex; align-items: baseline; gap: 5px; }
+    .score { font-size: 2.15rem; font-weight: 760; line-height: 1; }
+    .score-max { font-size: .82rem; opacity: .56; }
+    .score.unrated { font-size: 1.35rem; opacity: .55; }
+    .coverage { margin-top: 12px; font-size: .79rem; line-height: 1.35; opacity: .72; }
+    .coverage strong { display: block; font-size: .9rem; opacity: 1; }
     .company { font-size: .9rem; opacity: .72; margin-bottom: 3px; }
     h2 { margin: 0 0 7px; font-size: 1.08rem; line-height: 1.3; }
     .meta { display: flex; gap: 7px 14px; flex-wrap: wrap; font-size: .88rem; margin: 8px 0; }
     .badge { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; }
     .hard { border-color: color-mix(in srgb, #d33 65%, transparent); background: color-mix(in srgb, #d33 12%, Canvas); }
+    .favorite-badge { border-color: color-mix(in srgb, #b18a42 55%, transparent); background: color-mix(in srgb, #b18a42 10%, Canvas); }
+    .hidden-badge { opacity: .68; }
     .drivers { font-size: .86rem; line-height: 1.55; }
     .positive { opacity: .92; }
     .negative { opacity: .75; }
     .right { font-size: .88rem; line-height: 1.55; }
     .right a { color: inherit; }
     .right section + section { margin-top: 10px; }
+    .actions { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 12px; }
+    .actions form { margin: 0; }
+    .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
+    .actions .hide { opacity: .78; }
     .empty { padding: 30px 0; opacity: .7; }
     @media (max-width: 900px) {
       .stats { grid-template-columns: 1fr 1fr; }
-      .job { grid-template-columns: 72px 1fr; }
+      .job { grid-template-columns: 96px 1fr; }
       .right { grid-column: 2; }
       .filters form { width: 100%; margin-left: 0; }
       .filters form input { flex: 1; min-width: 0; }
@@ -59,14 +76,16 @@
 
   <div class="stats">
     <div class="stat"><strong>{{ stats.gesamt }}</strong>relevante Stellen</div>
-    <div class="stat"><strong>{{ stats.bewertet }}</strong>bewertet</div>
-    <div class="stat"><strong>{{ stats.unvereinbar }}</strong>unvereinbar</div>
-    <div class="stat"><strong>{{ stats.unbewertet }}</strong>unbewertet</div>
+    <div class="stat"><strong>{{ stats.bewertet }}</strong>mit Passungswert</div>
+    <div class="stat"><strong>{{ stats.favoriten }}</strong>Favoriten</div>
+    <div class="stat"><strong>{{ stats.ausgeblendet }}</strong>ausgeblendet</div>
   </div>
 
   <nav class="filters" aria-label="Stellenfilter">
     {% for value, label in job_filters.items() %}
-      <a href="/admin/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">{{ label }}</a>
+      <a href="/admin/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">
+        {{ label }}{% if value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
+      </a>
     {% endfor %}
     <form method="get" action="/admin/jobs">
       <input type="hidden" name="ansicht" value="{{ selected_filter }}">
@@ -77,14 +96,31 @@
 
   {% for row in rows %}
     {% set salary = annual_salary_label(row.job) %}
-    <article class="job">
+    {% if row.result.hard_constraints %}
+      {% set fit_class = 'fit-hard' %}
+    {% elif row.result.score is none %}
+      {% set fit_class = 'fit-unrated' %}
+    {% elif row.result.score >= 85 %}
+      {% set fit_class = 'fit-excellent' %}
+    {% elif row.result.score >= 70 %}
+      {% set fit_class = 'fit-good' %}
+    {% elif row.result.score >= 50 %}
+      {% set fit_class = 'fit-medium' %}
+    {% else %}
+      {% set fit_class = 'fit-low' %}
+    {% endif %}
+    <article class="job {{ fit_class }}" id="job-{{ row.job.id }}">
       <div>
+        <div class="score-label">Passung</div>
         {% if row.result.score is not none %}
-          <div class="score">{{ row.result.score }}</div>
-          <div class="coverage">{{ (row.result.preference_coverage * 100)|round|int }} % Abdeckung</div>
+          <div class="score-line"><div class="score">{{ row.result.score }}</div><div class="score-max">/ 100</div></div>
+          <div class="coverage">
+            Bewertungsbasis
+            <strong>{{ (row.result.preference_coverage * 100)|round|int }} %</strong>
+          </div>
         {% else %}
           <div class="score unrated">–</div>
-          <div class="coverage">unbewertet</div>
+          <div class="coverage">Noch keine bewertbare Profilbasis</div>
         {% endif %}
       </div>
 
@@ -94,6 +130,8 @@
         <div class="meta">
           {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
           {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
+          {% if row.favorite %}<span class="badge favorite-badge">Favorit</span>{% endif %}
+          {% if row.hidden %}<span class="badge hidden-badge">Ausgeblendet</span>{% endif %}
           {% if row.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ row.hard_labels|join(', ') }}</span>{% endif %}
         </div>
         {% if row.drivers %}
@@ -107,6 +145,22 @@
       </div>
 
       <div class="right">
+        <div class="actions">
+          <form method="post" action="/admin/jobs/{{ row.job.id }}/favorite">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="favorite" value="{{ '0' if row.favorite else '1' }}">
+            <input type="hidden" name="return_view" value="{{ selected_filter }}">
+            <input type="hidden" name="return_search" value="{{ search }}">
+            <button class="favorite {% if row.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if row.favorite else 'Als Favorit merken' }}</button>
+          </form>
+          <form method="post" action="/admin/jobs/{{ row.job.id }}/hidden">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="hidden" value="{{ '0' if row.hidden else '1' }}">
+            <input type="hidden" name="return_view" value="{{ selected_filter }}">
+            <input type="hidden" name="return_search" value="{{ search }}">
+            <button class="hide" type="submit">{{ 'Wieder einblenden' if row.hidden else 'Ausblenden' }}</button>
+          </form>
+        </div>
         {% if row.links %}
           <section>
             <strong>Quellen</strong><br>
