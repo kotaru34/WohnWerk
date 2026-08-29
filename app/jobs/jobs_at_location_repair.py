@@ -30,11 +30,9 @@ def parse_jobs_at_visible_location(content: str):
 def _needs_source_repair(location: JobLocation) -> bool:
     if location.location is not None:
         return False
-    if location.city and canonicalize_locality(location.city) is not None:
-        # A concrete city that merely failed normal geocoding belongs to the local
-        # punctuation-safe fallback, not another external request.
-        return False
-    return True
+    # A concrete city that merely failed normal geocoding belongs to the local
+    # punctuation-safe fallback, not another external request.
+    return not bool(location.city and canonicalize_locality(location.city) is not None)
 
 
 def repair_unresolved_jobs_at_locations(
