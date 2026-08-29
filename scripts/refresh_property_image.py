@@ -10,7 +10,7 @@ from sqlalchemy import or_, select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import ListingStatus, PropertyListing
-from app.property_thumbnail_cache import _ImagePlan, _cache_row, _download_image
+from app.property_thumbnail_cache import _cache_row, _download_image, _ImagePlan
 
 
 def parse_args() -> argparse.Namespace:
