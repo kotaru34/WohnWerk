@@ -16,7 +16,7 @@ _MONEY_RE = re.compile(
 )
 _SALARY_CUE_RE = re.compile(
     r"(?:gehalt|mindestentgelt|entgelt|vergütung|verguetung|bezahlung|lohn|"
-    r"salary|compensation|remuneration)",
+    r"\bbrutto\b|\bgross\b|salary|compensation|remuneration)",
     re.IGNORECASE,
 )
 _MINIMUM_RE = re.compile(
@@ -26,15 +26,16 @@ _MINIMUM_RE = re.compile(
 )
 _RANGE_RE = re.compile(r"(?:\bbis\b|\bto\b|\bbis\s+zu\b|\s[-–—]\s)", re.IGNORECASE)
 _PAYMENT_14_RE = re.compile(
-    r"(?:\b14\s*(?:x|mal)\b|\b14\s*(?:monats)?gehälter\b|"
-    r"\b14\s*(?:monats)?gehaelter\b|\b14\s*(?:bezüge|bezuege|zahlungen)\b)",
+    r"(?:\b14\s*(?:x|mal)\b|\b14\s*(?:monats)?gehälter(?:n)?\b|"
+    r"\b14\s*(?:monats)?gehaelter(?:n)?\b|\b14\s*(?:bezüge|bezuege|zahlungen)\b)",
     re.IGNORECASE,
 )
 _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "month",
         re.compile(
-            r"(?:\bmonat(?:lich|s(?:gehalt|brutto|entgelt)?)?\b|/\s*monat\b|"
+            r"(?:\b(?:brutto)?monats(?:gehalt|entgelt|brutto)?\b|"
+            r"\bmonatsbrutto(?:gehalt|entgelt)?\b|\bmonatlich\b|/\s*monat\b|"
             r"\bpro\s+monat\b|\bper\s+month\b|\bmonthly\b)",
             re.IGNORECASE,
         ),
@@ -42,7 +43,8 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "year",
         re.compile(
-            r"(?:\bjahr(?:es(?:gehalt|brutto|entgelt)?)?\b|\bjährlich\b|\bjaehrlich\b|"
+            r"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt)?\b|"
+            r"\bjahresbrutto(?:gehalt|entgelt)?\b|\bjährlich\b|\bjaehrlich\b|"
             r"/\s*jahr\b|\bpro\s+jahr\b|\bp\.?\s*a\.?\b|\bper\s+year\b|"
             r"\bannual(?:ly)?\b)",
             re.IGNORECASE,
@@ -58,7 +60,10 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
     (
         "week",
-        re.compile(r"(?:\bwoche\b|/\s*woche\b|\bpro\s+woche\b|\bper\s+week\b)", re.IGNORECASE),
+        re.compile(
+            r"(?:\bwoche\b|/\s*woche\b|\bpro\s+woche\b|\bper\s+week\b)",
+            re.IGNORECASE,
+        ),
     ),
 )
 
@@ -168,7 +173,9 @@ def parse_salary_text(text: str | None) -> ParsedSalary | None:
             between = text[previous.end() : match.start()]
             if len(between) <= 80 and _RANGE_RE.search(between):
                 previous_value = _money_value(previous)
-                previous_window = text[max(0, previous.start() - 150) : min(len(text), match.end() + 120)]
+                previous_window = text[
+                    max(0, previous.start() - 150) : min(len(text), match.end() + 120)
+                ]
                 if (
                     previous_value is not None
                     and _SALARY_CUE_RE.search(previous_window)
