@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from app.property_detail_enrichment import _detail_title_is_safe_upgrade
 from app.property_detail_facts import (
     extract_immoscout_property_facts,
     immoscout_facts_match_listing,
@@ -13,6 +14,7 @@ def test_extracts_immoscout_price_and_plot_area() -> None:
       "obj_zipCode":"8753",
       "obj_purchasePrice":"169000",
       "obj_livingSpace":"83.38",
+      "obj_usableArea":"83.38",
       "obj_lotArea":"785"
     }'''
 
@@ -24,6 +26,7 @@ def test_extracts_immoscout_price_and_plot_area() -> None:
     assert facts is not None
     assert facts.purchase_price_eur == Decimal(169000)
     assert facts.living_area_m2 == Decimal("83.38")
+    assert facts.usable_area_m2 == Decimal("83.38")
     assert facts.plot_area_m2 == Decimal(785)
     assert facts.postal_code == "8753"
     assert immoscout_facts_match_listing(
@@ -38,7 +41,8 @@ def test_title_promotion_amount_does_not_replace_purchase_price_metadata() -> No
     body = '''{
       "obj_title":"Reihenhaus - bis zu € 100.000,- Wohnbauförderung möglich",
       "obj_zipCode":"6890",
-      "obj_purchasePrice":573500
+      "obj_purchasePrice":573500,
+      "obj_livingSpace":96.4
     }'''
 
     facts = extract_immoscout_property_facts(
@@ -48,11 +52,27 @@ def test_title_promotion_amount_does_not_replace_purchase_price_metadata() -> No
 
     assert facts is not None
     assert facts.purchase_price_eur == Decimal(573500)
+    assert facts.living_area_m2 == Decimal("96.4")
     assert immoscout_facts_match_listing(
         facts,
         listing_url="https://www.immobilienscout24.at/expose/6579d6eabfd5ce3bcce77d0a",
         postal_code="6890",
-        title="Reihenhaus - bis zu € 100.000,- Wohnbauförderung möglich",
+        title="Reihenhaus - bis zu",
+    )
+
+
+def test_detail_title_can_only_extend_existing_title() -> None:
+    assert _detail_title_is_safe_upgrade(
+        "Reihenhaus - bis zu",
+        "Reihenhaus - bis zu € 100.000,- Wohnbauförderung möglich",
+    )
+    assert not _detail_title_is_safe_upgrade(
+        "Reihenhaus - bis zu",
+        "Völlig anderes Haus in einer anderen Stadt",
+    )
+    assert not _detail_title_is_safe_upgrade(
+        "Vollständiger Titel",
+        "Vollständiger Titel",
     )
 
 

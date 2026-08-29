@@ -33,6 +33,8 @@ async def async_main() -> int:
             needle=args.needle,
             apply=not args.dry_run,
         )
+    for detail in summary.details:
+        print(detail)
     print(f"considered={summary.considered}")
     print(f"attempted={summary.attempted}")
     print(f"matched={summary.matched}")
@@ -42,6 +44,8 @@ async def async_main() -> int:
     print(f"prices_updated={summary.prices_updated}")
     print(f"plots_updated={summary.plots_updated}")
     print(f"living_updated={summary.living_updated}")
+    print(f"usable_updated={summary.usable_updated}")
+    print(f"titles_updated={summary.titles_updated}")
     print(f"committed={not args.dry_run}")
     return 0
 

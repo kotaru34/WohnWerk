@@ -17,6 +17,7 @@ _IMMOSCOUT_HOSTS = {
 class ImmoScoutPropertyFacts:
     purchase_price_eur: Decimal | None = None
     living_area_m2: Decimal | None = None
+    usable_area_m2: Decimal | None = None
     plot_area_m2: Decimal | None = None
     postal_code: str | None = None
     object_number: str | None = None
@@ -47,6 +48,8 @@ def _decimal(value: str | None) -> Decimal | None:
     if value is None:
         return None
     normalized = value.strip().replace(" ", "")
+    if "," in normalized and "." not in normalized:
+        normalized = normalized.replace(",", ".")
     try:
         return Decimal(normalized)
     except (InvalidOperation, ValueError):
@@ -72,16 +75,28 @@ def extract_immoscout_property_facts(
 
     purchase_price = _first_decimal(body, ("obj_purchasePrice",))
     living_area = _first_decimal(body, ("obj_livingSpace", "obj_livingArea"))
+    usable_area = _first_decimal(body, ("obj_usableArea", "obj_useableArea"))
     plot_area = _first_decimal(body, ("obj_lotArea", "obj_plotArea", "obj_landArea"))
     postal_code = _json_scalar(body, "obj_zipCode")
     object_number = _json_scalar(body, "obj_objectnumber")
     title = _json_scalar(body, "obj_title")
 
-    if not any((purchase_price, living_area, plot_area, postal_code, object_number, title)):
+    if not any(
+        (
+            purchase_price,
+            living_area,
+            usable_area,
+            plot_area,
+            postal_code,
+            object_number,
+            title,
+        )
+    ):
         return None
     return ImmoScoutPropertyFacts(
         purchase_price_eur=purchase_price,
         living_area_m2=living_area,
+        usable_area_m2=usable_area,
         plot_area_m2=plot_area,
         postal_code=postal_code.strip() if postal_code else None,
         object_number=object_number.strip() if object_number else None,
