@@ -127,10 +127,10 @@ def _inject_product_chrome(body: bytes, *, notice: str | None) -> bytes:
     except UnicodeDecodeError:
         return body
 
-    if "<main>" in text and "ww-product-brand" not in text:
+    if "<main>" in text and '<header class="ww-product-brand"' not in text:
         text = text.replace("<main>", "<main>\n" + _brand_html(), 1)
 
-    if notice and "ww-geo-warning" not in text:
+    if notice and '<aside class="ww-geo-warning"' not in text:
         warning = (
             '<aside class="ww-geo-warning" role="note">'
             "<strong>Standort nur eingeschränkt genau</strong>"
@@ -156,12 +156,14 @@ class ProductUiMiddleware:
 
         path = str(scope.get("path") or "")
         match = _JOB_DETAIL_PATH_RE.match(path)
-        notice = _job_geo_notice(int(match.group("job_id"))) if match else None
+        job_id = int(match.group("job_id")) if match else None
         is_html = False
+        response_status = 0
 
         async def send_wrapper(message) -> None:
-            nonlocal is_html
+            nonlocal is_html, response_status
             if message.get("type") == "http.response.start":
+                response_status = int(message.get("status") or 0)
                 headers = list(message.get("headers") or [])
                 is_html = any(
                     key.lower() == b"content-type" and b"text/html" in value.lower()
@@ -175,6 +177,11 @@ class ProductUiMiddleware:
             elif message.get("type") == "http.response.body" and is_html:
                 body = message.get("body") or b""
                 if body:
+                    notice = (
+                        _job_geo_notice(job_id)
+                        if job_id is not None and 200 <= response_status < 300
+                        else None
+                    )
                     message = dict(message)
                     message["body"] = _inject_product_chrome(body, notice=notice)
             await send(message)
