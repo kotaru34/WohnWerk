@@ -82,7 +82,7 @@
       {% endif %}
     </div>
     <div>
-      <div class="status-line"><span class="status">Gesehen</span></div>
+      <div class="status-line"><span class="status">Gesehen</span><span class="status">Bei WohnWerk seit {{ fit.job.first_seen_at.strftime('%d.%m.%Y') }}</span></div>
       <div class="company">{{ fit.job.company or 'Firma unbekannt' }}</div>
       <h1>{{ fit.job.title }}</h1>
       <div class="badges">
@@ -140,6 +140,7 @@
           <div class="status-line">
             {% if house.id in new_ids %}<span class="status new">Neu</span>{% endif %}
             <span class="status">{{ 'Gesehen' if viewed else 'Noch nicht angesehen' }}</span>
+            <span class="status">Bei WohnWerk seit {{ house.first_seen_at.strftime('%d.%m.%Y') }}</span>
             {% if state and state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
           </div>
           <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
