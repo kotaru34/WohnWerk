@@ -152,6 +152,7 @@
         <div class="meta">
           {% if row.is_new %}<span class="badge new-badge">Neu</span>{% endif %}
           <span class="badge seen-badge">{{ 'Gesehen' if row.viewed else 'Noch nicht angesehen' }}</span>
+          <span class="badge">Bei WohnWerk seit {{ row.job.first_seen_at.strftime('%d.%m.%Y') }}</span>
           {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
           {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
           {% if row.favorite %}<span class="badge favorite-badge">Favorit</span>{% endif %}
