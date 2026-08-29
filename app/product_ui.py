@@ -15,7 +15,6 @@ from app.candidate_activity import (
     novelty_baseline,
     property_curation_condition,
 )
-from app.catalog import templates as catalog_templates
 from app.catalog import (
     HOUSE_PAGE_SIZE,
     _area_label,
@@ -26,6 +25,7 @@ from app.catalog import (
     _property_ui_state,
     _property_views,
 )
+from app.catalog import templates as catalog_templates
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.jobs.candidate_job_store import set_job_favorite, set_job_hidden
 from app.jobs.candidate_profile_store import get_seed_profile
