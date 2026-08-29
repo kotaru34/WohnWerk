@@ -8,13 +8,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import DateTime, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+from app import property_liveness
 from app.database import SessionLocal
 from app.models import ListingStatus, PropertyListing, Source
-from app.property_liveness import (
-    PropertyLivenessSummary,
-    _apply_persisted_probe,
-    probe_property_urls,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -29,20 +25,20 @@ async def refresh_visible_immmo_liveness(
     *,
     stale_minutes: int = PROPERTY_PAGE_LIVENESS_RECHECK_MINUTES,
     limit: int = PROPERTY_PAGE_LIVENESS_LIMIT,
-) -> PropertyLivenessSummary:
+) -> property_liveness.PropertyLivenessSummary:
     """Recheck stale IMMMO observations that were actually rendered to the user.
 
     This is intentionally separate from the catalogue-wide liveness sweep. The broad
     worker can stay conservative, while repeatedly viewed cards get a short freshness TTL.
     Only currently product-visible IMMMO observations are probed; transient failures retain
-    the existing fail-safe semantics implemented by ``_apply_persisted_probe``.
+    the existing fail-safe semantics implemented by the main liveness policy.
     """
     if not property_ids:
-        return PropertyLivenessSummary()
+        return property_liveness.PropertyLivenessSummary()
 
     source = session.scalar(select(Source).where(Source.name == "immmo.at"))
     if source is None:
-        return PropertyLivenessSummary()
+        return property_liveness.PropertyLivenessSummary()
 
     checked_text = PropertyListing.raw_payload.op("->>")("source_liveness_checked_at")
     checked_at = cast(checked_text, DateTime(timezone=True))
@@ -73,17 +69,17 @@ async def refresh_visible_immmo_liveness(
         )
     )
     if not listings:
-        return PropertyLivenessSummary()
+        return property_liveness.PropertyLivenessSummary()
 
-    probes = await probe_property_urls([listing.url for listing in listings])
+    probes = await property_liveness.probe_property_urls([listing.url for listing in listings])
     counts = {"live": 0, "dead": 0, "unknown": 0}
     for listing in listings:
         probe = probes[listing.url]
         counts[probe.state] += 1
-        _apply_persisted_probe(listing, probe)
+        property_liveness._apply_persisted_probe(listing, probe)
 
     session.commit()
-    return PropertyLivenessSummary(
+    return property_liveness.PropertyLivenessSummary(
         attempted=len(listings),
         live=counts["live"],
         dead=counts["dead"],
