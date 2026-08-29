@@ -141,12 +141,16 @@ def _snippet(text: str, start: int, end: int) -> str:
     return line[:320]
 
 
-def parse_salary_text(text: str | None) -> ParsedSalary | None:
-    """Extract only explicit source salary statements with a stated pay period.
+def _salary_context_ok(window: str, *, trusted: bool) -> bool:
+    return trusted or _SALARY_CUE_RE.search(window) is not None
 
-    Generic EUR amounts are deliberately ignored. A candidate must have a nearby salary
-    cue and an explicit month/year/hour/week semantic, which keeps travel budgets, bonuses,
-    revenue figures and other monetary values out of canonical salary fields.
+
+def parse_salary_text(text: str | None, *, trusted: bool = False) -> ParsedSalary | None:
+    """Extract explicit source salary statements with a stated pay period.
+
+    Generic description EUR amounts require a nearby salary cue. Text already designated
+    as salary by a source adapter may skip that cue, but still needs EUR, an explicit period
+    and a plausible value. This preserves fail-closed behavior for ordinary descriptions.
     """
     if not text:
         return None
@@ -160,7 +164,7 @@ def parse_salary_text(text: str | None) -> ParsedSalary | None:
         window_start = max(0, match.start() - 150)
         window_end = min(len(text), match.end() + 180)
         window = text[window_start:window_end]
-        if _SALARY_CUE_RE.search(window) is None:
+        if not _salary_context_ok(window, trusted=trusted):
             continue
         period = _period(window)
         if period is None or not _plausible(value, period):
@@ -178,7 +182,7 @@ def parse_salary_text(text: str | None) -> ParsedSalary | None:
                 ]
                 if (
                     previous_value is not None
-                    and _SALARY_CUE_RE.search(previous_window)
+                    and _salary_context_ok(previous_window, trusted=trusted)
                     and _period(previous_window) == period
                     and _plausible(previous_value, period)
                 ):
@@ -229,7 +233,7 @@ def enrich_raw_job_salary(item: RawJob) -> bool:
     ):
         return False
 
-    parsed = parse_salary_text(item.salary_text) or parse_salary_text(item.description)
+    parsed = parse_salary_text(item.salary_text, trusted=True) or parse_salary_text(item.description)
     if parsed is None:
         return False
 
