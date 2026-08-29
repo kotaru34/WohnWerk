@@ -138,6 +138,24 @@ def _choose_card_anchor(
     return None
 
 
+def _summary_price_match(
+    card_text: str,
+    facts: re.Match[str] | None,
+) -> re.Match[str] | None:
+    """Return the dedicated card price immediately before the structured facts row.
+
+    A listing title can itself contain promotional EUR amounts (``€ 50.000 geschenkt``).
+    IMMMO renders the actual card purchase price after the title and before ``PLZ / Fläche``.
+    Taking the last monetary amount in that summary region therefore preserves promotional
+    title text while still excluding all description amounts that occur after the facts row.
+    """
+    if facts is None:
+        return None
+    summary = card_text[: facts.start()]
+    matches = list(PRICE_RE.finditer(summary))
+    return matches[-1] if matches else None
+
+
 def _fallback_title(card_text: str, heading_text: str) -> str:
     body = _clean_text(card_text)
     heading = _clean_text(heading_text)
@@ -145,12 +163,19 @@ def _fallback_title(card_text: str, heading_text: str) -> str:
         body = body[len(heading) :].strip()
 
     boundaries: list[int] = []
-    price = PRICE_RE.search(body)
-    if price is not None:
-        boundaries.append(price.start())
     facts = LOCATION_AREA_RE.search(body)
     if facts is not None:
+        price = _summary_price_match(body, facts)
+        if price is not None:
+            boundaries.append(price.start())
         boundaries.append(facts.start())
+    else:
+        # Without a structured facts row we cannot distinguish promotional title amounts
+        # from purchase price. Preserve the legacy conservative boundary for crawler-only
+        # fallback materialization rather than guessing a product price.
+        price = PRICE_RE.search(body)
+        if price is not None:
+            boundaries.append(price.start())
 
     if boundaries:
         body = body[: min(boundaries)]
@@ -213,14 +238,10 @@ def _summary_price(card_text: str, facts: re.Match[str] | None) -> Decimal | Non
 
     IMMMO flattens downstream descriptions into the same visible card segment. Those
     descriptions may contain unrelated monetary values such as annual rental income,
-    provision or running costs. If the card itself says ``Preis auf Anfrage`` there is no
-    numeric purchase price before the structured PLZ/area row, so all later euro amounts
-    must remain descriptive text rather than becoming ``price_eur``.
+    provision or running costs. Promotional EUR amounts can also occur inside the title;
+    the actual card purchase price is the final amount before the structured facts row.
     """
-    if facts is None:
-        return None
-    summary = card_text[: facts.start()]
-    price_match = PRICE_RE.search(summary)
+    price_match = _summary_price_match(card_text, facts)
     return _decimal(price_match.group(1)) if price_match else None
 
 
@@ -307,23 +328,26 @@ def parse_immmo_search_page(html: str, *, page_url: str) -> ImmmoPage:
             explicit_plot_area=explicit_plot_area,
         )
 
-        title = _fallback_title(card_text, heading.text)
-        price = _summary_price(card_text, facts)
+        fallback_title = _fallback_title(card_text, heading.text)
         chosen = _choose_card_anchor(
             anchors,
             heading_start=heading.start,
             heading_end=heading.end,
             segment_end=segment_end,
             page_url=page_url,
-            expected_title=title,
+            expected_title=fallback_title,
         )
+        price = _summary_price(card_text, facts)
 
         original_url_missing = chosen is None
         if chosen is not None:
-            _anchor, listing_url = chosen
+            anchor, listing_url = chosen
+            anchor_title = _clean_text(anchor.text).strip(" -–")
+            title = anchor_title[:500] if anchor_title else fallback_title
             source_listing_id = _source_id(listing_url)
             original_host: str | None = (urlparse(listing_url).hostname or "").casefold()
         else:
+            title = fallback_title
             source_listing_id, listing_url = _synthetic_identity(
                 postal_code=postal_code,
                 city=city,
