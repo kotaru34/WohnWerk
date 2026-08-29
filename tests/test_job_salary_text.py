@@ -43,6 +43,29 @@ def test_extracts_monthly_salary_with_amount_first_wording() -> None:
     assert parsed.minimum_only is True
 
 
+def test_extracts_stepstone_bruttomonatslohn() -> None:
+    parsed = parse_salary_text(
+        "Bruttomonatslohn ab 2922,50€ + Zulagen. Überzahlung je nach Qualifikation möglich."
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal("2922.50")
+    assert parsed.period == "month"
+    assert parsed.minimum_only is True
+
+
+def test_extracts_willhaben_hourly_salary_wording() -> None:
+    parsed = parse_salary_text(
+        "Bruttogehalt: € 17,50 stündlich, mit Bereitschaft zur Überzahlung",
+        trusted=True,
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal("17.50")
+    assert parsed.period == "hour"
+    assert parsed.minimum_only is True
+
+
 def test_trusted_source_salary_text_does_not_need_generic_salary_word() -> None:
     parsed = parse_salary_text("ab 4.500 € pro Monat", trusted=True)
 
@@ -105,6 +128,18 @@ def test_salary_label_preserves_source_monthly_semantics() -> None:
     )
 
     assert annual_salary_label(job) == "ab 4.673,74 € / Monat · 14×"
+
+
+def test_salary_label_formats_hourly_minimum() -> None:
+    job = Job(
+        title="Maschinenbautechniker",
+        salary_min=Decimal("17.50"),
+        salary_currency="EUR",
+        salary_period="hour",
+        salary_is_minimum_only=True,
+    )
+
+    assert annual_salary_label(job) == "ab 17,50 € / Stunde"
 
 
 def test_salary_label_formats_annual_range() -> None:
