@@ -43,6 +43,15 @@ def test_extracts_monthly_salary_with_amount_first_wording() -> None:
     assert parsed.minimum_only is True
 
 
+def test_trusted_source_salary_text_does_not_need_generic_salary_word() -> None:
+    parsed = parse_salary_text("ab 4.500 € pro Monat", trusted=True)
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal(4500)
+    assert parsed.period == "month"
+    assert parsed.minimum_only is True
+
+
 def test_ignores_non_salary_euro_amounts_even_with_a_period() -> None:
     assert parse_salary_text(
         "Für Weiterbildungen steht ein Budget von 5.000 € pro Jahr zur Verfügung."
