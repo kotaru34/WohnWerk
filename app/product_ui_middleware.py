@@ -22,6 +22,12 @@ _VAGUE_AREA_RE = re.compile(
     r"\bregion\b|\braum\s+[^,]+|österreichweit|oesterreichweit)",
     re.IGNORECASE,
 )
+_BROAD_REGION_ONLY_RE = re.compile(
+    r"^\s*(?:burgenland|kärnten|kaernten|niederösterreich|niederoesterreich|"
+    r"oberösterreich|oberoesterreich|steiermark|tirol|vorarlberg|österreich|austria)"
+    r"(?:\s*,\s*(?:österreich|austria))?\s*$",
+    re.IGNORECASE,
+)
 
 _BRAND_STYLE = """
 <style id="wohnwerk-product-brand-style">
@@ -108,6 +114,12 @@ def _job_geo_notice(job_id: int) -> str | None:
         )
     if not resolved and unresolved:
         labels = ", ".join(dict.fromkeys(_location_label(location) for location in unresolved))
+        if all(_BROAD_REGION_ONLY_RE.match(_location_label(location)) for location in unresolved):
+            return (
+                f"Die Quelle nennt nur einen sehr groben Bereich („{labels}“). WohnWerk setzt "
+                "dafür bewusst keinen künstlichen Mittelpunkt, weil eine Umkreissuche sonst "
+                "irreführend wäre."
+            )
         return (
             f"WohnWerk konnte die Quellenangabe „{labels}“ nicht verlässlich geokodieren. "
             "Die Umkreissuche kann deshalb leer oder unvollständig sein."
