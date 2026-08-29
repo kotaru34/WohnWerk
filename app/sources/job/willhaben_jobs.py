@@ -33,6 +33,24 @@ _RESULT_COUNT_RE = re.compile(
 )
 _META_RE = re.compile(r"^(?P<date>\d{2}\.\d{2}\.)\s*\|\s*(?P<rest>.+)$")
 _POSTAL_CITY_RE = re.compile(r"^(?P<postal>\d{4})\s+(?P<city>.+)$")
+_DETAIL_WORTHY_RE = re.compile(
+    r"(?:konstruk|maschinenbau|mechanical|cad|entwicklungsingenieur|"
+    r"development\s+engineer|design\s+engineer|project\s+engineer|projektingenieur|"
+    r"technisch\w*\s+projekt|projektleiter|sondermaschinen|fahrzeug|automotive|"
+    r"berechnungsingenieur|simulation\s+engineer|product\s+engineer|"
+    r"mechanik|baugruppen|antrieb|chassis)",
+    re.IGNORECASE,
+)
+_SALARY_DETAIL_CUE_RE = re.compile(
+    r"(?:brutto(?:monats|jahres)?gehalt|mindestgehalt|mindestentgelt|\bgehalt\b|salary)",
+    re.IGNORECASE,
+)
+_SALARY_DETAIL_VALUE_RE = re.compile(
+    r"(?:€|\bEUR\b).{0,60}(?:monatlich|jährlich|jaehrlich|pro\s+monat|pro\s+jahr|"
+    r"/\s*monat|/\s*jahr|p\.?\s*a\.?)|"
+    r"(?:monatlich|jährlich|jaehrlich|pro\s+monat|pro\s+jahr).{0,60}(?:€|\bEUR\b)",
+    re.IGNORECASE,
+)
 
 _EMPLOYMENT_TOKENS = {
     "vollzeit",
@@ -145,6 +163,29 @@ class _SearchParser(HTMLParser):
         self._finalize_current()
 
 
+class _DetailParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.hidden_depth = 0
+        self.text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        if tag.casefold() in {"script", "style", "noscript", "template"}:
+            self.hidden_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() in {"script", "style", "noscript", "template"} and self.hidden_depth:
+            self.hidden_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.hidden_depth:
+            return
+        cleaned = " ".join(html.unescape(data).split()).strip()
+        if cleaned:
+            self.text_parts.append(cleaned)
+
+
 def _safe_short(value: str | None, max_length: int) -> str | None:
     if value is None:
         return None
@@ -220,6 +261,41 @@ def _description_from_tail(parts: list[str], *, company: str | None) -> str | No
     return max(candidates, key=len) if candidates else None
 
 
+def _detail_salary_text(parts: list[str]) -> str | None:
+    """Return a short source-designated salary snippet from a Willhaben detail page."""
+    for index, part in enumerate(parts):
+        if _SALARY_DETAIL_CUE_RE.search(part) is None:
+            continue
+        snippet = " ".join(parts[index : index + 3])
+        if _SALARY_DETAIL_VALUE_RE.search(snippet):
+            return snippet[:500]
+
+    # Some markup places the label and value in adjacent nodes while unrelated text sits
+    # between them. The compact full text fallback is still restricted to an explicit
+    # salary cue plus a stated EUR period.
+    compact = " ".join(parts[:250])
+    cue = _SALARY_DETAIL_CUE_RE.search(compact)
+    if cue is None:
+        return None
+    window = compact[cue.start() : cue.start() + 500]
+    return window if _SALARY_DETAIL_VALUE_RE.search(window) else None
+
+
+def enrich_willhaben_detail_page(item: RawJob, content: str) -> RawJob:
+    parser = _DetailParser()
+    parser.feed(content)
+    salary_text = _detail_salary_text(parser.text_parts)
+    if salary_text:
+        item.salary_text = salary_text
+
+    payload = dict(item.raw_payload)
+    payload["detail_enriched"] = True
+    payload["willhaben_detail_salary_found"] = salary_text is not None
+    payload["acquisition_level"] = "search-card+detail"
+    item.raw_payload = payload
+    return item
+
+
 def parse_willhaben_search_page(
     content: str,
     *,
@@ -268,7 +344,7 @@ def parse_willhaben_search_page(
 
 
 class WillhabenJobSource(JobSource):
-    """Low-impact willhaben Jobs frontier using only first-page search cards."""
+    """Low-impact Willhaben Jobs frontier with bounded relevant-detail enrichment."""
 
     name = "willhaben-jobs"
 
@@ -277,14 +353,17 @@ class WillhabenJobSource(JobSource):
         *,
         searches: list[WillhabenSearch] | None = None,
         request_delay_seconds: float = 1.0,
+        max_details_per_shard: int = 8,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.searches = searches or [WillhabenSearch(*row) for row in _DEFAULT_SEARCHES]
         self.request_delay_seconds = max(0.0, request_delay_seconds)
+        self.max_details_per_shard = max(0, max_details_per_shard)
         self.transport = transport
         self._request_lock = asyncio.Lock()
         self._last_request_at = 0.0
         self._seen_ids: set[str] = set()
+        self._detail_cache: dict[str, RawJob] = {}
 
     def default_shards(self) -> list[SourceShardSpec]:
         return [
@@ -303,6 +382,12 @@ class WillhabenJobSource(JobSource):
                 await asyncio.sleep(remaining)
             self._last_request_at = time.monotonic()
 
+    async def _request_text(self, client: httpx.AsyncClient, url: str) -> str:
+        await self._rate_limit()
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text
+
     async def fetch_shard(
         self,
         shard: SourceShardSpec,
@@ -317,7 +402,6 @@ class WillhabenJobSource(JobSource):
             raise TypeError(f"Invalid willhaben shard params: {shard.params!r}")
 
         url = f"{BASE_URL}/jobs/suche/{slug}"
-        await self._rate_limit()
         try:
             async with httpx.AsyncClient(
                 timeout=30.0,
@@ -329,36 +413,62 @@ class WillhabenJobSource(JobSource):
                     "User-Agent": "WohnWerk/0.1 (+private self-hosted Austrian job search)",
                 },
             ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+                content = await self._request_text(client, url)
+                jobs, reported = parse_willhaben_search_page(content, search_label=label)
+
+                items: list[RawJob] = []
+                duplicates = 0
+                details_fetched = 0
+                details_failed = 0
+                detail_budget_used = 0
+
+                for job in jobs:
+                    if job.source_listing_id in self._seen_ids:
+                        duplicates += 1
+                        continue
+                    self._seen_ids.add(job.source_listing_id)
+
+                    cached = self._detail_cache.get(job.source_listing_id)
+                    if cached is not None:
+                        items.append(cached)
+                        continue
+
+                    if (
+                        detail_budget_used < self.max_details_per_shard
+                        and _DETAIL_WORTHY_RE.search(job.title)
+                    ):
+                        detail_budget_used += 1
+                        try:
+                            detail_content = await self._request_text(client, job.url)
+                            job = enrich_willhaben_detail_page(job, detail_content)
+                            self._detail_cache[job.source_listing_id] = job
+                            details_fetched += 1
+                        except Exception as exc:
+                            payload = dict(job.raw_payload)
+                            payload["detail_enrichment_error"] = f"{type(exc).__name__}: {exc}"
+                            job.raw_payload = payload
+                            details_failed += 1
+
+                    items.append(job)
         except Exception as exc:
             raise SourceFetchError(
                 f"willhaben Jobs shard {shard.key!r} failed: {type(exc).__name__}",
                 pages_fetched=1,
             ) from exc
 
-        jobs, reported = parse_willhaben_search_page(response.text, search_label=label)
-        items: list[RawJob] = []
-        duplicates = 0
-        for job in jobs:
-            if job.source_listing_id in self._seen_ids:
-                duplicates += 1
-                continue
-            self._seen_ids.add(job.source_listing_id)
-            items.append(job)
-
         return SourceBatch(
             items=items,
             next_cursor={
-                "strategy": "first-page-search-card-frontier",
+                "strategy": "first-page-search-card-frontier+bounded-detail",
                 "search_url": url,
                 "search_reported_count": reported,
                 "cards_parsed": len(jobs),
                 "cross_query_duplicates": duplicates,
-                "details_fetched": 0,
+                "details_fetched": details_fetched,
+                "details_failed": details_failed,
             },
             source_reported_count=reported,
             coverage_complete=False,
             result_cap_hit=False,
-            pages_fetched=1,
+            pages_fetched=1 + details_fetched + details_failed,
         )
