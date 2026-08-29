@@ -3,13 +3,11 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 from typing import Annotated
-from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import exists, func, select
 
-from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
+from app.admin import AdminDependency, DbDependency, _csrf_token
 from app.candidate_activity import (
     CandidatePropertyPreference,
     novelty_baseline,
@@ -27,7 +25,6 @@ from app.catalog import (
 )
 from app.catalog import templates as catalog_templates
 from app.house_filters import resolve_house_filters, save_house_filters
-from app.jobs.candidate_job_store import set_job_favorite, set_job_hidden
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import annual_salary_label, load_live_job_fit
 from app.models import Property
@@ -256,46 +253,3 @@ def jobs_page(
             "csrf_token": _csrf_token(),
         },
     )
-
-
-def _job_redirect(job_id: int, *, view: str, search: str) -> RedirectResponse:
-    query = {"ansicht": view if view in JOB_FILTERS else "passend"}
-    if search.strip():
-        query["suche"] = search.strip()
-    return RedirectResponse(f"/jobs?{urlencode(query)}#job-{job_id}", status_code=303)
-
-
-@router.post("/jobs/{job_id}/favorite", include_in_schema=False)
-def update_job_favorite(
-    job_id: int,
-    _: AdminDependency,
-    __: CsrfDependency,
-    db: DbDependency,
-    favorite: Annotated[str, Form()],
-    return_view: Annotated[str, Form()] = "passend",
-    return_search: Annotated[str, Form()] = "",
-):
-    profile = _profile_for_jobs(db)
-    try:
-        set_job_favorite(db, profile, job_id, favorite=favorite == "1")
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Stelle nicht gefunden.") from exc
-    return _job_redirect(job_id, view=return_view, search=return_search)
-
-
-@router.post("/jobs/{job_id}/hidden", include_in_schema=False)
-def update_job_hidden(
-    job_id: int,
-    _: AdminDependency,
-    __: CsrfDependency,
-    db: DbDependency,
-    hidden: Annotated[str, Form()],
-    return_view: Annotated[str, Form()] = "passend",
-    return_search: Annotated[str, Form()] = "",
-):
-    profile = _profile_for_jobs(db)
-    try:
-        set_job_hidden(db, profile, job_id, hidden=hidden == "1")
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail="Stelle nicht gefunden.") from exc
-    return _job_redirect(job_id, view=return_view, search=return_search)
