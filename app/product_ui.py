@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from decimal import Decimal
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import exists, func, select
