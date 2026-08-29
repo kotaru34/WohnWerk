@@ -25,13 +25,19 @@ class ImmoScoutPropertyFacts:
 
 def _json_scalar(text: str, key: str) -> str | None:
     match = re.search(
-        rf'"{re.escape(key)}"\s*:\s*(?:"(?P<quoted>[^"\\]*(?:\\.[^"\\]*)*)"|(?P<bare>-?\d+(?:\.\d+)?|null))',
+        rf'"{re.escape(key)}"\s*:\s*'
+        rf'(?:"(?P<quoted>[^"\\]*(?:\\.[^"\\]*)*)"|'
+        rf'(?P<bare>-?\d+(?:\.\d+)?|null))',
         text,
         re.IGNORECASE,
     )
     if match is None:
         return None
-    value = match.group("quoted") if match.group("quoted") is not None else match.group("bare")
+    value = (
+        match.group("quoted")
+        if match.group("quoted") is not None
+        else match.group("bare")
+    )
     if value is None or value.casefold() == "null":
         return None
     return value.replace(r"\u0026", "&").replace(r"\/", "/")
@@ -59,12 +65,7 @@ def extract_immoscout_property_facts(
     url: str,
     body: str,
 ) -> ImmoScoutPropertyFacts | None:
-    """Extract authoritative listing facts from ImmoScout's embedded page metadata.
-
-    The values come from provider-generated ``obj_*`` metadata, not arbitrary description
-    prose. This is intentionally narrow: if the page is not an ImmoScout expose or no
-    structured property facts are present, return ``None`` rather than guessing.
-    """
+    """Extract authoritative listing facts from ImmoScout embedded page metadata."""
     host = (urlparse(url).hostname or "").casefold()
     if host not in _IMMOSCOUT_HOSTS:
         return None
@@ -92,14 +93,14 @@ def _normalize_title(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9äöüß]+", value.casefold()))
 
 
-def immosc​​out_facts_match_listing(
+def immoscout_facts_match_listing(
     facts: ImmoScoutPropertyFacts,
     *,
     listing_url: str,
     postal_code: str | None,
     title: str | None,
 ) -> bool:
-    """Require strong identity evidence before provider detail facts may enrich a row."""
+    """Require strong identity evidence before provider detail facts enrich a row."""
     path_token = urlparse(listing_url).path.rstrip("/").split("/")[-1]
     object_match = bool(facts.object_number and path_token == facts.object_number)
 
@@ -118,12 +119,11 @@ def immosc​​out_facts_match_listing(
                 source_tokens = set(source_title.split())
                 stored_tokens = set(stored_title.split())
                 overlap = len(source_tokens & stored_tokens)
-                title_match = overlap >= 3 and overlap / max(1, min(len(source_tokens), len(stored_tokens))) >= 0.6
+                denominator = max(1, min(len(source_tokens), len(stored_tokens)))
+                title_match = overlap >= 3 and overlap / denominator >= 0.6
         if not title_match and not object_match:
             return False
 
-    # Exact provider object ID is strongest. Otherwise require both a matching postal code
-    # and title evidence so a historical cross-card anchor cannot silently rewrite facts.
     if object_match:
         return True
     return bool(
