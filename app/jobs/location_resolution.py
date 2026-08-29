@@ -13,6 +13,7 @@ from app.models import PostalCode
 LOCALITY_LOCATION_SOURCE = "RTR postal names + BEV postal centroids"
 LOCALITY_LOCATION_METHOD = "locality_weighted_postal_centroid"
 MULTI_LOCALITY_LOCATION_METHOD = "multi_locality_equal_centroid"
+DIRECTIONAL_ANCHOR_LOCATION_METHOD = "directional_anchor_locality_centroid"
 
 _LOCALITY_ALIASES = {
     "vienna": "wien",
@@ -44,6 +45,10 @@ _COUNTRY_SUFFIX_RE = re.compile(
     flags=re.IGNORECASE,
 )
 _AREA_SEPARATOR_RE = re.compile(r"\s*[,;/]\s*")
+_DIRECTIONAL_ANCHOR_RE = re.compile(
+    r"^\s*(?:nördlich|noerdlich|südlich|suedlich|östlich|oestlich|westlich)\s+von\s+(.+?)\s*$",
+    flags=re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +88,23 @@ def canonicalize_locality(value: str | None) -> str | None:
     if not normalized or normalized in _REMOTE_ONLY:
         return None
     return _LOCALITY_ALIASES.get(normalized, normalized)
+
+
+def directional_anchor_locality(value: str | None) -> str | None:
+    """Return the explicit anchor locality from labels such as `Südlich von Wien`.
+
+    The direction itself does not provide a point, so WohnWerk intentionally uses only the
+    named anchor locality's centroid and records a distinct resolution method. This is less
+    precise than a real Dienstort, but more useful and more honest than treating the entire
+    phrase as an unresolvable city or inventing a point south of the anchor.
+    """
+    if not value:
+        return None
+    match = _DIRECTIONAL_ANCHOR_RE.match(value)
+    if match is None:
+        return None
+    anchor = _COUNTRY_SUFFIX_RE.sub("", match.group(1)).strip()
+    return canonicalize_locality(anchor)
 
 
 def canonicalize_area_localities(value: str | None) -> tuple[str, ...]:
@@ -184,6 +206,22 @@ def combine_locality_resolutions(
 def resolve_locality(session: Session, city: str | None) -> LocalityResolution | None:
     if city is None:
         return None
+
+    directional_anchor = directional_anchor_locality(city)
+    if directional_anchor is not None:
+        anchor_resolution = resolve_locality(session, directional_anchor)
+        if anchor_resolution is None:
+            return None
+        return LocalityResolution(
+            requested_city=city,
+            canonical_locality=anchor_resolution.canonical_locality,
+            longitude=anchor_resolution.longitude,
+            latitude=anchor_resolution.latitude,
+            postal_codes=anchor_resolution.postal_codes,
+            address_sample_count=anchor_resolution.address_sample_count,
+            source=anchor_resolution.source,
+            method=DIRECTIONAL_ANCHOR_LOCATION_METHOD,
+        )
 
     area_localities = canonicalize_area_localities(city)
     if area_localities:
