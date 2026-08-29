@@ -136,6 +136,13 @@ def main() -> None:
                     [sys.executable, str(PROJECT_ROOT / "scripts/resolve_job_locations.py")],
                 ),
                 (
+                    "postprocess:job-location-propagation",
+                    [
+                        sys.executable,
+                        str(PROJECT_ROOT / "scripts/propagate_job_location_resolutions.py"),
+                    ],
+                ),
+                (
                     "postprocess:job-concepts",
                     [
                         sys.executable,
