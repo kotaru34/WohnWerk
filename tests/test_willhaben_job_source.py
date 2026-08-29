@@ -2,13 +2,13 @@ import httpx
 import pytest
 
 from app.jobs.salary import parse_salary_text
+from app.sources.base import RawJob
 from app.sources.job.willhaben_jobs import (
     WillhabenJobSource,
     WillhabenSearch,
     enrich_willhaben_detail_page,
     parse_willhaben_search_page,
 )
-from app.sources.base import RawJob
 
 
 def test_parse_willhaben_search_card_fields_and_postal_code() -> None:
