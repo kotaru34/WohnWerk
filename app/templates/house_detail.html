@@ -18,7 +18,8 @@
     .media img { width: 100%; height: 100%; object-fit: cover; }
     .placeholder { opacity: .42; }
     h1 { margin: 0 0 8px; line-height: 1.18; }
-    .location { opacity: .7; margin-bottom: 12px; }
+    .location { opacity: .7; margin-bottom: 3px; }
+    .listed-date { opacity: .55; font-size: .82rem; margin-bottom: 12px; }
     .price { font-size: 1.7rem; font-weight: 760; margin: 12px 0; }
     .facts, .statuses { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
     .fact, .status { border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 5px 9px; }
@@ -28,7 +29,6 @@
     .actions form { margin: 0; }
     .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
     .sources { font-size: .9rem; line-height: 1.6; margin-top: 18px; }
-    .description { margin: 24px 0; line-height: 1.55; white-space: pre-line; }
     .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
     .nearby-head h2 { margin: 0; }
     .radius { display: flex; gap: 8px; align-items: end; }
@@ -84,6 +84,7 @@
         {% if house_state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
       </div>
       <div class="location">{{ house.property.postal_code or '' }} {{ house.property.city or 'Ort unbekannt' }}</div>
+      <div class="listed-date">Bei WohnWerk seit {{ house.property.first_seen_at.strftime('%d.%m.%Y') }}</div>
       <h1>{{ house.property.title }}</h1>
       <div class="price">{{ eur_label(house.property.price_eur) }}</div>
       <div class="facts">
@@ -121,8 +122,6 @@
       {% endif %}
     </div>
   </section>
-
-  {% if house.property.description %}<div class="description">{{ house.property.description }}</div>{% endif %}
 
   <div class="nearby-head">
     <div>
@@ -170,6 +169,7 @@
           <div class="badges">
             {% if row.is_new %}<span class="badge new">Neu</span>{% endif %}
             <span class="badge">{{ 'Gesehen' if row.viewed else 'Noch nicht angesehen' }}</span>
+            <span class="badge">Bei WohnWerk seit {{ row.job.first_seen_at.strftime('%d.%m.%Y') }}</span>
             {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
             {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
             {% if row.favorite %}<span class="badge">Favorit</span>{% endif %}
