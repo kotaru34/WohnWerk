@@ -8,6 +8,7 @@ from app.http_normalization import NormalizeHouseQueryMiddleware
 from app.matches import router as matches_router
 from app.product_ui import router as product_ui_router
 from app.product_ui_middleware import ProductUiMiddleware
+from app.property_page_liveness import PropertyPageLivenessMiddleware
 from app.site import router as site_router
 from app.version import __version__
 
@@ -18,6 +19,7 @@ app = FastAPI(
     description="Austria-first home and job matching service",
     version=__version__,
 )
+app.add_middleware(PropertyPageLivenessMiddleware)
 app.add_middleware(ProductUiMiddleware)
 app.add_middleware(NormalizeHouseQueryMiddleware)
 app.include_router(product_ui_router)
