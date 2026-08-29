@@ -1,7 +1,14 @@
 from decimal import Decimal
 
+from app.models import PropertyListing
 from app.property_acquisition import annotate_property_items_by_budget
-from app.property_liveness import assess_property_page, assess_property_redirect
+from app.property_liveness import (
+    PROPERTY_LIVENESS_RECHECK_HOURS,
+    PropertyLivenessProbe,
+    _apply_persisted_probe,
+    assess_property_page,
+    assess_property_redirect,
+)
 from app.sources.base import RawProperty
 
 
@@ -93,3 +100,60 @@ def test_http_liveness_is_conservative() -> None:
         "unknown",
         "cloudflare_challenge",
     )
+
+
+def test_property_liveness_is_rechecked_daily() -> None:
+    assert PROPERTY_LIVENESS_RECHECK_HOURS == 24
+
+
+def test_transient_unknown_does_not_hide_previously_proven_live_listing() -> None:
+    listing = PropertyListing(
+        raw_payload={
+            "source_price_eur": "150000",
+            "source_liveness_required": True,
+            "source_liveness_state": "live",
+            "source_liveness_last_live_at": "2026-08-29T01:00:00+00:00",
+            "product_visible": True,
+            "product_visibility_reason": "accepted",
+        }
+    )
+
+    _apply_persisted_probe(
+        listing,
+        PropertyLivenessProbe(
+            state="unknown",
+            status_code=429,
+            reason="http_429",
+            final_url="https://portal.example/expose/1",
+        ),
+    )
+
+    assert listing.raw_payload["source_liveness_state"] == "unknown"
+    assert listing.raw_payload["product_visible"] is True
+    assert listing.raw_payload["product_visibility_reason"] == "accepted"
+
+
+def test_definitive_dead_still_hides_previously_live_listing() -> None:
+    listing = PropertyListing(
+        raw_payload={
+            "source_price_eur": "150000",
+            "source_liveness_required": True,
+            "source_liveness_state": "live",
+            "source_liveness_last_live_at": "2026-08-29T01:00:00+00:00",
+            "product_visible": True,
+            "product_visibility_reason": "accepted",
+        }
+    )
+
+    _apply_persisted_probe(
+        listing,
+        PropertyLivenessProbe(
+            state="dead",
+            status_code=404,
+            reason="http_404",
+            final_url="https://portal.example/expose/1",
+        ),
+    )
+
+    assert listing.raw_payload["product_visible"] is False
+    assert listing.raw_payload["product_visibility_reason"] == "source_dead"
