@@ -17,15 +17,15 @@ ADAPTER_PATH = "app.sources.job.willhaben_jobs.WillhabenJobSource"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Low-impact willhaben Jobs frontier: five first-page searches, "
-            "search-card data only, zero detail requests."
+            "Low-impact willhaben Jobs frontier: five first-page searches with bounded "
+            "detail enrichment for mechanically relevant titles."
         )
     )
     parser.add_argument(
         "--delay",
         type=float,
         default=1.0,
-        help="Minimum delay between search-page requests (default: 1.0s).",
+        help="Minimum delay between source requests (default: 1.0s).",
     )
     return parser.parse_args()
 
@@ -35,10 +35,10 @@ def get_or_create_source() -> int:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
             "scope": "focused Austrian mechanical-engineering searches on willhaben Jobs",
-            "acquisition": "first-page search cards only; zero detail requests",
+            "acquisition": "first-page search cards plus bounded relevant-detail enrichment",
             "coverage": "intentionally incomplete frontier; never authoritative for disappearance",
             "reconciliation_interval_hours": None,
-            "detail_policy": "search-card only",
+            "detail_policy": "up to 8 mechanically relevant detail pages per search shard",
         }
         if source is None:
             source = Source(
@@ -91,7 +91,7 @@ async def async_main() -> int:
             f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
         )
         print(
-            "note=first-page search-card frontier; zero detail requests; "
+            "note=first-page frontier with bounded relevant-detail enrichment; "
             "no disappearance authority"
         )
 
