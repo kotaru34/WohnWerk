@@ -52,6 +52,25 @@ def test_trusted_source_salary_text_does_not_need_generic_salary_word() -> None:
     assert parsed.minimum_only is True
 
 
+def test_willhaben_salary_marks_overpayment_amount_as_minimum() -> None:
+    parsed = parse_salary_text(
+        "Bruttogehalt:€ 5.000 monatlich, mit Bereitschaft zur Überzahlung",
+        trusted=True,
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal(5000)
+    assert parsed.period == "month"
+    assert parsed.minimum_only is True
+
+
+def test_work_schedule_does_not_become_weekly_salary_period() -> None:
+    assert parse_salary_text(
+        "Geboten wird ein marktübliches Bruttogehalt (40 Std./Woche, KV IT & Consulting) "
+        "abhängig von individueller Qualifikation und beruflicher Erfahrung ab 3500 EUR."
+    ) is None
+
+
 def test_ignores_non_salary_euro_amounts_even_with_a_period() -> None:
     assert parse_salary_text(
         "Für Weiterbildungen steht ein Budget von 5.000 € pro Jahr zur Verfügung."
