@@ -113,7 +113,9 @@
         <div class="sources">
           <strong>Originalanzeigen</strong><br>
           {% for source in house.sources %}
-            <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a>{% if not loop.last %}<br>{% endif %}
+            {% if '/wohnwerk-fallback/' not in source.url %}
+              <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a><br>
+            {% endif %}
           {% endfor %}
         </div>
       {% endif %}
