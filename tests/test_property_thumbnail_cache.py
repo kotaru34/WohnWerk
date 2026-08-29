@@ -44,7 +44,7 @@ def test_linked_thumbnail_is_bound_only_to_exact_listing_anchor() -> None:
         <a href="https://portal.example/expose/123?utm_source=immmo.at">
           <img
             src="https://img.example/medium.jpg"
-            srcset="https://img.example/thumb.jpg 240w, https://img.example/large.jpg 1200w"
+            srcset="https://img.example/thumb.jpg 240w, https://img.example/medium.jpg 640w, https://img.example/large.jpg 1200w"
           >
           Haus mit Garten
         </a>
@@ -53,7 +53,7 @@ def test_linked_thumbnail_is_bound_only_to_exact_listing_anchor() -> None:
     )
 
     key = _comparison_url("https://portal.example/expose/123")
-    assert parser.images == {key: "https://img.example/large.jpg"}
+    assert parser.images == {key: "https://img.example/medium.jpg"}
 
 
 def test_comparison_url_drops_tracking_but_keeps_identity_query() -> None:
