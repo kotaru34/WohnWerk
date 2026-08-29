@@ -7,7 +7,7 @@ from app.property_detail_facts import (
 
 
 def test_extracts_immoscout_price_and_plot_area() -> None:
-    body = r'''{
+    body = '''{
       "obj_objectnumber":"6a91ab98c69313e56d51e832",
       "obj_title":"Einfamilienhaus in ruhiger Lage mit Modernisierungsbedarf in Fohnsdorf",
       "obj_zipCode":"8753",
@@ -22,9 +22,9 @@ def test_extracts_immoscout_price_and_plot_area() -> None:
     )
 
     assert facts is not None
-    assert facts.purchase_price_eur == Decimal("169000")
+    assert facts.purchase_price_eur == Decimal(169000)
     assert facts.living_area_m2 == Decimal("83.38")
-    assert facts.plot_area_m2 == Decimal("785")
+    assert facts.plot_area_m2 == Decimal(785)
     assert facts.postal_code == "8753"
     assert immoscout_facts_match_listing(
         facts,
@@ -35,7 +35,7 @@ def test_extracts_immoscout_price_and_plot_area() -> None:
 
 
 def test_title_promotion_amount_does_not_replace_purchase_price_metadata() -> None:
-    body = r'''{
+    body = '''{
       "obj_title":"Reihenhaus - bis zu € 100.000,- Wohnbauförderung möglich",
       "obj_zipCode":"6890",
       "obj_purchasePrice":573500
@@ -47,7 +47,7 @@ def test_title_promotion_amount_does_not_replace_purchase_price_metadata() -> No
     )
 
     assert facts is not None
-    assert facts.purchase_price_eur == Decimal("573500")
+    assert facts.purchase_price_eur == Decimal(573500)
     assert immoscout_facts_match_listing(
         facts,
         listing_url="https://www.immobilienscout24.at/expose/6579d6eabfd5ce3bcce77d0a",
@@ -57,7 +57,7 @@ def test_title_promotion_amount_does_not_replace_purchase_price_metadata() -> No
 
 
 def test_rejects_historical_cross_card_identity_mismatch() -> None:
-    body = r'''{
+    body = '''{
       "obj_objectnumber":"other-id",
       "obj_title":"Anderes Haus",
       "obj_zipCode":"6890",
