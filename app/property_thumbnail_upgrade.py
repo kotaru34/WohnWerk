@@ -14,9 +14,9 @@ from app.models import ListingStatus, Property, PropertyListing
 from app.property_images import PropertyImage
 from app.property_thumbnail_cache import (
     THUMBNAIL_TARGET_WIDTH_PX,
-    _ImagePlan,
     _comparison_url,
     _download_image,
+    _ImagePlan,
     _listing_discovery_url,
     _scan_discovery_page,
 )
