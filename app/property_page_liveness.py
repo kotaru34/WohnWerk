@@ -5,7 +5,7 @@ import logging
 import re
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import DateTime, cast, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import property_liveness
@@ -14,73 +14,119 @@ from app.models import ListingStatus, PropertyListing, Source
 
 logger = logging.getLogger(__name__)
 
+PROPERTY_PAGE_LIVENESS_POLICY = "visible-page-liveness-2026-08-29-v1"
 PROPERTY_PAGE_LIVENESS_RECHECK_MINUTES = 30
-PROPERTY_PAGE_LIVENESS_LIMIT = 48
+PROPERTY_PAGE_LIVENESS_LIMIT = 72
 _PROPERTY_CARD_RE = re.compile(rb'\bid="house-(\d+)"')
 
 
-async def refresh_visible_immmo_liveness(
+def _parsed_checked_at(value: object | None) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _listing_checked_at(source_name: str, payload: dict) -> datetime | None:
+    key = "source_liveness_checked_at" if source_name == "immmo.at" else "page_liveness_checked_at"
+    return _parsed_checked_at(payload.get(key))
+
+
+def _apply_direct_source_probe(
+    listing: PropertyListing,
+    probe: property_liveness.PropertyLivenessProbe,
+) -> None:
+    """Record page-level evidence without turning direct sources into IMMMO-policy rows."""
+    payload = dict(listing.raw_payload or {})
+    now = datetime.now(UTC)
+    payload["page_liveness_policy"] = PROPERTY_PAGE_LIVENESS_POLICY
+    payload["page_liveness_checked_at"] = now.isoformat()
+    payload["page_liveness_state"] = probe.state
+    payload["page_liveness_status_code"] = probe.status_code
+    payload["page_liveness_reason"] = probe.reason
+    payload["page_liveness_final_url"] = probe.final_url
+
+    if probe.state == "live":
+        payload["page_liveness_last_live_at"] = now.isoformat()
+    elif probe.state == "dead":
+        # A direct source gets hidden only on definitive dead evidence. Unknown/transient
+        # responses leave the already-visible observation untouched. A future source crawl
+        # may legitimately restore it if the board starts publishing the advert again.
+        payload["product_visible"] = False
+        payload["product_visibility_reason"] = "source_dead"
+
+    listing.raw_payload = payload
+
+
+async def refresh_visible_property_liveness(
     session: Session,
     property_ids: set[int],
     *,
     stale_minutes: int = PROPERTY_PAGE_LIVENESS_RECHECK_MINUTES,
     limit: int = PROPERTY_PAGE_LIVENESS_LIMIT,
 ) -> property_liveness.PropertyLivenessSummary:
-    """Recheck stale IMMMO observations that were actually rendered to the user.
+    """Recheck stale source observations that were actually rendered to the user.
 
-    This is intentionally separate from the catalogue-wide liveness sweep. The broad
-    worker can stay conservative, while repeatedly viewed cards get a short freshness TTL.
-    Only currently product-visible IMMMO observations are probed; transient failures retain
-    the existing fail-safe semantics implemented by the main liveness policy.
+    The catalogue-wide worker stays conservative. Cards the user repeatedly sees receive a
+    short freshness TTL. IMMMO observations retain the established downstream liveness
+    policy; direct source rows such as s REAL use page-only evidence and are hidden only on
+    a definitive dead result. Transient HTTP failures never remove a previously visible row.
     """
     if not property_ids:
         return property_liveness.PropertyLivenessSummary()
 
-    source = session.scalar(select(Source).where(Source.name == "immmo.at"))
-    if source is None:
-        return property_liveness.PropertyLivenessSummary()
-
-    checked_text = PropertyListing.raw_payload.op("->>")("source_liveness_checked_at")
-    checked_at = cast(checked_text, DateTime(timezone=True))
     original_missing = func.coalesce(
         PropertyListing.raw_payload.op("->>")("original_url_missing"),
         "false",
     )
     visible = PropertyListing.raw_payload["product_visible"].as_boolean()
-    cutoff = datetime.now(UTC) - timedelta(minutes=max(1, stale_minutes))
-
-    listings = list(
-        session.scalars(
-            select(PropertyListing)
+    rows = list(
+        session.execute(
+            select(PropertyListing, Source.name)
+            .join(Source, Source.id == PropertyListing.source_id)
             .where(
-                PropertyListing.source_id == source.id,
                 PropertyListing.property_id.in_(property_ids),
                 PropertyListing.status == ListingStatus.ACTIVE,
                 PropertyListing.raw_payload.is_not(None),
                 original_missing != "true",
                 visible.is_(True),
-                or_(checked_text.is_(None), checked_at <= cutoff),
             )
-            .order_by(
-                checked_at.asc().nullsfirst(),
-                PropertyListing.id.asc(),
-            )
-            .limit(max(1, limit))
+            .order_by(PropertyListing.id.asc())
         )
     )
-    if not listings:
+    cutoff = datetime.now(UTC) - timedelta(minutes=max(1, stale_minutes))
+    candidates: list[tuple[PropertyListing, str]] = []
+    for listing, source_name in rows:
+        checked_at = _listing_checked_at(source_name, listing.raw_payload or {})
+        if checked_at is not None and checked_at > cutoff:
+            continue
+        candidates.append((listing, source_name))
+        if len(candidates) >= max(1, limit):
+            break
+
+    if not candidates:
         return property_liveness.PropertyLivenessSummary()
 
-    probes = await property_liveness.probe_property_urls([listing.url for listing in listings])
+    probes = await property_liveness.probe_property_urls(
+        [listing.url for listing, _source_name in candidates]
+    )
     counts = {"live": 0, "dead": 0, "unknown": 0}
-    for listing in listings:
+    for listing, source_name in candidates:
         probe = probes[listing.url]
         counts[probe.state] += 1
-        property_liveness._apply_persisted_probe(listing, probe)
+        if source_name == "immmo.at":
+            property_liveness._apply_persisted_probe(listing, probe)
+        else:
+            _apply_direct_source_probe(listing, probe)
 
     session.commit()
     return property_liveness.PropertyLivenessSummary(
-        attempted=len(listings),
+        attempted=len(candidates),
         live=counts["live"],
         dead=counts["dead"],
         unknown=counts["unknown"],
@@ -94,7 +140,7 @@ def refresh_property_page_liveness(property_ids: tuple[int, ...]) -> None:
         return
     try:
         with SessionLocal() as session:
-            result = asyncio.run(refresh_visible_immmo_liveness(session, ids))
+            result = asyncio.run(refresh_visible_property_liveness(session, ids))
         if result.attempted:
             logger.info(
                 "visible property liveness: attempted=%d live=%d dead=%d unknown=%d",
@@ -112,9 +158,8 @@ def refresh_property_page_liveness(property_ids: tuple[int, ...]) -> None:
 class PropertyPageLivenessMiddleware:
     """Tail-work middleware: refresh only the property cards the user just saw.
 
-    The HTML response is sent normally. After it has been emitted, the request task waits
-    for a thread that performs the stale-card check. From the browser's perspective this is
-    non-blocking; a subsequent reload reflects any listing that was definitively found dead.
+    The HTML response is emitted before the network probes begin. A subsequent reload then
+    reflects any source listing that was definitively found dead.
     """
 
     def __init__(self, app) -> None:
