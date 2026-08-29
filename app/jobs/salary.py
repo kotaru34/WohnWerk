@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.sources.base import RawJob
 
-SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-29-v1"
+SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-29-v2"
 
 _AMOUNT_TOKEN = r"(?:\d{1,3}(?:[.\s\u00a0]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
 _MONEY_RE = re.compile(
@@ -21,7 +21,8 @@ _SALARY_CUE_RE = re.compile(
 )
 _MINIMUM_RE = re.compile(
     r"(?:\bab\b|\bmindestens\b|\bmindest(?:gehalt|entgelt|lohn)?\b|"
-    r"\bminimum\b|\bstarting\s+(?:at|from)\b|\bfrom\b)",
+    r"\bminimum\b|\bstarting\s+(?:at|from)\b|\bfrom\b|"
+    r"\büberzahlung\b|\bueberzahlung\b|\boverpayment\b)",
     re.IGNORECASE,
 )
 _RANGE_RE = re.compile(r"(?:\bbis\b|\bto\b|\bbis\s+zu\b|\s[-–—]\s)", re.IGNORECASE)
@@ -53,7 +54,7 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "hour",
         re.compile(
-            r"(?:\bstunde(?:nlohn)?\b|/\s*stunde\b|\bpro\s+stunde\b|"
+            r"(?:\bstundenlohn\b|/\s*stunde\b|\bpro\s+stunde\b|"
             r"\bper\s+hour\b|\bhourly\b)",
             re.IGNORECASE,
         ),
@@ -61,7 +62,7 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "week",
         re.compile(
-            r"(?:\bwoche\b|/\s*woche\b|\bpro\s+woche\b|\bper\s+week\b)",
+            r"(?:\bwochenlohn\b|\bpro\s+woche\b|\bper\s+week\b|\bweekly\b)",
             re.IGNORECASE,
         ),
     ),
@@ -150,7 +151,8 @@ def parse_salary_text(text: str | None, *, trusted: bool = False) -> ParsedSalar
 
     Generic description EUR amounts require a nearby salary cue. Text already designated
     as salary by a source adapter may skip that cue, but still needs EUR, an explicit period
-    and a plausible value. This preserves fail-closed behavior for ordinary descriptions.
+    and a plausible value. Bare work-schedule units such as ``40 Std./Woche`` are not salary
+    periods and therefore cannot turn an otherwise period-less amount into a weekly salary.
     """
     if not text:
         return None
