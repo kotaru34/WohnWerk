@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
-from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import DateTime, and_, cast, func, or_, select
@@ -13,24 +12,19 @@ from sqlalchemy.orm import Session, selectinload
 from app.models import ListingStatus, PropertyListing, Source
 from app.property_acquisition import property_budget_decision
 from app.property_detail_facts import (
-    ImmoScoutPropertyFacts,
-    extract_immoscout_property_facts,
-    immoscout_facts_match_listing,
+    PropertyDetailFacts,
+    extract_property_detail_facts,
+    property_facts_match_listing,
+    supported_property_detail_url,
 )
 
-PROPERTY_DETAIL_FACTS_POLICY = "immoscout-structured-2026-08-29-v3"
+PROPERTY_DETAIL_FACTS_POLICY = "property-structured-2026-08-29-v4"
 PROPERTY_DETAIL_TIMEOUT_SECONDS = 10.0
 PROPERTY_DETAIL_BODY_LIMIT_BYTES = 768 * 1024
 PROPERTY_DETAIL_CONCURRENCY = 10
 PROPERTY_DETAIL_WORKER_LIMIT = 60
 PROPERTY_DETAIL_RECHECK_HOURS = 24
 
-_IMMOSCOUT_HOSTS = {
-    "immobilienscout24.at",
-    "www.immobilienscout24.at",
-    "immobilienscout24.de",
-    "www.immobilienscout24.de",
-}
 _BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -79,20 +73,10 @@ def _payload_decimal(value: object | None) -> Decimal | None:
         return None
 
 
-def _is_immoscout_url(value: object | None) -> bool:
-    if not isinstance(value, str) or not value.strip():
-        return False
-    try:
-        parsed = urlparse(value.strip())
-    except ValueError:
-        return False
-    return parsed.scheme in {"http", "https"} and (parsed.hostname or "").casefold() in _IMMOSCOUT_HOSTS
-
-
 def _request_urls(listing: PropertyListing) -> tuple[str, ...]:
     values = [listing.url]
     final_url = (listing.raw_payload or {}).get("source_liveness_final_url")
-    if _is_immoscout_url(final_url) and final_url not in values:
+    if supported_property_detail_url(final_url) and final_url not in values:
         values.append(str(final_url))
     return tuple(values)
 
@@ -154,12 +138,16 @@ def _candidate_query(source_id: int, *, needle: str | None = None):
     checked_text = PropertyListing.raw_payload.op("->>")("detail_facts_checked_at")
     checked_at = cast(checked_text, DateTime(timezone=True))
     retry_cutoff = datetime.now(UTC) - timedelta(hours=PROPERTY_DETAIL_RECHECK_HOURS)
+    supported_url = or_(
+        PropertyListing.url.ilike("%immobilienscout24.%"),
+        PropertyListing.url.ilike("%findmyhome.at/%"),
+    )
     stmt = (
         select(PropertyListing)
         .where(
             PropertyListing.source_id == source_id,
             PropertyListing.status == ListingStatus.ACTIVE,
-            PropertyListing.url.ilike("%immobilienscout24.%"),
+            supported_url,
             func.coalesce(
                 PropertyListing.raw_payload.op("->>")("original_url_missing"),
                 "false",
@@ -175,7 +163,12 @@ def _candidate_query(source_id: int, *, needle: str | None = None):
         )
     )
     if needle:
-        stmt = stmt.where(PropertyListing.url.ilike(f"%{needle}%"))
+        stmt = stmt.where(
+            or_(
+                PropertyListing.url.ilike(f"%{needle}%"),
+                PropertyListing.source_listing_id.ilike(f"%{needle}%"),
+            )
+        )
     else:
         stmt = stmt.where(
             or_(
@@ -193,7 +186,7 @@ def _record_payload(
     listing: PropertyListing,
     *,
     state: str,
-    facts: ImmoScoutPropertyFacts | None,
+    facts: PropertyDetailFacts | None,
     status_code: int | None,
     final_url: str | None,
     error: str | None = None,
@@ -224,6 +217,9 @@ def _record_payload(
         payload["detail_postal_code"] = facts.postal_code
         payload["detail_object_number"] = facts.object_number
         payload["detail_title"] = facts.title
+        if facts.primary_image_url:
+            payload["primary_image_url"] = facts.primary_image_url
+            payload["primary_image_semantics"] = "provider_detail_metadata"
     listing.raw_payload = payload
     return payload
 
@@ -257,7 +253,10 @@ def _restore_visibility_after_price_fix(payload: dict, decision) -> None:
         return
     if payload.get("original_url_missing") is True:
         return
-    if payload.get("source_liveness_required") is True and payload.get("source_liveness_state") != "live":
+    if (
+        payload.get("source_liveness_required") is True
+        and payload.get("source_liveness_state") != "live"
+    ):
         return
     payload["product_visible"] = True
     payload["product_visibility_reason"] = "accepted"
@@ -265,7 +264,7 @@ def _restore_visibility_after_price_fix(payload: dict, decision) -> None:
 
 def _apply_facts(
     listing: PropertyListing,
-    facts: ImmoScoutPropertyFacts,
+    facts: PropertyDetailFacts,
     *,
     status_code: int | None,
     final_url: str | None,
@@ -289,7 +288,7 @@ def _apply_facts(
 
     if facts.purchase_price_eur is not None:
         payload["source_price_eur"] = str(facts.purchase_price_eur)
-        payload["price_semantics"] = "immoscout_structured"
+        payload["price_semantics"] = "provider_structured_detail"
         canonical_matches_source = (
             property_row.price_eur is None
             or previous_source_price is not None
@@ -333,6 +332,11 @@ async def enrich_immoscout_property_facts(
     needle: str | None = None,
     apply: bool = True,
 ) -> PropertyDetailEnrichmentSummary:
+    """Enrich supported IMMMO downstream details.
+
+    The public function keeps its historical name for script compatibility. It now
+    dispatches only to explicitly supported providers rather than being ImmoScout-only.
+    """
     source = session.scalar(select(Source).where(Source.name == "immmo.at"))
     if source is None:
         return PropertyDetailEnrichmentSummary()
@@ -402,7 +406,7 @@ async def enrich_immoscout_property_facts(
         selected_url = None
         selected_result = None
         for request_url, result in successful:
-            candidate = extract_immoscout_property_facts(request_url, result.body or "")
+            candidate = extract_property_detail_facts(request_url, result.body or "")
             if candidate is not None:
                 facts = candidate
                 selected_url = request_url
@@ -426,7 +430,7 @@ async def enrich_immoscout_property_facts(
                 )
             continue
 
-        if not immoscout_facts_match_listing(
+        if not property_facts_match_listing(
             facts,
             listing_url=listing.url,
             postal_code=listing.property.postal_code,
@@ -455,6 +459,7 @@ async def enrich_immoscout_property_facts(
             f"price={facts.purchase_price_eur} living={facts.living_area_m2} "
             f"usable={facts.usable_area_m2} plot={facts.plot_area_m2} "
             f"zip={facts.postal_code} object={facts.object_number} "
+            f"image={'yes' if facts.primary_image_url else 'no'} "
             f"final_url={selected_result.final_url}"
         )
         if apply:
