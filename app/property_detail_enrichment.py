@@ -18,7 +18,7 @@ from app.property_detail_facts import (
     immoscout_facts_match_listing,
 )
 
-PROPERTY_DETAIL_FACTS_POLICY = "immoscout-structured-2026-08-29-v2"
+PROPERTY_DETAIL_FACTS_POLICY = "immoscout-structured-2026-08-29-v3"
 PROPERTY_DETAIL_TIMEOUT_SECONDS = 10.0
 PROPERTY_DETAIL_BODY_LIMIT_BYTES = 768 * 1024
 PROPERTY_DETAIL_CONCURRENCY = 10
