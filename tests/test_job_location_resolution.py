@@ -2,6 +2,7 @@ from app.jobs.location_resolution import (
     PostalCentroidCandidate,
     canonicalize_locality,
     combine_postal_centroids,
+    directional_anchor_locality,
     locality_name_matches,
 )
 
@@ -14,6 +15,13 @@ def test_vienna_alias_normalizes_to_wien() -> None:
 def test_countrywide_remote_scope_does_not_become_a_city() -> None:
     assert canonicalize_locality("Home Office (Austria)") is None
     assert canonicalize_locality("Austria") is None
+
+
+def test_directional_area_uses_only_explicit_anchor_locality() -> None:
+    assert directional_anchor_locality("Südlich von Wien") == "wien"
+    assert directional_anchor_locality("noerdlich von Graz, Austria") == "graz"
+    assert directional_anchor_locality("Wiener Neustadt") is None
+    assert directional_anchor_locality("Südlich von Österreich") is None
 
 
 def test_wien_does_not_match_wiener_neustadt() -> None:
