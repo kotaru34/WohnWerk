@@ -8,24 +8,31 @@ from sqlalchemy import select
 from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.job.stepstone_at import BASE_URL, StepStoneAtJobSource
+from app.sources.job.stepstone_at import BASE_URL
+from app.sources.job.stepstone_salary import StepStoneAtJobSource
 
 SOURCE_NAME = "stepstone.at"
-ADAPTER_PATH = "app.sources.job.stepstone_at.StepStoneAtJobSource"
+ADAPTER_PATH = "app.sources.job.stepstone_salary.StepStoneAtJobSource"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Very low-impact StepStone Austria discovery frontier: five search pages, "
-            "search-result cards only, no detail requests."
+            "Low-impact StepStone Austria discovery frontier: five search pages with "
+            "bounded salary-only detail enrichment for relevant vacancies."
         )
     )
     parser.add_argument(
         "--delay",
         type=float,
         default=1.0,
-        help="Minimum delay between search-page requests (default: 1.0s).",
+        help="Minimum delay between requests (default: 1.0s).",
+    )
+    parser.add_argument(
+        "--max-details",
+        type=int,
+        default=8,
+        help="Maximum relevant detail pages per search shard (default: 8).",
     )
     return parser.parse_args()
 
@@ -35,10 +42,10 @@ def get_or_create_source() -> int:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
             "scope": "focused Austrian mechanical-engineering searches on StepStone Austria",
-            "acquisition": "search-result cards only; zero detail-page requests",
+            "acquisition": "first-page search cards plus bounded salary-only detail requests",
             "coverage": "intentionally incomplete discovery frontier",
             "reconciliation_interval_hours": None,
-            "detail_policy": "none during frontier scan",
+            "detail_policy": "up to 8 mechanically relevant detail pages per shard",
         }
         if source is None:
             source = Source(
@@ -65,7 +72,10 @@ def get_or_create_source() -> int:
 async def async_main() -> int:
     args = parse_args()
     source_id = get_or_create_source()
-    adapter = StepStoneAtJobSource(request_delay_seconds=max(0.0, args.delay))
+    adapter = StepStoneAtJobSource(
+        request_delay_seconds=max(0.0, args.delay),
+        max_details_per_shard=max(0, args.max_details),
+    )
 
     with SessionLocal() as session:
         source = session.get(Source, source_id)
@@ -90,7 +100,10 @@ async def async_main() -> int:
             f"seen={summary.items_seen} new={summary.items_new} "
             f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
         )
-        print("note=search-result-card frontier; zero detail requests; no disappearance authority")
+        print(
+            "note=first-page frontier with bounded salary-only detail enrichment; "
+            "no disappearance authority"
+        )
 
     return 0 if summary.run_status != "failed" else 1
 
