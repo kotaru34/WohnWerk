@@ -1,11 +1,14 @@
 import httpx
 import pytest
 
+from app.jobs.salary import parse_salary_text
 from app.sources.job.willhaben_jobs import (
     WillhabenJobSource,
     WillhabenSearch,
+    enrich_willhaben_detail_page,
     parse_willhaben_search_page,
 )
+from app.sources.base import RawJob
 
 
 def test_parse_willhaben_search_card_fields_and_postal_code() -> None:
@@ -79,6 +82,34 @@ def test_parse_willhaben_whole_card_anchor_does_not_make_giant_title() -> None:
     assert "Produktentwicklung" in (job.description or "")
 
 
+def test_willhaben_detail_extracts_explicit_monthly_salary() -> None:
+    item = RawJob(
+        source_listing_id="willhabenjobs:13261315",
+        url=(
+            "https://www.willhaben.at/jobs/job/"
+            "senior-konstrukteur-mit-option-teamleitung-m-w-d/13261315"
+        ),
+        title="SENIOR KONSTRUKTEUR MIT OPTION TEAMLEITUNG (m/w/d)",
+    )
+    detail = """
+    <html><body>
+      <h1>SENIOR KONSTRUKTEUR MIT OPTION TEAMLEITUNG (m/w/d)</h1>
+      <div>Bruttogehalt:</div>
+      <div>€ 5.000 monatlich, mit Bereitschaft zur Überzahlung</div>
+    </body></html>
+    """
+
+    enriched = enrich_willhaben_detail_page(item, detail)
+    parsed = parse_salary_text(enriched.salary_text, trusted=True)
+
+    assert enriched.raw_payload["detail_enriched"] is True
+    assert enriched.raw_payload["willhaben_detail_salary_found"] is True
+    assert parsed is not None
+    assert str(parsed.minimum) == "5000"
+    assert parsed.period == "month"
+    assert parsed.minimum_only is True
+
+
 @pytest.mark.asyncio
 async def test_willhaben_frontier_uses_one_request_per_search_and_dedupes() -> None:
     requests: list[str] = []
@@ -114,6 +145,7 @@ async def test_willhaben_frontier_uses_one_request_per_search_and_dedupes() -> N
             WillhabenSearch("konstrukteur", "Konstrukteur"),
         ],
         request_delay_seconds=0,
+        max_details_per_shard=0,
         transport=httpx.MockTransport(handler),
     )
 
@@ -131,3 +163,52 @@ async def test_willhaben_frontier_uses_one_request_per_search_and_dedupes() -> N
     assert second_batch.next_cursor["cross_query_duplicates"] == 1
     assert first_batch.coverage_complete is False
     assert second_batch.coverage_complete is False
+
+
+@pytest.mark.asyncio
+async def test_willhaben_fetches_bounded_detail_for_relevant_title() -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        if request.url.path == "/jobs/suche/konstrukteur":
+            return httpx.Response(
+                200,
+                text="""
+                <h1>83 Jobs für Konstrukteur</h1>
+                <a href="/jobs/job/senior-konstrukteur-mit-option-teamleitung-m-w-d/13261315">
+                  SENIOR KONSTRUKTEUR MIT OPTION TEAMLEITUNG (m/w/d)
+                </a>
+                <a href="/jobs/firma/isg">ISG Personalmanagement GmbH Jobs</a>
+                <div>28.08. | Vollzeit, Klagenfurt am Wörthersee</div>
+                """,
+            )
+        if request.url.path.endswith("/13261315"):
+            return httpx.Response(
+                200,
+                text="""
+                <html><body>
+                  <div>Bruttogehalt:</div>
+                  <div>€ 5.000 monatlich, mit Bereitschaft zur Überzahlung</div>
+                </body></html>
+                """,
+            )
+        return httpx.Response(404)
+
+    adapter = WillhabenJobSource(
+        searches=[WillhabenSearch("konstrukteur", "Konstrukteur")],
+        request_delay_seconds=0,
+        max_details_per_shard=1,
+        transport=httpx.MockTransport(handler),
+    )
+
+    batch = await adapter.fetch_shard(adapter.default_shards()[0])
+
+    assert requests == [
+        "/jobs/suche/konstrukteur",
+        "/jobs/job/senior-konstrukteur-mit-option-teamleitung-m-w-d/13261315",
+    ]
+    assert batch.next_cursor["details_fetched"] == 1
+    assert batch.next_cursor["details_failed"] == 0
+    assert batch.pages_fetched == 2
+    assert batch.items[0].salary_text is not None
