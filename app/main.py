@@ -6,16 +6,21 @@ from app.catalog import router as catalog_router
 from app.config import get_settings
 from app.http_normalization import NormalizeHouseQueryMiddleware
 from app.matches import router as matches_router
+from app.product_ui import router as product_ui_router
+from app.product_ui_middleware import ProductUiMiddleware
 from app.site import router as site_router
+from app.version import __version__
 
 settings = get_settings()
 
 app = FastAPI(
     title="WohnWerk",
     description="Austria-first home and job matching service",
-    version="0.1.0",
+    version=__version__,
 )
+app.add_middleware(ProductUiMiddleware)
 app.add_middleware(NormalizeHouseQueryMiddleware)
+app.include_router(product_ui_router)
 app.include_router(catalog_router)
 app.include_router(site_router)
 app.include_router(admin_router)
@@ -32,6 +37,7 @@ def health() -> dict[str, str | bool]:
     return {
         "status": "ok",
         "service": "wohnwerk",
+        "version": __version__,
         "country": settings.country_code,
         "ai_enabled": settings.ai_enabled,
     }
