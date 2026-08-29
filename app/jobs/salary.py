@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.sources.base import RawJob
 
-SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-29-v3"
+SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-29-v4"
 
 _AMOUNT_TOKEN = r"(?:\d{1,3}(?:[.\s\u00a0]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
 _MONEY_RE = re.compile(
@@ -35,8 +35,8 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "month",
         re.compile(
-            r"(?:\b(?:brutto)?monats(?:gehalt|entgelt|brutto)?\b|"
-            r"\bmonatsbrutto(?:gehalt|entgelt)?\b|\bmonatlich(?:e[snmr]?)?\b|"
+            r"(?:\b(?:brutto)?monats(?:gehalt|entgelt|brutto|lohn)?\b|"
+            r"\bmonatsbrutto(?:gehalt|entgelt|lohn)?\b|\bmonatlich(?:e[snmr]?)?\b|"
             r"/\s*monat\b|\bpro\s+monat\b|\bper\s+month\b|\bmonthly\b)",
             re.IGNORECASE,
         ),
@@ -44,8 +44,8 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "year",
         re.compile(
-            r"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt)?\b|"
-            r"\bjahresbrutto(?:gehalt|entgelt)?\b|\bjährlich\b|\bjaehrlich\b|"
+            r"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt|lohn)?\b|"
+            r"\bjahresbrutto(?:gehalt|entgelt|lohn)?\b|\bjährlich\b|\bjaehrlich\b|"
             r"/\s*jahr\b|\bpro\s+jahr\b|\bp\.?\s*a\.?\b|\bper\s+year\b|"
             r"\bannual(?:ly)?\b)",
             re.IGNORECASE,
@@ -54,15 +54,15 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "hour",
         re.compile(
-            r"(?:\bstundenlohn\b|/\s*stunde\b|\bpro\s+stunde\b|"
-            r"\bper\s+hour\b|\bhourly\b)",
+            r"(?:\bstundenlohn\b|\bstündlich(?:e[snmr]?)?\b|\bstuendlich(?:e[snmr]?)?\b|"
+            r"/\s*stunde\b|\bpro\s+stunde\b|\bper\s+hour\b|\bhourly\b)",
             re.IGNORECASE,
         ),
     ),
     (
         "week",
         re.compile(
-            r"(?:\bwochenlohn\b|\bpro\s+woche\b|\bper\s+week\b|\bweekly\b)",
+            r"(?:\bwochen(?:lohn|gehalt)\b|\bpro\s+woche\b|\bper\s+week\b|\bweekly\b)",
             re.IGNORECASE,
         ),
     ),
