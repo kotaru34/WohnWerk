@@ -80,6 +80,10 @@
 </head>
 <body>
 <main>
+  {% set job_sorts = job_sorts|default({'passung': 'Passung'}) %}
+  {% set selected_sort = selected_sort|default('passung') %}
+  {% set sort_direction = sort_direction|default('desc') %}
+  {% set result_total = result_total|default(rows|length) %}
   <nav class="topnav" aria-label="Hauptnavigation">
     <a href="/houses">Häuser</a>
     <a href="/jobs" class="active">Stellen</a>
