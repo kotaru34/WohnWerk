@@ -30,6 +30,8 @@ CONTENT_TYPE_EXTENSIONS = {
 DISCOVERY_HOSTS = {"immmo.at", "www.immmo.at", "sreal.at", "www.sreal.at"}
 TRACKING_QUERY_KEYS = {"fbclid", "gclid"}
 MAX_DISCOVERY_PAGES_PER_PROPERTY = 2
+THUMBNAIL_TARGET_WIDTH_PX = 720.0
+THUMBNAIL_TARGET_DENSITY = 1.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,31 +93,50 @@ def _comparison_url(value: str, *, base_url: str | None = None) -> str | None:
     )
 
 
-def _smallest_srcset_url(value: str) -> str | None:
-    choices: list[tuple[float, str]] = []
+def _balanced_srcset_url(value: str) -> str | None:
+    """Choose a moderate preview candidate instead of the smallest or hero-sized image."""
+    widths: list[tuple[float, float, str]] = []
+    densities: list[tuple[float, float, str]] = []
+    undescribed: list[str] = []
+
     for raw in value.split(","):
         parts = raw.strip().split()
         if not parts:
             continue
-        weight = 1_000_000.0
-        if len(parts) > 1:
-            descriptor = parts[-1].casefold()
-            try:
-                if descriptor.endswith("w"):
-                    weight = float(descriptor[:-1])
-                elif descriptor.endswith("x"):
-                    weight = float(descriptor[:-1]) * 1000.0
-            except ValueError:
-                pass
-        choices.append((weight, parts[0]))
-    return min(choices, default=(0.0, ""))[1] or None
+        url = parts[0]
+        if len(parts) == 1:
+            undescribed.append(url)
+            continue
+
+        descriptor = parts[-1].casefold()
+        try:
+            if descriptor.endswith("w"):
+                width = float(descriptor[:-1])
+                widths.append((abs(width - THUMBNAIL_TARGET_WIDTH_PX), width, url))
+            elif descriptor.endswith("x"):
+                density = float(descriptor[:-1])
+                densities.append(
+                    (abs(density - THUMBNAIL_TARGET_DENSITY), -density, url)
+                )
+            else:
+                undescribed.append(url)
+        except ValueError:
+            undescribed.append(url)
+
+    if widths:
+        # On an exact tie prefer the smaller transfer.
+        return min(widths, key=lambda item: (item[0], item[1]))[2]
+    if densities:
+        # On an exact tie prefer the sharper density (e.g. 2x over 1x around 1.5x).
+        return min(densities, key=lambda item: (item[0], item[1]))[2]
+    return undescribed[0] if undescribed else None
 
 
 def _image_attr_candidate(attributes: dict[str, str]) -> str | None:
     for key in ("data-srcset", "srcset"):
         value = attributes.get(key, "").strip()
         if value:
-            candidate = _smallest_srcset_url(value)
+            candidate = _balanced_srcset_url(value)
             if candidate:
                 return candidate
     for key in ("data-src", "data-lazy-src", "data-original", "src"):
@@ -126,7 +147,7 @@ def _image_attr_candidate(attributes: dict[str, str]) -> str | None:
 
 
 class _LinkedThumbnailParser(HTMLParser):
-    """Map an exact listing anchor to the smallest source-backed image inside it."""
+    """Map an exact listing anchor to a balanced source-backed preview inside it."""
 
     def __init__(self, *, page_url: str) -> None:
         super().__init__(convert_charrefs=True)
