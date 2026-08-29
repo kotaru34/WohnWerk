@@ -19,6 +19,7 @@ PROPERTY_PAGE_LIVENESS_RECHECK_MINUTES = 30
 PROPERTY_PAGE_LIVENESS_LIMIT = 72
 _PROPERTY_CARD_RE = re.compile(rb'\bid="house-(\d+)"')
 _BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
+_INFLIGHT_PROPERTY_IDS: set[int] = set()
 
 
 def _parsed_checked_at(value: object | None) -> datetime | None:
@@ -157,8 +158,20 @@ def refresh_property_page_liveness(property_ids: tuple[int, ...]) -> None:
 
 
 def _schedule_property_page_liveness(property_ids: tuple[int, ...]) -> None:
+    pending = tuple(
+        property_id
+        for property_id in property_ids
+        if property_id not in _INFLIGHT_PROPERTY_IDS
+    )
+    if not pending:
+        return
+    _INFLIGHT_PROPERTY_IDS.update(pending)
+
     async def run() -> None:
-        await asyncio.to_thread(refresh_property_page_liveness, property_ids)
+        try:
+            await asyncio.to_thread(refresh_property_page_liveness, pending)
+        finally:
+            _INFLIGHT_PROPERTY_IDS.difference_update(pending)
 
     task = asyncio.create_task(run())
     _BACKGROUND_TASKS.add(task)
