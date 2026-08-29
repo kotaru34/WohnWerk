@@ -15,6 +15,7 @@ from app.crawling.coverage import (
 from app.crawling.shards import sync_source_shards
 from app.ingestion.jobs import ingest_jobs, record_rejected_job_sightings
 from app.jobs.discovery import partition_job_candidates
+from app.jobs.salary import enrich_raw_job_salaries
 from app.jobs.tenant_registry import mark_tenant_verified
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.sources.base import JobSource, RawJob, SourceFetchError
@@ -60,11 +61,13 @@ def _partition_with_diagnostics(
     items: list[RawJob],
     cursor: dict,
 ) -> tuple[list[RawJob], list[RawJob], dict]:
+    salary_text_parsed = enrich_raw_job_salaries(items)
     accepted, rejected = partition_job_candidates(items)
     diagnostics = dict(cursor)
     diagnostics["job_candidates_fetched"] = len(items)
     diagnostics["job_candidates_accepted"] = len(accepted)
     diagnostics["job_candidates_rejected"] = len(rejected)
+    diagnostics["job_salary_text_parsed"] = salary_text_parsed
     diagnostics["job_rejected_audit_sample"] = _rejected_audit_sample(rejected)
     return accepted, rejected, diagnostics
 
