@@ -443,7 +443,7 @@ class WillhabenJobSource(JobSource):
                             job = enrich_willhaben_detail_page(job, detail_content)
                             self._detail_cache[job.source_listing_id] = job
                             details_fetched += 1
-                        except Exception as exc:
+                        except httpx.HTTPError as exc:
                             payload = dict(job.raw_payload)
                             payload["detail_enrichment_error"] = f"{type(exc).__name__}: {exc}"
                             job.raw_payload = payload
