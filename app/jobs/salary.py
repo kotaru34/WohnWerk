@@ -137,9 +137,15 @@ def _snippet(text: str, start: int, end: int) -> str:
     left = max(0, left + 1)
     right = len(text) if right < 0 else right
     line = " ".join(text[left:right].split())
-    if len(line) < 12:
-        line = " ".join(text[max(0, start - 100) : min(len(text), end + 140)].split())
-    return line[:320]
+    if 12 <= len(line) <= 320:
+        return line
+
+    # Source descriptions are often serialized as one huge line. In that case a prefix
+    # snippet hides the salary evidence hundreds of characters later, defeating the audit.
+    centered = " ".join(
+        text[max(0, start - 140) : min(len(text), end + 180)].split()
+    )
+    return centered[:320]
 
 
 def _salary_context_ok(window: str, *, trusted: bool) -> bool:
