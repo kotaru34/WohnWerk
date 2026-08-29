@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from sqlalchemy import DateTime, cast, func, or_, select
@@ -79,13 +80,31 @@ class PropertyLivenessSummary:
     unknown: int = 0
 
 
-def assess_property_page(status_code: int | None, body: str | None) -> tuple[str, str]:
-    """Classify downstream property pages conservatively.
+def assess_property_redirect(value: str | None) -> tuple[str, str] | None:
+    """Recognize provider redirect URLs that explicitly encode a removed listing.
 
-    Explicit 404/410 or provider removal text is authoritative dead evidence. Anti-bot,
-    rate-limit and server errors are unknown rather than dead so transient provider behavior
-    cannot hide previously-good listings.
+    Dibeo currently redirects removed IMMMO referrals to ``/a/riv/a`` with
+    ``entityRemoved=1`` and may then render a CAPTCHA page. The redirect marker is more
+    specific than the generic anti-bot body and is therefore authoritative dead evidence.
     """
+    safe = _safe_http_url(value)
+    if safe is None:
+        return None
+    parsed = urlparse(safe)
+    host = (parsed.hostname or "").casefold()
+    if host not in {"dibeo.at", "www.dibeo.at"}:
+        return None
+
+    for key, values in parse_qs(parsed.query, keep_blank_values=True).items():
+        if key.casefold() != "entityremoved":
+            continue
+        if any(value.strip().casefold() in {"1", "true", "yes"} for value in values):
+            return "dead", "dibeo_entity_removed"
+    return None
+
+
+def assess_property_page(status_code: int | None, body: str | None) -> tuple[str, str]:
+    """Classify HTTP evidence without treating anti-bot/transient errors as closure."""
     if status_code is None:
         return "unknown", "request_failed"
     if status_code in {404, 410}:
@@ -135,6 +154,11 @@ async def _probe_one(
                     "unsafe_redirect",
                     str(response.url),
                 )
+
+            redirect_assessment = assess_property_redirect(final_url)
+            if redirect_assessment is not None:
+                state, reason = redirect_assessment
+                return PropertyLivenessProbe(state, response.status_code, reason, final_url)
 
             chunks: list[bytes] = []
             total = 0
