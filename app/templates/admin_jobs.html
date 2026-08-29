@@ -18,11 +18,18 @@
     .stat, .filters, .job { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); }
     .stat { padding: 12px 14px; border-radius: 10px; }
     .stat strong { display: block; font-size: 1.35rem; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; margin-bottom: 16px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px; margin-bottom: 12px; }
     .filters form { margin-left: auto; display: flex; gap: 7px; }
     input { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
     button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 7px 10px; background: ButtonFace; color: ButtonText; cursor: pointer; }
     button:hover { border-color: color-mix(in srgb, CanvasText 45%, transparent); }
+    .result-line { margin: 12px 0 14px; display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .sort-controls { display: flex; gap: 4px; align-items: center; margin: 0; }
+    .sort-controls label { display: flex; gap: 6px; align-items: center; font-size: .82rem; opacity: .72; }
+    .sort-controls select { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; padding: 3px 2px; }
+    .sort-icon { border: 0; background: transparent; color: inherit; padding: 3px; border-radius: 5px; opacity: .42; display: grid; place-items: center; }
+    .sort-icon:hover, .sort-icon.active { opacity: 1; color: AccentColor; }
+    .sort-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .job { display: grid; grid-template-columns: 116px minmax(0, 1fr) minmax(250px, .62fr); gap: 18px; align-items: start; padding: 16px; margin: 10px 0; border-left-width: 4px; transition: background .15s ease, border-color .15s ease; }
     .job.unviewed { box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 12%, transparent); }
     .job.viewed h2, .job.viewed .company { opacity: .86; }
@@ -90,46 +97,49 @@
 
   <nav class="filters" aria-label="Stellenfilter">
     {% for value, label in job_filters.items() %}
-      <a href="/jobs?ansicht={{ value }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">
-        {{ label }}{% if value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
+      <a href="/jobs?ansicht={{ value }}&sortierung={{ selected_sort }}&richtung={{ sort_direction }}{% if search %}&suche={{ search|urlencode }}{% endif %}" class="{% if selected_filter == value %}active{% endif %}">
+        {{ label }}{% if value == 'neu' and stats.neu %} ({{ stats.neu }}){% elif value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
       </a>
     {% endfor %}
     <form method="get" action="/jobs">
       <input type="hidden" name="ansicht" value="{{ selected_filter }}">
+      <input type="hidden" name="sortierung" value="{{ selected_sort }}">
+      <input type="hidden" name="richtung" value="{{ sort_direction }}">
       <input name="suche" value="{{ search }}" placeholder="Titel, Firma oder Ort">
       <button type="submit">Suchen</button>
     </form>
   </nav>
 
+  <div class="result-line">
+    <strong>{{ result_total }} Stellen</strong>
+    <form class="sort-controls" method="get" action="/jobs">
+      <input type="hidden" name="ansicht" value="{{ selected_filter }}">
+      {% if search %}<input type="hidden" name="suche" value="{{ search }}">{% endif %}
+      <label>Sortierung
+        <select name="sortierung" onchange="this.form.submit()">
+          {% for value, label in job_sorts.items() %}<option value="{{ value }}" {% if selected_sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="sort-icon {% if sort_direction == 'asc' %}active{% endif %}" type="submit" name="richtung" value="asc" title="Aufsteigend" aria-label="Aufsteigend sortieren">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 19V5m0 0-3 3m3-3 3 3M14 7h6M14 12h4M14 17h2"/></svg>
+      </button>
+      <button class="sort-icon {% if sort_direction == 'desc' %}active{% endif %}" type="submit" name="richtung" value="desc" title="Absteigend" aria-label="Absteigend sortieren">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14m0 0-3-3m3 3 3-3M14 7h2M14 12h4M14 17h6"/></svg>
+      </button>
+    </form>
+  </div>
+
   {% for row in rows %}
     {% set salary = annual_salary_label(row.job) %}
-    {% if row.result.hard_constraints %}
-      {% set fit_class = 'fit-hard' %}
-    {% elif row.result.score is none %}
-      {% set fit_class = 'fit-unrated' %}
-    {% elif row.result.score >= 85 %}
-      {% set fit_class = 'fit-excellent' %}
-    {% elif row.result.score >= 70 %}
-      {% set fit_class = 'fit-good' %}
-    {% elif row.result.score >= 50 %}
-      {% set fit_class = 'fit-medium' %}
-    {% else %}
-      {% set fit_class = 'fit-low' %}
-    {% endif %}
+    {% if row.result.hard_constraints %}{% set fit_class = 'fit-hard' %}{% elif row.result.score is none %}{% set fit_class = 'fit-unrated' %}{% elif row.result.score >= 85 %}{% set fit_class = 'fit-excellent' %}{% elif row.result.score >= 70 %}{% set fit_class = 'fit-good' %}{% elif row.result.score >= 50 %}{% set fit_class = 'fit-medium' %}{% else %}{% set fit_class = 'fit-low' %}{% endif %}
     {% set detail_available = not row.hidden %}
     <article class="job {{ fit_class }} {{ 'viewed' if row.viewed else 'unviewed' }}" id="job-{{ row.job.id }}">
       <div>
         <div class="score-label">Passung</div>
         {% if row.result.score is not none %}
           <div class="score-line"><div class="score">{{ row.result.score }}</div><div class="score-max">/ 100</div></div>
-          <div class="coverage">
-            Bewertungsbasis
-            <strong>{{ (row.result.preference_coverage * 100)|round|int }} %</strong>
-          </div>
-        {% else %}
-          <div class="score unrated">–</div>
-          <div class="coverage">Noch keine bewertbare Profilbasis</div>
-        {% endif %}
+          <div class="coverage">Bewertungsbasis<strong>{{ (row.result.preference_coverage * 100)|round|int }} %</strong></div>
+        {% else %}<div class="score unrated">–</div><div class="coverage">Noch keine bewertbare Profilbasis</div>{% endif %}
       </div>
 
       <div>
@@ -144,50 +154,26 @@
           {% if row.hidden %}<span class="badge hidden-badge">Ausgeblendet</span>{% endif %}
           {% if row.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ row.hard_labels|join(', ') }}</span>{% endif %}
         </div>
-        {% if row.drivers %}
-          <div class="drivers">
-            <strong>Warum diese Bewertung:</strong>
-            {% for driver in row.drivers %}
-              <span class="{{ 'positive' if driver.contribution >= 0 else 'negative' }}">{{ driver.label_de }}{% if driver.contribution < 0 %} (weniger passend){% endif %}</span>{% if not loop.last %} · {% endif %}
-            {% endfor %}
-          </div>
-        {% endif %}
+        {% if row.drivers %}<div class="drivers"><strong>Warum diese Bewertung:</strong> {% for driver in row.drivers %}<span class="{{ 'positive' if driver.contribution >= 0 else 'negative' }}">{{ driver.label_de }}{% if driver.contribution < 0 %} (weniger passend){% endif %}</span>{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}
       </div>
 
       <div class="right">
         {% if detail_available %}<a class="detail-link" href="/jobs/{{ row.job.id }}">Details & Häuser im Umkreis</a>{% endif %}
         <div class="actions">
           <form method="post" action="/jobs/{{ row.job.id }}/favorite">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="favorite" value="{{ '0' if row.favorite else '1' }}">
-            <input type="hidden" name="return_view" value="{{ selected_filter }}">
-            <input type="hidden" name="return_search" value="{{ search }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="favorite" value="{{ '0' if row.favorite else '1' }}"><input type="hidden" name="return_view" value="{{ selected_filter }}"><input type="hidden" name="return_search" value="{{ search }}"><input type="hidden" name="return_sort" value="{{ selected_sort }}"><input type="hidden" name="return_direction" value="{{ sort_direction }}">
             <button class="favorite {% if row.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if row.favorite else 'Als Favorit merken' }}</button>
           </form>
           <form method="post" action="/jobs/{{ row.job.id }}/hidden">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="hidden" name="hidden" value="{{ '0' if row.hidden else '1' }}">
-            <input type="hidden" name="return_view" value="{{ selected_filter }}">
-            <input type="hidden" name="return_search" value="{{ search }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="hidden" value="{{ '0' if row.hidden else '1' }}"><input type="hidden" name="return_view" value="{{ selected_filter }}"><input type="hidden" name="return_search" value="{{ search }}"><input type="hidden" name="return_sort" value="{{ selected_sort }}"><input type="hidden" name="return_direction" value="{{ sort_direction }}">
             <button class="hide" type="submit">{{ 'Wieder einblenden' if row.hidden else 'Ausblenden' }}</button>
           </form>
         </div>
-        {% if row.links %}
-          <section>
-            <strong>Stellenanzeige</strong><br>
-            {% for link in row.links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}
-            {% endfor %}
-          </section>
-        {% endif %}
-        {% if row.job.salary_text and not salary %}
-          <section><strong>Gehaltsangabe</strong><br>{{ row.job.salary_text }}</section>
-        {% endif %}
+        {% if row.links %}<section><strong>Stellenanzeige</strong><br>{% for link in row.links %}<a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}{% endfor %}</section>{% endif %}
+        {% if row.job.salary_text and not salary %}<section><strong>Gehaltsangabe</strong><br>{{ row.job.salary_text }}</section>{% endif %}
       </div>
     </article>
-  {% else %}
-    <div class="empty">Keine Stellen entsprechen diesem Filter.</div>
-  {% endfor %}
+  {% else %}<div class="empty">Keine Stellen entsprechen diesem Filter.</div>{% endfor %}
 </main>
 </body>
 </html>
