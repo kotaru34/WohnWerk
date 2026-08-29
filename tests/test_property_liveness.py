@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from app.property_acquisition import annotate_property_items_by_budget
-from app.property_liveness import assess_property_page
+from app.property_liveness import assess_property_page, assess_property_redirect
 from app.sources.base import RawProperty
 
 
@@ -71,6 +71,18 @@ def test_dibeo_removed_placeholder_is_dead() -> None:
 
     assert state == "dead"
     assert reason == "dibeo_already_found"
+
+
+def test_dibeo_entity_removed_redirect_is_dead_before_captcha_body() -> None:
+    assessment = assess_property_redirect(
+        "https://www.dibeo.at/a/riv/a?utm_source=IMMMO&entityRemoved=1"
+    )
+
+    assert assessment == ("dead", "dibeo_entity_removed")
+    assert assess_property_redirect("https://www.dibeo.at/expose/2229425") is None
+    assert (
+        assess_property_redirect("https://other.example/a/riv/a?entityRemoved=1") is None
+    )
 
 
 def test_http_liveness_is_conservative() -> None:
