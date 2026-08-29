@@ -18,6 +18,7 @@ PROPERTY_PAGE_LIVENESS_POLICY = "visible-page-liveness-2026-08-29-v1"
 PROPERTY_PAGE_LIVENESS_RECHECK_MINUTES = 30
 PROPERTY_PAGE_LIVENESS_LIMIT = 72
 _PROPERTY_CARD_RE = re.compile(rb'\bid="house-(\d+)"')
+_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
 
 
 def _parsed_checked_at(value: object | None) -> datetime | None:
@@ -134,7 +135,7 @@ async def refresh_visible_property_liveness(
 
 
 def refresh_property_page_liveness(property_ids: tuple[int, ...]) -> None:
-    """Synchronous thread entry point used after a /houses response has been sent."""
+    """Synchronous thread entry point used by the post-response task."""
     ids = {int(value) for value in property_ids if int(value) > 0}
     if not ids:
         return
@@ -150,17 +151,22 @@ def refresh_property_page_liveness(property_ids: tuple[int, ...]) -> None:
                 result.unknown,
             )
     except Exception:
-        # Page rendering has already completed; a provider/network problem must never turn
-        # a normal catalogue request into a user-facing error.
+        # The response has already completed; a provider/network problem must never become
+        # a user-facing catalogue error.
         logger.exception("visible property liveness refresh failed")
 
 
-class PropertyPageLivenessMiddleware:
-    """Tail-work middleware: refresh only the property cards the user just saw.
+def _schedule_property_page_liveness(property_ids: tuple[int, ...]) -> None:
+    async def run() -> None:
+        await asyncio.to_thread(refresh_property_page_liveness, property_ids)
 
-    The HTML response is emitted before the network probes begin. A subsequent reload then
-    reflects any source listing that was definitively found dead.
-    """
+    task = asyncio.create_task(run())
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+class PropertyPageLivenessMiddleware:
+    """Refresh only the property cards the user just saw, without delaying the response."""
 
     def __init__(self, app) -> None:
         self.app = app
@@ -186,7 +192,4 @@ class PropertyPageLivenessMiddleware:
         await self.app(scope, receive, send_wrapper)
 
         if property_ids and 200 <= response_status < 300:
-            await asyncio.to_thread(
-                refresh_property_page_liveness,
-                tuple(sorted(property_ids)),
-            )
+            _schedule_property_page_liveness(tuple(sorted(property_ids)))
