@@ -9,12 +9,14 @@ from app.property_detail_enrichment import enrich_immoscout_property_facts
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Enrich IMMMO-linked ImmoScout listings with structured property facts."
+        description=(
+            "Enrich supported IMMMO downstream listings with provider-backed property facts."
+        )
     )
     parser.add_argument("--limit", type=int, default=60)
     parser.add_argument(
         "--needle",
-        help="Only inspect IMMMO listing URLs containing this token.",
+        help="Only inspect IMMMO listing URLs or source IDs containing this token.",
     )
     parser.add_argument(
         "--dry-run",
