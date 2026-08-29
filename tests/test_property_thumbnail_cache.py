@@ -1,18 +1,38 @@
 from app.property_thumbnail_cache import (
+    _balanced_srcset_url,
     _comparison_url,
     _LinkedThumbnailParser,
-    _smallest_srcset_url,
 )
 
 
-def test_smallest_srcset_candidate_is_selected() -> None:
+def test_balanced_srcset_candidate_is_selected() -> None:
     assert (
-        _smallest_srcset_url(
+        _balanced_srcset_url(
             "https://img.example/large.jpg 1200w, "
             "https://img.example/thumb.jpg 240w, "
             "https://img.example/medium.jpg 640w"
         )
-        == "https://img.example/thumb.jpg"
+        == "https://img.example/medium.jpg"
+    )
+
+
+def test_balanced_srcset_does_not_jump_to_hero_when_medium_is_closer() -> None:
+    assert (
+        _balanced_srcset_url(
+            "https://img.example/small.jpg 320w, "
+            "https://img.example/medium.jpg 800w, "
+            "https://img.example/hero.jpg 1600w"
+        )
+        == "https://img.example/medium.jpg"
+    )
+
+
+def test_balanced_density_prefers_sharper_candidate_on_tie() -> None:
+    assert (
+        _balanced_srcset_url(
+            "https://img.example/normal.jpg 1x, https://img.example/retina.jpg 2x"
+        )
+        == "https://img.example/retina.jpg"
     )
 
 
@@ -33,7 +53,7 @@ def test_linked_thumbnail_is_bound_only_to_exact_listing_anchor() -> None:
     )
 
     key = _comparison_url("https://portal.example/expose/123")
-    assert parser.images == {key: "https://img.example/thumb.jpg"}
+    assert parser.images == {key: "https://img.example/large.jpg"}
 
 
 def test_comparison_url_drops_tracking_but_keeps_identity_query() -> None:
