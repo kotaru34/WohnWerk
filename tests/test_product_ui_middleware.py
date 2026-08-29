@@ -21,4 +21,4 @@ def test_geo_notice_is_inserted_after_job_header() -> None:
 
     assert "Standort nur eingeschränkt genau" in rendered
     assert "Die Geoposition ist nur angenähert." in rendered
-    assert rendered.index("ww-geo-warning") > rendered.index("job-head")
+    assert rendered.index('<aside class="ww-geo-warning"') > rendered.index("job-head")
