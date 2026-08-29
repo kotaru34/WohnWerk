@@ -8,17 +8,18 @@ from sqlalchemy import select
 from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
-from app.sources.job.willhaben_jobs import BASE_URL, WillhabenJobSource
+from app.sources.job.willhaben_jobs import BASE_URL
+from app.sources.job.willhaben_salary import WillhabenJobSource
 
 SOURCE_NAME = "willhaben-jobs"
-ADAPTER_PATH = "app.sources.job.willhaben_jobs.WillhabenJobSource"
+ADAPTER_PATH = "app.sources.job.willhaben_salary.WillhabenJobSource"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Low-impact willhaben Jobs frontier: five first-page searches with bounded "
-            "detail enrichment for mechanically relevant titles."
+            "full-context salary detail enrichment for mechanically relevant titles."
         )
     )
     parser.add_argument(
@@ -26,6 +27,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="Minimum delay between source requests (default: 1.0s).",
+    )
+    parser.add_argument(
+        "--max-details",
+        type=int,
+        default=8,
+        help="Maximum relevant detail pages per search shard (default: 8).",
     )
     return parser.parse_args()
 
@@ -35,10 +42,10 @@ def get_or_create_source() -> int:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
             "scope": "focused Austrian mechanical-engineering searches on willhaben Jobs",
-            "acquisition": "first-page search cards plus bounded relevant-detail enrichment",
+            "acquisition": "first-page search cards plus bounded full-context salary details",
             "coverage": "intentionally incomplete frontier; never authoritative for disappearance",
             "reconciliation_interval_hours": None,
-            "detail_policy": "up to 8 mechanically relevant detail pages per search shard",
+            "detail_policy": "up to 8 mechanically relevant salary detail pages per search shard",
         }
         if source is None:
             source = Source(
@@ -65,7 +72,10 @@ def get_or_create_source() -> int:
 async def async_main() -> int:
     args = parse_args()
     source_id = get_or_create_source()
-    adapter = WillhabenJobSource(request_delay_seconds=max(0.0, args.delay))
+    adapter = WillhabenJobSource(
+        request_delay_seconds=max(0.0, args.delay),
+        max_details_per_shard=max(0, args.max_details),
+    )
 
     with SessionLocal() as session:
         source = session.get(Source, source_id)
@@ -91,7 +101,7 @@ async def async_main() -> int:
             f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
         )
         print(
-            "note=first-page frontier with bounded relevant-detail enrichment; "
+            "note=first-page frontier with bounded full-context salary detail enrichment; "
             "no disappearance authority"
         )
 
