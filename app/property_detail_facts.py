@@ -44,6 +44,45 @@ def _json_scalar(text: str, key: str) -> str | None:
     return value.replace(r"\u0026", "&").replace(r"\/", "/")
 
 
+def _typed_json_object(text: str, key: str, typename: str) -> str | None:
+    match = re.search(
+        rf'"{re.escape(key)}"\s*:\s*\{{\s*'
+        rf'"__typename"\s*:\s*"{re.escape(typename)}"',
+        text,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+
+    start = text.find("{", match.start())
+    if start < 0:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
 def _decimal(value: str | None) -> Decimal | None:
     if value is None:
         return None
@@ -77,6 +116,16 @@ def extract_immoscout_property_facts(
     living_area = _first_decimal(body, ("obj_livingSpace", "obj_livingArea"))
     usable_area = _first_decimal(body, ("obj_usableArea", "obj_useableArea"))
     plot_area = _first_decimal(body, ("obj_lotArea", "obj_plotArea", "obj_landArea"))
+
+    area_object = _typed_json_object(body, "area", "Area")
+    if area_object is not None:
+        if living_area is None:
+            living_area = _first_decimal(area_object, ("livingArea",))
+        if usable_area is None:
+            usable_area = _first_decimal(area_object, ("effectiveArea",))
+        if plot_area is None:
+            plot_area = _first_decimal(area_object, ("plotArea",))
+
     postal_code = _json_scalar(body, "obj_zipCode")
     object_number = _json_scalar(body, "obj_objectnumber")
     title = _json_scalar(body, "obj_title")
