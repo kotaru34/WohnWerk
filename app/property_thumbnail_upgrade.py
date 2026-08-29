@@ -69,6 +69,7 @@ def _active_listing_targets(
     property_id: int,
     row: PropertyImage,
 ) -> list[_UpgradeTarget]:
+    preferred_listing_id = row.property_listing_id or -1
     listings = list(
         session.scalars(
             select(PropertyListing)
@@ -77,7 +78,7 @@ def _active_listing_targets(
                 PropertyListing.status == ListingStatus.ACTIVE,
             )
             .order_by(
-                (PropertyListing.id != row.property_listing_id),
+                (PropertyListing.id != preferred_listing_id),
                 PropertyListing.id,
             )
         )
@@ -151,7 +152,8 @@ async def upgrade_cached_property_thumbnails(
     discovery_failed = 0
     plans: dict[int, _ImagePlan] = {}
     selected_targets: dict[int, _UpgradeTarget] = {}
-    missing_properties: set[int] = set()
+    resolved_properties: set[int] = set()
+    successful_properties: set[int] = set()
     unchanged = 0
 
     async with httpx.AsyncClient(
@@ -168,17 +170,19 @@ async def upgrade_cached_property_thumbnails(
         )
 
         for page_url, images, error in page_results:
+            targets = page_targets.get(page_url, [])
             if error is not None:
                 discovery_failed += 1
                 continue
-            for target in page_targets.get(page_url, []):
-                if target.property_id in plans or target.property_id in missing_properties:
+            successful_properties.update(target.property_id for target in targets)
+            for target in targets:
+                if target.property_id in resolved_properties:
                     continue
                 key = _comparison_url(target.listing_url)
                 image_url = images.get(key or "")
                 if image_url is None:
-                    missing_properties.add(target.property_id)
                     continue
+                resolved_properties.add(target.property_id)
                 if image_url == target.old_source_image_url:
                     unchanged += 1
                     continue
@@ -243,6 +247,7 @@ async def upgrade_cached_property_thumbnails(
             candidate.unlink(missing_ok=True)
 
     eligible = len({target.property_id for targets in page_targets.values() for target in targets})
+    missing = len(successful_properties - resolved_properties)
     return ThumbnailUpgradeResult(
         considered=considered,
         eligible=eligible,
@@ -251,6 +256,6 @@ async def upgrade_cached_property_thumbnails(
         planned=len(plans),
         upgraded=upgraded,
         unchanged=unchanged,
-        missing=len(missing_properties),
+        missing=missing,
         failed=failed,
     )
