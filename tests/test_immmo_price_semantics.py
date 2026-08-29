@@ -83,3 +83,35 @@ def test_purchase_price_wins_over_later_investment_amounts() -> None:
     assert item.raw_payload["price_semantics"] == "summary_numeric"
     assert item.raw_payload["source_price_eur"] == "229000"
     assert item.raw_payload["display_area_m2"] == "96"
+
+
+def test_promotional_title_amount_does_not_replace_card_purchase_price() -> None:
+    html = """
+    <html><body>
+      <p>1 bis 12 von 1</p>
+      <h3>Haus kaufen in 1220 Wien</h3>
+      <a href="https://www.immobilienscout24.at/expose/6a273a0f97f10fa2f4820d28">
+        TOP EINZELHAUS! JETZT € 50.000 GESCHENKT + GRATIS DACHGESCHOSS!
+        137 m²-Traumhaus mit Keller und Südgarten. Provisionsfrei für den Käufer.
+      </a>
+      <div>€ 739.900,-</div>
+      <div>1220 Wien / 137m²</div>
+      <div>Wohnfläche: 137,2 m² Nutzfläche: 186,1 m² Grundstücksfläche: 248,9 m²</div>
+      <div>GRATIS DACHGESCHOSS MIT DACHTERRASSE UND € 50.000,- PREISREDUZIERUNG!</div>
+    </body></html>
+    """
+
+    page = parse_immmo_search_page(
+        html,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Wien",
+    )
+
+    item = page.items[0]
+    assert item.price_eur == Decimal(739900)
+    assert item.raw_payload["source_price_eur"] == "739900"
+    assert item.title.startswith("TOP EINZELHAUS! JETZT € 50.000 GESCHENKT")
+    assert "137 m²-Traumhaus" in item.title
+    assert item.living_area_m2 == Decimal("137.2")
+    assert item.raw_payload["explicit_usable_area_m2"] == "186.1"
+    assert item.plot_area_m2 == Decimal("248.9")
+    assert property_budget_decision(item.price_eur).reason == "price_above_max"
