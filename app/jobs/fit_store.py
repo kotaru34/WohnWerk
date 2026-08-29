@@ -226,21 +226,56 @@ def load_live_job_fit(
     return views
 
 
+def _eur(value: Decimal) -> str:
+    if value == value.to_integral_value():
+        return f"{int(value):,}".replace(",", ".") + " €"
+    formatted = f"{value:,.2f}"
+    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    return formatted + " €"
+
+
 def annual_salary_label(job: Job) -> str | None:
-    """Format only source-backed annual EUR values; never infer missing salary semantics here."""
+    """Format the source-backed salary in its own period; legacy name kept for templates.
+
+    Monthly salary is shown as monthly rather than being silently multiplied by 12 or 14.
+    Annualized fields remain a fallback only when the original source dimensions are absent.
+    """
+    period_labels = {
+        "month": "Monat",
+        "year": "Jahr",
+        "hour": "Stunde",
+        "week": "Woche",
+        "day": "Tag",
+    }
+    period = (job.salary_period or "").lower()
+    currency = (job.salary_currency or "").upper()
+    minimum = job.salary_min
+    maximum = job.salary_max
+
+    if currency == "EUR" and period in period_labels and (minimum is not None or maximum is not None):
+        if minimum is not None and maximum is not None and minimum != maximum:
+            amount = f"{_eur(minimum)} – {_eur(maximum)}"
+        elif minimum is not None:
+            prefix = "ab " if job.salary_is_minimum_only else ""
+            amount = f"{prefix}{_eur(minimum)}"
+        elif maximum is not None:
+            amount = f"bis {_eur(maximum)}"
+        else:
+            return None
+
+        label = f"{amount} / {period_labels[period]}"
+        if period == "month" and job.salary_payment_count:
+            label += f" · {job.salary_payment_count}×"
+        return label
 
     minimum = job.salary_min_eur_year
     maximum = job.salary_max_eur_year
     if minimum is None and maximum is None:
         return None
-
-    def eur(value: Decimal) -> str:
-        return f"{int(value):,}".replace(",", ".") + " €"
-
     if minimum is not None and maximum is not None and minimum != maximum:
-        return f"{eur(minimum)} – {eur(maximum)} / Jahr"
+        return f"{_eur(minimum)} – {_eur(maximum)} / Jahr"
     value = minimum if minimum is not None else maximum
     if value is None:
         return None
     prefix = "ab " if job.salary_is_minimum_only else ""
-    return f"{prefix}{eur(value)} / Jahr"
+    return f"{prefix}{_eur(value)} / Jahr"
