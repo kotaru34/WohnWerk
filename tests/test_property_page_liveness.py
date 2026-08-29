@@ -46,7 +46,7 @@ async def test_house_page_tail_refresh_receives_only_rendered_property_ids(monke
     captured: list[tuple[int, ...]] = []
     monkeypatch.setattr(
         page_liveness,
-        "refresh_property_page_liveness",
+        "_schedule_property_page_liveness",
         lambda property_ids: captured.append(property_ids),
     )
 
