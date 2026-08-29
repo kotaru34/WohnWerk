@@ -35,14 +35,13 @@ def _candidate(job: Job) -> ParsedSalary | None:
 def _compatible(job: Job, parsed: ParsedSalary) -> bool:
     if job.salary_min is not None and job.salary_min != parsed.minimum:
         return False
-    if job.salary_max is not None:
-        if parsed.maximum is None or job.salary_max != parsed.maximum:
-            return False
+    if job.salary_max is not None and (
+        parsed.maximum is None or job.salary_max != parsed.maximum
+    ):
+        return False
     if job.salary_currency is not None and job.salary_currency.upper() != parsed.currency:
         return False
-    if job.salary_period is not None and job.salary_period.lower() != parsed.period:
-        return False
-    return True
+    return job.salary_period is None or job.salary_period.lower() == parsed.period
 
 
 def _apply(job: Job, parsed: ParsedSalary) -> None:
