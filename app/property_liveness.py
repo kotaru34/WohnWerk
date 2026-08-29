@@ -236,8 +236,6 @@ def _apply_probe(payload: dict, probe: PropertyLivenessProbe, *, new_listing: bo
         # A new meta-search result must earn product visibility. Unknown/anti-bot evidence
         # therefore stays fail-closed and can be retried by the background worker.
         updated["source_liveness_required"] = True
-    # Existing grandfathered listings remain visible on transient unknown evidence. They
-    # become policy-controlled only after a definitive live/dead probe.
     return updated
 
 
@@ -309,10 +307,11 @@ def _payload_price(payload: dict) -> Decimal | None:
 
 
 def _apply_persisted_probe(listing: PropertyListing, probe: PropertyLivenessProbe) -> None:
+    previous = dict(listing.raw_payload or {})
     payload = _apply_probe(
-        dict(listing.raw_payload or {}),
+        previous,
         probe,
-        new_listing=(listing.raw_payload or {}).get("source_liveness_required") is True,
+        new_listing=previous.get("source_liveness_required") is True,
     )
     decision = property_budget_decision(_payload_price(payload))
     if not decision.accepted:
@@ -327,6 +326,16 @@ def _apply_persisted_probe(listing: PropertyListing, probe: PropertyLivenessProb
     elif probe.state == "dead":
         payload["product_visible"] = False
         payload["product_visibility_reason"] = "source_dead"
+    elif (
+        previous.get("product_visibility_reason") == "accepted"
+        and previous.get("source_liveness_state") != "dead"
+        and previous.get("source_liveness_last_live_at")
+    ):
+        # A timeout, CAPTCHA, 429 or temporary provider failure is not evidence that a
+        # previously proven-live advert disappeared. Keep it visible until a definitive
+        # live/dead result arrives; new/unverified listings remain fail-closed.
+        payload["product_visible"] = True
+        payload["product_visibility_reason"] = "accepted"
     elif payload.get("source_liveness_required") is True:
         payload["product_visible"] = False
         payload["product_visibility_reason"] = "source_liveness_unverified"
