@@ -13,6 +13,7 @@ from urllib.parse import urljoin
 
 import httpx
 
+from app.jobs.location_postal_evidence import explicit_postal_for_locality
 from app.sources.base import (
     JobSource,
     RawJob,
@@ -238,9 +239,13 @@ def _salary(job: dict[str, Any]) -> tuple[
     else:
         minimum, maximum, unit = _decimal(value), None, None
     period = str(unit).casefold() if isinstance(unit, str) else ""
-    period = {"year": "year", "month": "month", "week": "week", "day": "day", "hour": "hour"}.get(
-        period
-    )
+    period = {
+        "year": "year",
+        "month": "month",
+        "week": "week",
+        "day": "day",
+        "hour": "hour",
+    }.get(period)
     minimum_only = True if minimum is not None and maximum is None else None
     return minimum, maximum, currency, period, minimum_only
 
@@ -267,7 +272,21 @@ def _address_location(address: dict[str, Any], *, remote: bool) -> RawJobLocatio
     )
 
 
-def _locations(job: dict[str, Any], page_text: list[str]) -> list[RawJobLocation]:
+def _with_visible_postal(location: RawJobLocation, content: str) -> RawJobLocation:
+    if location.postal_code is not None or not location.city:
+        return location
+    postal = explicit_postal_for_locality(content, location.city)
+    if postal is None:
+        return location
+    return RawJobLocation(
+        postal_code=postal,
+        city=location.city,
+        location_text=location.location_text,
+        remote=location.remote,
+    )
+
+
+def _locations(job: dict[str, Any], page_text: list[str], content: str) -> list[RawJobLocation]:
     remote = str(job.get("jobLocationType") or "").casefold() == "telecommute"
     raw = job.get("jobLocation")
     raw = [raw] if isinstance(raw, dict) else raw if isinstance(raw, list) else []
@@ -284,6 +303,7 @@ def _locations(job: dict[str, Any], page_text: list[str]) -> list[RawJobLocation
         location = _address_location(address, remote=remote)
         if location is None:
             continue
+        location = _with_visible_postal(location, content)
         key = (location.postal_code, location.city, location.location_text, location.remote)
         if key not in seen:
             seen.add(key)
@@ -294,7 +314,8 @@ def _locations(job: dict[str, Any], page_text: list[str]) -> list[RawJobLocation
         if value.casefold() == "dienstort":
             city = page_text[index + 1].strip()
             if city:
-                return [RawJobLocation(city=city, location_text=city, remote=remote)]
+                location = RawJobLocation(city=city, location_text=city, remote=remote)
+                return [_with_visible_postal(location, content)]
     return []
 
 
@@ -344,7 +365,7 @@ def parse_karriere_detail_page(
         salary_provenance="EXPLICIT" if salary_min is not None or salary_max is not None else None,
         salary_confidence=Decimal(1) if salary_min is not None or salary_max is not None else None,
         salary_is_minimum_only=minimum_only,
-        locations=_locations(posting, parser.text_parts),
+        locations=_locations(posting, parser.text_parts, content),
         raw_payload={
             "wohnwerk_board": "karriere.at",
             "karriere_job_id": job_id,
