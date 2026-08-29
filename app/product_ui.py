@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Any, Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import exists, func, select
@@ -26,8 +26,8 @@ from app.catalog import (
 from app.catalog import templates as catalog_templates
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.jobs.candidate_profile_store import get_seed_profile
-from app.jobs.fit_store import annual_salary_label, load_live_job_fit
-from app.models import Property
+from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
+from app.models import Job, Property
 from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
 from app.templates_runtime import templates as product_templates
 
@@ -48,6 +48,18 @@ JOB_FILTERS = {
     "unbewertet": "Unbewertet",
     "ausgeblendet": "Ausgeblendet",
 }
+HOUSE_SORTS = {
+    "neuheit": "Neuheit",
+    "preis": "Preis",
+    "gesehen": "Gesehen",
+}
+JOB_SORTS = {
+    "passung": "Passung",
+    "gehalt": "Gehalt",
+    "neuheit": "Neuheit",
+    "gesehen": "Gesehen",
+}
+SORT_DIRECTIONS = {"asc", "desc"}
 
 
 def _new_property_condition(profile_id: int, baseline):
@@ -68,6 +80,111 @@ def _profile_for_jobs(db: DbDependency):
     return profile
 
 
+def _validated_sort(value: str, choices: dict[str, str], *, default: str) -> str:
+    return value if value in choices else default
+
+
+def _validated_direction(value: str, *, default: str = "desc") -> str:
+    return value if value in SORT_DIRECTIONS else default
+
+
+def _house_order_by(profile_id: int, sort: str, direction: str):
+    viewed = exists(
+        select(CandidatePropertyPreference.id).where(
+            CandidatePropertyPreference.profile_id == profile_id,
+            CandidatePropertyPreference.property_id == Property.id,
+            CandidatePropertyPreference.viewed_at.is_not(None),
+        )
+    )
+    expression = {
+        "preis": Property.price_eur,
+        "gesehen": viewed,
+        "neuheit": Property.first_seen_at,
+    }[sort]
+    primary = expression.asc() if direction == "asc" else expression.desc()
+    if sort == "preis":
+        primary = primary.nullslast()
+    tie = Property.id.asc() if direction == "asc" else Property.id.desc()
+    return primary, tie
+
+
+def _job_salary_sort_value(job: Job) -> Decimal | None:
+    """Return a conservative EUR/year comparison key without persisting an estimate."""
+    if job.salary_min_eur_year is not None:
+        return job.salary_min_eur_year
+    if job.salary_max_eur_year is not None:
+        return job.salary_max_eur_year
+    if (job.salary_currency or "").upper() != "EUR":
+        return None
+    amount = job.salary_min if job.salary_min is not None else job.salary_max
+    if amount is None:
+        return None
+    period = (job.salary_period or "").lower()
+    if period == "year":
+        return amount
+    if period == "month":
+        # Unknown Austrian payment count is deliberately not written as annual salary.
+        # For sorting only, 12x is a conservative lower-bound comparison key.
+        return amount * Decimal(job.salary_payment_count or 12)
+    return None
+
+
+def _job_fit_sort_value(row: JobFitView) -> int | None:
+    if row.result.hard_constraints:
+        return -1
+    return row.result.score
+
+
+def _sort_rows_missing_last(
+    rows: list[JobFitView],
+    key: Callable[[JobFitView], Any | None],
+    *,
+    descending: bool,
+) -> list[JobFitView]:
+    known: list[tuple[Any, JobFitView]] = []
+    missing: list[JobFitView] = []
+    for row in rows:
+        value = key(row)
+        if value is None:
+            missing.append(row)
+        else:
+            known.append((value, row))
+    known.sort(
+        key=lambda item: (item[0], item[1].job.id),
+        reverse=descending,
+    )
+    missing.sort(key=lambda row: row.job.id, reverse=descending)
+    return [row for _value, row in known] + missing
+
+
+def _sort_job_rows(
+    rows: list[JobFitView],
+    *,
+    sort: str,
+    direction: str,
+) -> list[JobFitView]:
+    descending = direction == "desc"
+    if sort == "passung":
+        return _sort_rows_missing_last(rows, _job_fit_sort_value, descending=descending)
+    if sort == "gehalt":
+        return _sort_rows_missing_last(
+            rows,
+            lambda row: _job_salary_sort_value(row.job),
+            descending=descending,
+        )
+    if sort == "neuheit":
+        return sorted(
+            rows,
+            key=lambda row: (row.job.first_seen_at, row.job.id),
+            reverse=descending,
+        )
+    return sorted(
+        rows,
+        key=lambda row: (row.viewed, row.job.id),
+        reverse=descending,
+    )
+
+
 @router.get("/houses", include_in_schema=False)
 def houses_page(
     request: Request,
@@ -83,11 +200,15 @@ def houses_page(
     grund_von: Annotated[Decimal | None, Query(ge=0)] = None,
     grund_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     ansicht: Annotated[str, Query()] = "alle",
+    sortierung: Annotated[str, Query()] = "neuheit",
+    richtung: Annotated[str, Query()] = "desc",
     seite: Annotated[int, Query(ge=1)] = 1,
 ):
     profile = _profile_or_503(db)
     if ansicht not in HOUSE_VIEWS:
         raise HTTPException(status_code=400, detail="Ungültige Häuseransicht.")
+    sortierung = _validated_sort(sortierung, HOUSE_SORTS, default="neuheit")
+    richtung = _validated_direction(richtung)
 
     filters = resolve_house_filters(
         request,
@@ -120,7 +241,7 @@ def houses_page(
         db.scalars(
             select(Property)
             .where(*conditions)
-            .order_by(Property.last_seen_at.desc(), Property.id.desc())
+            .order_by(*_house_order_by(profile.id, sortierung, richtung))
             .offset((seite - 1) * HOUSE_PAGE_SIZE)
             .limit(HOUSE_PAGE_SIZE)
         )
@@ -172,6 +293,9 @@ def houses_page(
             "filters": filters,
             "house_views": HOUSE_VIEWS,
             "selected_view": ansicht,
+            "house_sorts": HOUSE_SORTS,
+            "selected_sort": sortierung,
+            "sort_direction": richtung,
             "stats": stats,
             "system_price_min": PROPERTY_MIN_PRICE_EUR,
             "system_price_max": PROPERTY_MAX_PRICE_EUR,
@@ -191,10 +315,14 @@ def jobs_page(
     db: DbDependency,
     ansicht: Annotated[str, Query()] = "passend",
     suche: Annotated[str, Query()] = "",
+    sortierung: Annotated[str, Query()] = "passung",
+    richtung: Annotated[str, Query()] = "desc",
 ):
     profile = _profile_for_jobs(db)
     if ansicht not in JOB_FILTERS:
         raise HTTPException(status_code=400, detail="Ungültige Stellenansicht.")
+    sortierung = _validated_sort(sortierung, JOB_SORTS, default="passung")
+    richtung = _validated_direction(richtung)
 
     all_rows = load_live_job_fit(db, profile_slug=profile.slug)
     stats = {
@@ -239,15 +367,22 @@ def jobs_page(
             or any(normalized_search in location.casefold() for location in row.locations)
         ]
 
+    result_total = len(rows)
+    rows = _sort_job_rows(rows, sort=sortierung, direction=richtung)
+
     return product_templates.TemplateResponse(
         request=request,
         name="admin_jobs.html",
         context={
             "profile": profile,
             "rows": rows,
+            "result_total": result_total,
             "stats": stats,
             "job_filters": JOB_FILTERS,
             "selected_filter": ansicht,
+            "job_sorts": JOB_SORTS,
+            "selected_sort": sortierung,
+            "sort_direction": richtung,
             "search": suche,
             "annual_salary_label": annual_salary_label,
             "csrf_token": _csrf_token(),
