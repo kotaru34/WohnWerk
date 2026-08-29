@@ -42,6 +42,10 @@ def _job_redirect(job_id: int, *, view: str, search: str) -> RedirectResponse:
     return RedirectResponse(f"/jobs?{urlencode(query)}#job-{job_id}", status_code=303)
 
 
+def _valid_return_view(value: str) -> str:
+    return value if value in JOB_FILTERS or value == "neu" else "passend"
+
+
 @router.post("/jobs/{job_id}/favorite", include_in_schema=False)
 def update_job_favorite(
     job_id: int,
@@ -53,8 +57,7 @@ def update_job_favorite(
     return_search: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
-    if return_view not in JOB_FILTERS:
-        return_view = "passend"
+    return_view = _valid_return_view(return_view)
     try:
         set_job_favorite(db, profile, job_id, favorite=favorite == "1")
     except LookupError as exc:
@@ -73,8 +76,7 @@ def update_job_hidden(
     return_search: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
-    if return_view not in JOB_FILTERS:
-        return_view = "passend"
+    return_view = _valid_return_view(return_view)
     try:
         set_job_hidden(db, profile, job_id, hidden=hidden == "1")
     except LookupError as exc:
