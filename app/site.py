@@ -41,10 +41,14 @@ def _job_redirect(
     *,
     view: str,
     search: str,
-    sort: str,
-    direction: str,
+    sort: str | None = None,
+    direction: str | None = None,
 ) -> RedirectResponse:
-    query = {"ansicht": view, "sortierung": sort, "richtung": direction}
+    query = {"ansicht": view}
+    if sort:
+        query["sortierung"] = sort
+    if direction:
+        query["richtung"] = direction
     if search.strip():
         query["suche"] = search.strip()
     return RedirectResponse(f"/jobs?{urlencode(query)}#job-{job_id}", status_code=303)
@@ -54,12 +58,12 @@ def _valid_return_view(value: str) -> str:
     return value if value in JOB_FILTERS or value == "neu" else "passend"
 
 
-def _valid_return_sort(value: str) -> str:
-    return value if value in _JOB_SORTS else "passung"
+def _valid_return_sort(value: str) -> str | None:
+    return value if value in _JOB_SORTS else None
 
 
-def _valid_return_direction(value: str) -> str:
-    return value if value in _SORT_DIRECTIONS else "desc"
+def _valid_return_direction(value: str) -> str | None:
+    return value if value in _SORT_DIRECTIONS else None
 
 
 @router.post("/jobs/{job_id}/favorite", include_in_schema=False)
@@ -71,8 +75,8 @@ def update_job_favorite(
     favorite: Annotated[str, Form()],
     return_view: Annotated[str, Form()] = "passend",
     return_search: Annotated[str, Form()] = "",
-    return_sort: Annotated[str, Form()] = "passung",
-    return_direction: Annotated[str, Form()] = "desc",
+    return_sort: Annotated[str, Form()] = "",
+    return_direction: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
     return_view = _valid_return_view(return_view)
@@ -98,8 +102,8 @@ def update_job_hidden(
     hidden: Annotated[str, Form()],
     return_view: Annotated[str, Form()] = "passend",
     return_search: Annotated[str, Form()] = "",
-    return_sort: Annotated[str, Form()] = "passung",
-    return_direction: Annotated[str, Form()] = "desc",
+    return_sort: Annotated[str, Form()] = "",
+    return_direction: Annotated[str, Form()] = "",
 ):
     profile = _profile_or_503(db)
     return_view = _valid_return_view(return_view)
