@@ -70,25 +70,58 @@ def test_qa_ra_and_solution_delivery_are_explicit_low_relevance_titles() -> None
 
 
 def test_gropyus_preflight_false_positive_titles_stay_out_of_mechanical_corpus() -> None:
-    titles = (
-        "Bauphysiker / Ingenieur für Bauphysik (m/w/d)",
-        "Building Physics Engineer (all genders)",
-        "Electrical Engineer (all genders)",
-        "Elektroingenieur (m/w/d)",
-        "Junior Projektmanager Anlagen- und Automatisierungstechnik (m/w/d)",
-        "R&D Operations Manager (w/m/d)",
-        "Senior Fire Safety Engineer (all genders)",
-        "Senior Manager Cost Optimization - Building System (Construction focus) (all genders)",
-        "Senior Manager Cost Optimization – Building Systems (Schwerpunkt Bauwesen) (m/w/d)",
+    cases = {
+        "Bauphysiker / Ingenieur für Bauphysik (m/w/d)": (
+            "Bauphysik, thermische Gebäudehülle, Feuchteschutz und hygrothermische Simulation."
+        ),
+        "Building Physics Engineer (all genders)": (
+            "Building physics, thermal comfort, moisture analysis and building envelope design."
+        ),
+        "Electrical Engineer (all genders)": (
+            "Electrical building systems, switchgear, power distribution and equipment maintenance."
+        ),
+        "Elektroingenieur (m/w/d)": (
+            "Elektrische Gebäudetechnik, Energieversorgung, Schaltanlagen und Instandhaltung."
+        ),
+        "Junior Projektmanager Anlagen- und Automatisierungstechnik (m/w/d)": (
+            "Projektkoordination für Automatisierungstechnik, Inbetriebnahme und Terminplanung."
+        ),
+        "R&D Operations Manager (w/m/d)": (
+            "Operational planning, resource coordination and process governance for R&D teams."
+        ),
+        "Senior Fire Safety Engineer (all genders)": (
+            "Fire safety engineering, fire prevention concepts and regulatory building compliance."
+        ),
+        "Senior Manager Cost Optimization - Building System (Construction focus) (all genders)": (
+            "Cost optimization for building systems, construction budgets and supplier cost analysis."
+        ),
+        "Senior Manager Cost Optimization – Building Systems (Schwerpunkt Bauwesen) (m/w/d)": (
+            "Cost optimization for building systems with construction cost and procurement focus."
+        ),
+    }
+
+    for title, description in cases.items():
+        decision = classify_job_candidate(_job(title, description))
+        assert decision.accepted is False, title
+
+
+def test_electrical_engineering_needs_adjacent_mechanical_or_vehicle_domain() -> None:
+    building = classify_job_candidate(
+        _job(
+            "Electrical Engineer",
+            "Electrical building systems, switchgear and equipment maintenance.",
+        )
     )
-    employer_boilerplate = (
-        "Product development, manufacturing, validation, system integration, testing, "
-        "supplier coordination, technical documentation, CAD, FMEA and commissioning."
+    automotive = classify_job_candidate(
+        _job(
+            "Electrical Engineer",
+            "Design and development for automotive systems, verification and testing.",
+        )
     )
 
-    for title in titles:
-        decision = classify_job_candidate(_job(title, employer_boilerplate))
-        assert decision.accepted is False, title
+    assert building.accepted is False
+    assert "non_mechanical_electrical_engineering" in building.low_relevance_title_matches
+    assert automotive.accepted is True
 
 
 def test_strong_mechanical_title_still_wins_over_adjacent_exclusion_words() -> None:
