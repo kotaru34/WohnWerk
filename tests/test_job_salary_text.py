@@ -32,6 +32,42 @@ def test_extracts_annual_salary_range() -> None:
     assert parsed.minimum_only is False
 
 
+def test_extracts_tgw_spelled_euro_annual_minimum() -> None:
+    parsed = parse_salary_text(
+        "We offer an attractive salary in line with the market, which can be above the "
+        "collective agreement depending on qualifications and experience. The minimum "
+        "gross basic salary based on full-time employment per year is 64.830 Euro."
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal(64830)
+    assert parsed.maximum is None
+    assert parsed.period == "year"
+    assert parsed.payment_count is None
+    assert parsed.minimum_only is True
+
+
+def test_extracts_andritz_english_grouped_monthly_minimum() -> None:
+    parsed = parse_salary_text(
+        "We are legally required to state the collective agreement minimum salary of "
+        "€4,354.45 gross per month for this position. However, we offer market-competitive "
+        "compensation depending on qualifications and professional experience."
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal("4354.45")
+    assert parsed.maximum is None
+    assert parsed.period == "month"
+    assert parsed.payment_count is None
+    assert parsed.minimum_only is True
+
+
+def test_spelled_euro_non_salary_budget_stays_rejected() -> None:
+    assert parse_salary_text(
+        "For professional development, a training budget of 5.000 Euro per year is available."
+    ) is None
+
+
 def test_extracts_monthly_salary_with_amount_first_wording() -> None:
     parsed = parse_salary_text(
         "Für diese Position sind ab 4.500 € brutto monatlich vorgesehen; Überzahlung möglich."
