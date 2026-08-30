@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v21"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v22"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -55,6 +55,8 @@ _DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("manufacturing_compound", re.compile(r"\b\w*fertigung\w*")),
+    ("mechanics", re.compile(r"\bmechanics\b")),
+    ("mechatronics", re.compile(r"\b(?:mechatronics?|mechatronik)\w*")),
     (
         "rotating_equipment",
         re.compile(
@@ -123,6 +125,14 @@ _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "laboratory_technician",
         re.compile(r"\b(?:labortechniker|laboratory\s+technician|lab\s+technician)\w*"),
+    ),
+    (
+        "technician_position",
+        re.compile(r"\b(?:technician|techniker)\w*"),
+    ),
+    (
+        "installation_specialist",
+        re.compile(r"\binstallation\s+specialist\w*"),
     ),
 )
 
@@ -205,10 +215,21 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
     r"\b(?:electrical\s+engineer|elektroingenieur)\w*"
 )
+_PURE_CONTROLS_TITLE_RE = re.compile(
+    r"\b(?:e[-\s]*plan|controls?|control\s+(?:engineering|technology)|"
+    r"steuerungstechnik)\b"
+)
+_PROJECT_MANAGEMENT_EVIDENCE_RE = re.compile(
+    r"\b(?:project\s+management|projektmanagement|project\s+planning|"
+    r"project\s+coordination|deadlines?|time\s+schedules?|resources?|budgets?|"
+    r"risk\s+management|agile|scrum|pma|ms\s+project|jira)\b"
+)
 _ELECTRICAL_ADJACENT_DOMAINS = frozenset(
     {
         "maschinenbau",
         "mechanical",
+        "mechanics",
+        "mechatronics",
         "vehicle_engineering",
         "special_vehicle",
         "rail_vehicle",
@@ -232,6 +253,8 @@ _INDUSTRIAL_PROJECT_TITLE_DOMAINS = frozenset(
     {
         "maschinenbau",
         "mechanical",
+        "mechanics",
+        "mechatronics",
         "vehicle_engineering",
         "special_vehicle",
         "rail_vehicle",
@@ -246,6 +269,9 @@ _INDUSTRIAL_PROJECT_TITLE_DOMAINS = frozenset(
     }
 )
 
+_TECHNICAL_PROJECT_BODY_DOMAINS = _INDUSTRIAL_PROJECT_TITLE_DOMAINS
+_CONTROLS_ADJACENT_TITLE_DOMAINS = _ELECTRICAL_ADJACENT_DOMAINS
+
 _AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
 
 _HARD_TITLE_EXCLUSIONS = frozenset(
@@ -259,6 +285,8 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "vehicle_workshop_trade",
         "embedded_hardware_electronics",
         "commercial_project_management",
+        "technician_position",
+        "installation_specialist",
     }
 )
 
@@ -403,6 +431,52 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             low_relevance_title=low_relevance_title,
         )
 
+    if "sales" in negative_title:
+        sales_low_relevance = tuple(dict.fromkeys((*low_relevance_title, "sales_title_role")))
+        return _decision(
+            accepted=False,
+            reason="structural_title_exclusion",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=sales_low_relevance,
+        )
+
+    title_domain_set = set(title_domain)
+    if _PURE_CONTROLS_TITLE_RE.search(title) and not title_domain_set.intersection(
+        _CONTROLS_ADJACENT_TITLE_DOMAINS
+    ):
+        controls_low_relevance = tuple(
+            dict.fromkeys((*low_relevance_title, "pure_controls_electrical_title"))
+        )
+        return _decision(
+            accepted=False,
+            reason="structural_title_exclusion",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=controls_low_relevance,
+        )
+
+    if "application_engineer" in adjacent_role and "sales" in negative:
+        sales_application_low_relevance = tuple(
+            dict.fromkeys((*low_relevance_title, "sales_application_engineering"))
+        )
+        return _decision(
+            accepted=False,
+            reason="commercial_sales_role",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=sales_application_low_relevance,
+        )
+
     if strong_title:
         return _decision(
             accepted=True,
@@ -456,7 +530,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             low_relevance_title=low_relevance_title,
         )
 
-    title_domain_set = set(title_domain)
     has_project_manager_title = bool(
         {"project_manager", "project_manager_de_spaced"}.intersection(adjacent_role)
     )
@@ -468,6 +541,23 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
         return _decision(
             accepted=True,
             reason="industrial_project_title",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=low_relevance_title,
+        )
+
+    if (
+        has_project_manager_title
+        and set(domain).intersection(_TECHNICAL_PROJECT_BODY_DOMAINS)
+        and _PROJECT_MANAGEMENT_EVIDENCE_RE.search(body)
+        and not {"sales", "finance"}.intersection(negative_title)
+    ):
+        return _decision(
+            accepted=True,
+            reason="technical_project_management_body",
             strong_title=strong_title,
             adjacent_role=adjacent_role,
             domain=domain,
