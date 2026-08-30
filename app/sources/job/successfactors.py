@@ -28,7 +28,7 @@ _RESULT_TOTAL_RE = re.compile(
     re.IGNORECASE,
 )
 _AUSTRIA_RE = re.compile(r"\b(?:Austria|Österreich|Oesterreich)\b", re.IGNORECASE)
-_AT_LOCATION_RE = re.compile(r"(?:^|[,;]\s*)AT(?:\s*[,;]|$)", re.IGNORECASE)
+_AT_LOCATION_RE = re.compile(r"(?:^|[\s,;|])AT(?=$|[\s,;|])")
 _REMOTE_RE = re.compile(r"\b(?:remote|home\s*office|homeoffice)\b", re.IGNORECASE)
 _SPACE_RE = re.compile(r"\s+")
 _LOCATION_SPLIT_RE = re.compile(r"\s+(?:or|oder)\s+|\s*;\s*", re.IGNORECASE)
