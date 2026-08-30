@@ -101,6 +101,28 @@ LOW_RELEVANCE_TITLE_PATTERNS: PatternSet = (
     ),
     ("field_survey", re.compile(r"\b(?:field\s+surveyor|field\s+data\s+collection)\w*")),
     (
+        "service_technician_trade",
+        re.compile(
+            r"\b(?:field[-\s]+service[-\s]+technician|service\s+technician|"
+            r"servicetechniker|service\s+techniker)\w*"
+        ),
+    ),
+    (
+        "maintenance_trade",
+        re.compile(
+            r"\b(?:instandhalter|instandhaltungstechniker|"
+            r"maintenance\s+(?:technician|mechanic))\w*"
+        ),
+    ),
+    (
+        "electrical_assembly_lead",
+        re.compile(
+            r"\b(?:team\s*lead|teamleiter|teamleitung)\w*.*"
+            r"\b(?:montage|assembly)\w*.*"
+            r"\b(?:elektrik|elektrotechnik|elektronik|electrical)\w*"
+        ),
+    ),
+    (
         "software_role",
         re.compile(
             r"\bsoftware\s+(?:engineer|entwickler|developer|projektmanager|"
@@ -163,7 +185,11 @@ DOMAIN_PATTERNS: PatternSet = (
     ),
     (
         "special_machinery",
-        re.compile(r"\b(?:sondermaschinenbau|special\s+machinery|special\s+machine)\w*"),
+        re.compile(
+            r"\b(?:sondermaschinenbau|special\s+machinery|special\s+machine|"
+            r"cranes?|lifting\s+(?:solutions?|systems?|equipment)|"
+            r"hebelösung\w*|kran(?!k)\w*)"
+        ),
     ),
     (
         "metal_engineering",
