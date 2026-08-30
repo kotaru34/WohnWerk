@@ -21,6 +21,42 @@ DEFAULT_TENANTS = [
     TenantSeed(tenant_key="AustroHolding", company="Austro Holding"),
     TenantSeed(tenant_key="BoschGroup", company="Bosch Group"),
     TenantSeed(tenant_key="brainlab", company="Brainlab / medPhoton"),
+    # Expansion candidates are deliberately seeded disabled. Production preflight
+    # must verify the live Austrian feed and discovery yield before an operator
+    # enables a tenant; merely deploying a new candidate must never change the
+    # father-facing catalogue.
+    TenantSeed(
+        tenant_key="IMSNanofabricationGmbH",
+        company="IMS Nanofabrication GmbH",
+        enabled=False,
+        config={
+            "candidate_evidence": "Austrian precision-mechanics / manufacturing engineering roles",
+        },
+    ),
+    TenantSeed(
+        tenant_key="AntonPaar1",
+        company="Anton Paar GmbH",
+        enabled=False,
+        config={
+            "candidate_evidence": "Austrian mechanical design / manufacturing roles",
+        },
+    ),
+    TenantSeed(
+        tenant_key="UmdaschGroup",
+        company="Umdasch Group / Doka",
+        enabled=False,
+        config={
+            "candidate_evidence": "Austrian technical project / construction engineering roles",
+        },
+    ),
+    TenantSeed(
+        tenant_key="Kronospan",
+        company="Kronospan / Kaindl",
+        enabled=False,
+        config={
+            "candidate_evidence": "Austrian machinery / industrial maintenance roles",
+        },
+    ),
 ]
 
 
