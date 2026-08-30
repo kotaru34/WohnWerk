@@ -10,11 +10,12 @@ This is the authoritative recovery point for a fresh context.
 
 ## Current release state
 
-- Production is verified through **v0.3.25**.
-- Current branch target is **v0.3.26**, a source-backed salary parsing repair for TGW + ANDRITZ.
-- Production v0.3.25 exact HEAD: `6dbe48aadf03f75e6a099b1020559411b565be96`.
+- Production is verified through **v0.3.27**.
+- Production exact HEAD: `822cac80d0f1bf6daed71f752690048c662be766`.
+- Current branch target is **v0.3.28**, adding a disabled-by-default PALFINGER direct-career source for live zero-write validation.
 - Current discovery gate: `profile-seed-2026-08-30-v22`.
-- Father-facing relevant job catalog after TGW promotion: **221 jobs**.
+- Current salary text policy: `explicit-salary-text-2026-08-30-v6`.
+- Father-facing relevant job catalog was 221 jobs after TGW promotion; later salary-only repairs do not change corpus membership.
 - Exact-head GitHub CI success is a hard production deployment gate.
 
 ## Product invariants
@@ -40,10 +41,12 @@ Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 - FastAPI/Uvicorn service: `wohnwerk.service`
 - local OSRM: `127.0.0.1:5000`
 - refresh scheduler timer: 15-minute wake-up
-- image/detail and liveness maintenance timers remain enabled
+- image/detail and liveness maintenance timers enabled
 - `/health` is lightweight and unauthenticated
-- father-facing `/houses`, `/jobs`, `/houses/{id}`, `/jobs/{id}` are HTTP-Basic protected through `AdminDependency`
-- do not use job detail URLs as automated smoke tests: `/jobs/{id}` calls `mark_job_viewed()`
+- father-facing `/houses`, `/jobs`, `/houses/{id}`, `/jobs/{id}` use HTTP Basic through `AdminDependency`
+- do not use `/jobs/{id}` as automated smoke tests: the detail route calls `mark_job_viewed()`
+
+Server timezone is `Europe/Vienna`; NTP remains enabled.
 
 ## Candidate / father profile
 
@@ -79,7 +82,7 @@ Discovery is intentionally broader than final fit, but obvious structural non-ta
 
 Current discovery gate: **v22** (`profile-seed-2026-08-30-v22`).
 
-v22 includes the TGW-driven corrections:
+v22 includes TGW-driven corrections:
 - title-level Sales rejection
 - sales-oriented Application Engineer rejection
 - technician / Installation Specialist structural rejection
@@ -88,65 +91,74 @@ v22 includes the TGW-driven corrections:
 - generic Project Manager accepted only with real mechanical/mechatronics product-development + PM evidence
 - `after-sales service` is not confused with Sales/Vertrieb
 
-Candidate fit policy remains independent (`candidate-fit-2026-08-28-v3`). Context evidence may lower/raise ranking without redefining job identity. Primary incompatible role/domain evidence can hard-cap a fit.
+Candidate fit policy remains independent (`candidate-fit-2026-08-28-v3`). Discovery decides whether a job belongs in the professional neighborhood; fit ranks accepted jobs.
 
-## Job sources
+## Enabled job sources
 
-Enabled/operational:
+Operational/enabled:
 - `karriere.at` — bounded discovery frontier
 - `jobs.at` — bounded discovery frontier
 - `stepstone.at` — bounded discovery frontier
 - `willhaben-jobs` — bounded discovery frontier
-- `lever-public-postings` — only TSMG remains enabled after pruning
+- `lever-public-postings` — only TSMG retained after pruning
 - `personio-public-xml`
 - `smartrecruiters-public-postings`
 - `workday-public-cxs` — KION + Magna discovery-frontier tenants
-- `greenhouse-public-job-board` — enabled as validated zero-current-value watcher
+- `greenhouse-public-job-board` — validated zero-current-value watcher
 - `successfactors-public-career-site` — ANDRITZ Professionals
 - `tgw-direct-careers` — TGW Logistics
 
-Disabled:
+Disabled/candidate:
+- `palfinger-direct-careers` — v0.3.28 candidate; must remain disabled until clean live preflight + corpus review + controlled import
 - `immoads.at`
 
-### Lever
+## Lever
 
-v0.3.19 pruning retained only `global:tsmg`; Blackshark, Westernacher, cargo-partner and Qualysoft were disabled after live accepted yield 0. TSMG was the only useful current tenant.
+v0.3.19 pruning retained only `global:tsmg`; Blackshark, Westernacher, cargo-partner and Qualysoft were disabled after zero useful live yield. TSMG remains the only useful current Lever tenant.
 
-### Greenhouse
+## Greenhouse
 
-Enabled after a clean authoritative zero-value validation: gropyus, planetlabs, bitpanda and ketryx all currently yield zero accepted under the current gate. Keep as a future watcher; do not inflate corpus with rejected rows.
+Enabled only as a validated zero-current-value watcher. gropyus, planetlabs, bitpanda and ketryx currently yield zero accepted under the current gate. Keep future postings only if they pass the current gate.
 
-### Workday
+## Workday
 
 KION + Magna are enabled discovery-frontier tenants. Workday search-text shards have no disappearance authority. Multi-shard tenant verification and source-reported-count normalization were fixed in v0.3.16.
 
-### ANDRITZ / SuccessFactors
+## ANDRITZ / SuccessFactors
 
 Generic public SuccessFactors adapter is production-enabled with ANDRITZ Professionals.
 
-Validated first import:
+First validated import:
 - source-reported global corpus ~487
 - Austrian candidates 56
-- accepted 19
-- all 19 exclusive at promotion time
+- accepted 19 at promotion, later current accepted count 18 after gate/lifecycle evolution
+- all 19 initial accepted jobs were exclusive at promotion
 - coverage `ok`
-- all imported locations resolved
+- imported locations resolved
 
-Gate calibration from ANDRITZ added industrial rotating-equipment/project variants, embedded-hardware exclusion and commercial-project-manager exclusion.
+Gate calibration from ANDRITZ added:
+- industrial rotating-equipment/project variants
+- embedded-hardware exclusion
+- commercial-project-manager exclusion
 
-### TGW direct careers
+Production salary repairs:
+- NDT Quality Engineer: `4354.45 EUR/month`, minimum-only, no invented 14× annualization
+- Projekt Manager Turbo Generatoren Service: `3583.02 EUR/month`, minimum-only, no invented 14× annualization
 
-`v0.3.25` production promotion succeeded:
+The Turbo Generator salary exposed SuccessFactors HTML text fragmentation (`M onat`); v0.3.27 salary policy v6 tolerates narrow whitespace fragmentation in explicit period tokens without globally concatenating arbitrary words.
+
+## TGW direct careers
+
+Production promotion succeeded in v0.3.25:
 - run #333 reconciliation
 - source reported 111 public jobs
 - 58 Austrian candidates
 - 8 accepted
-- all 8 exclusive at promotion time
+- all 8 exclusive at promotion
 - coverage `ok`
 - all 8 locations resolved (Wels / Marchtrenk)
-- father-facing authenticated list smoke test rendered all 8 without visiting detail routes
 
-Accepted TGW corpus at promotion:
+Accepted promotion corpus:
 1. Mechatronics Development Manager - Rovosphere (M/F/D)
 2. Project Manager (M/F/D)
 3. Development Engineer for Mechatronic Systems (M/F/D)
@@ -156,34 +168,67 @@ Accepted TGW corpus at promotion:
 7. Onsite Manager (M/F/D)
 8. Overall Project Manager for New Installations (M/F/D)
 
-`Technical Support Engineer Mechanics` was deliberately rejected after live review: support/dispatch/ticket + technician coordination with apprenticeship/HTL profile, not engineering/project leadership.
+`Technical Support Engineer Mechanics` was deliberately rejected after live review because it is support/dispatch/ticket + technician coordination rather than engineering/project leadership.
 
-## v0.3.26 salary repair
+TGW salary repair:
+- Strategic (Senior) Project Manager page explicitly states `64830 EUR/year`
+- v0.3.26 extracts the salary separately because the normal TGW description intentionally stops before the benefits/salary block
+- persisted annual minimum is exactly 64830; no inferred semantics required
 
-Two live employer-owned pages exposed salary parsing gaps:
+## Salary parsing policy
 
-1. TGW Strategic (Senior) Project Manager page states an explicit minimum annual salary as `64.830 Euro`.
-   - TGW description intentionally stops before benefits/salary, so salary must be captured separately as source-backed `salary_text`.
-   - Do not broaden the normal description just to reach the salary paragraph.
+Current policy: `explicit-salary-text-2026-08-30-v6`.
 
-2. ANDRITZ Quality Engineer NDT page states `€4,354.45 gross per month`.
-   - SuccessFactors description already contains the salary paragraph.
-   - Generic money parsing previously supported Austrian/German grouping such as `4.673,74` but not English grouping `4,354.45`.
+Invariants:
+- preserve source pay period
+- monthly Austrian salary is not automatically multiplied by 14
+- monthly values annualize only when source explicitly gives payment count
+- hourly values remain missing-last in annual salary sorting without defensible hours/week evidence
+- structured source salary wins over text-derived salary
+- generic text-derived salary needs explicit EUR currency, explicit pay period, plausible amount and salary cue
+- trusted adapter-provided salary text may skip the generic cue but still needs explicit currency/period/plausibility
 
-v0.3.26 changes:
-- generic salary parser accepts English grouped amounts (`4,354.45`) in addition to existing Austrian/German forms
-- written currency `Euro` is accepted alongside `EUR` and `€`
-- generic description parsing still requires salary cue + explicit period + plausible amount
-- TGW adapter extracts an explicit salary block separately into `RawJob.salary_text`
-- salary text policy bumped to `explicit-salary-text-2026-08-30-v5`
-- regression tests cover the exact TGW and ANDRITZ live formats plus a non-salary `Euro` budget false-positive guard
+Supported live formats now include:
+- Austrian/German grouping: `4.673,74`, `53 241,02`
+- English grouping: `4,354.45`
+- currency spellings: `€`, `EUR`, `Euro`
+- narrow fragmented explicit period tokens such as `/ M onat`
 
-Expected semantics after repair:
-- TGW: minimum `64830 EUR/year`, minimum-only
-- ANDRITZ NDT: minimum `4354.45 EUR/month`, minimum-only
-- ANDRITZ monthly salary is **not** annualized because the posting does not explicitly state 14 payments; do not invent 14× semantics
+Do not normalize arbitrary whitespace globally; fragmentation tolerance is deliberately narrow to avoid false positives.
 
-The generic job runner calls salary-text enrichment before discovery partition/ingestion, so a successful authoritative reconciliation of TGW and SuccessFactors after v0.3.26 deployment repairs existing active jobs without a bespoke database migration.
+## v0.3.28 PALFINGER candidate
+
+PALFINGER is the next direct-employer acquisition target because its Austrian public career site has strong immediate mechanical/project value, including live roles such as:
+- `Experienced Mechanical Engineer (f/m/d)` — cranes/system solutions, mechanical pre-development, FEM, prototypes/series, development-project leadership
+- `Advanced Mechanical Engineer (w/m/d)`
+- `Projekt Manager - Special Lifting Solutions (m/w/d)` — complex product/customer development projects, special lifting/robotics/rail applications
+- industrial/plant engineering roles
+
+PALFINGER Austrian business domain is highly relevant: hydraulic lifting/loading systems, cranes, railway systems, access platforms and related machinery.
+
+v0.3.28 code adds:
+- `app.sources.job.palfinger.PalfingerJobSource`
+- `scripts/run_palfinger_jobs.py`
+- disabled-by-default source seed `palfinger-direct-careers`
+- scheduler registration while disabled (disabled rows remain ignored)
+- public Austrian listing pagination parser
+- direct detail parser with stable ID from PALFINGER posting id
+- source-backed Austrian postal/city extraction from detail-page address
+- source-backed salary text reuse through existing salary policy
+- zero-write `--preflight`
+
+Safety requirements before enablement:
+1. live preflight must show real pagination evidence and full listing-page coverage
+2. no detail parser failures
+3. source remains disabled and DB unchanged during preflight
+4. review every accepted title and important rejected families under gate v22
+5. only then perform a hidden authoritative reconciliation, corpus/geo/salary audit, and enable source
+
+The adapter deliberately marks coverage incomplete if pagination cannot be proven or a listing page/detail parser fails. Never enable PALFINGER merely because page 1 works.
+
+## AVL follow-up candidate
+
+AVL uses a SuccessFactors-style public career site and is cheap to add later as another tenant. Current Austrian feed, however, is relatively low-value at this exact moment (many Sales/IT/Marketing/Junior roles), so PALFINGER has priority for immediate exclusive value.
 
 ## Property sources and semantics
 
@@ -208,18 +253,9 @@ IMMMO continuity v3 repair is complete/idempotent and should not be reopened wit
 - explicit source PLZ wins
 - otherwise conservative known-locality centroid
 - broad Bundesland/country labels stay unresolved rather than receiving fake coordinates
-- Salzburg-area, Oberösterreich Zentralraum, Niederranna, St. Valentin, Salzburg Stadt/Vienna district and conservative `X bei Y` repairs are already implemented
+- Salzburg-area, Oberösterreich Zentralraum, Niederranna, St. Valentin, Salzburg Stadt/Vienna district and conservative `X bei Y` repairs are implemented
 
-Known broad/unresolved labels may remain unresolved when source evidence is insufficient.
-
-## Salary invariants
-
-- Preserve source pay period.
-- Monthly Austrian salary is not automatically multiplied by 14.
-- Monthly values are annualized only when the source explicitly provides payment count.
-- Hourly values remain missing-last in annual salary sorting unless explicit working-hours evidence exists.
-- Structured source salary wins over text-derived salary.
-- Text-derived salary requires explicit currency, explicit pay period and plausible value; generic descriptions additionally require a salary cue.
+Known broad labels may remain unresolved when source evidence is insufficient.
 
 ## Source health semantics
 
@@ -254,11 +290,12 @@ Preferred approach remains SSE:
 
 ## Near-term roadmap
 
-1. Deploy/verify v0.3.26 salary repair and reconcile TGW + ANDRITZ so existing jobs gain source-backed salary data.
-2. Continue selected direct Austrian employer acquisition where exclusive value is likely.
-3. Keep tuning tenant/source value rather than expanding for raw count.
-4. Conservative geo cleanup only from real evidence.
-5. Implement SSE real-time UI synchronization.
+1. Live zero-write PALFINGER preflight and full accepted/rejected review.
+2. If PALFINGER is clean, controlled authoritative import + geo/salary/source-value audit + enablement.
+3. Add AVL cheaply through the SuccessFactors framework if live value justifies it.
+4. Continue selected Austrian direct employers based on exclusive value, not raw count.
+5. Conservative geo cleanup only from real evidence.
+6. Implement SSE real-time UI synchronization.
 
 ## Deployment discipline
 
