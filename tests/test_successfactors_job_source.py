@@ -124,6 +124,44 @@ def test_parse_andritz_live_style_salary_from_description() -> None:
     assert job.raw_payload["successfactors_requisition_id"] == "22849"
 
 
+def test_parse_andritz_fragmented_live_salary_from_description() -> None:
+    html = """
+    <html><body>
+      <h1>Bezeichnung: Projekt Manager (m/w/d) für Turbo Generatoren Service</h1>
+      <div>Arbeitsvertraglicher Standort:</div><div>Weiz, Styria, AT</div>
+      <div>Beschreibung:</div>
+      <p>Leitung und Abwicklung internationaler Serviceprojekte für Turbogeneratoren.</p>
+      <h2>UNSER ANGEBOT</h2>
+      <p>Wir sind gesetzlich verpflichtet für diese Position das kollektivvertragliche
+      Mindestgehalt von <span>brutt</span><span>o € 3.583,02 / M</span><span>onat anz</span><span>uführen.</span>
+      Wir bieten jedoch in jedem Fall eine marktkonforme Bezahlung in Abhängigkeit von
+      Qualifikation und Berufserfahrung!</p>
+      <div>Ansprechperson:</div><div>Example Recruiter</div>
+      <div>Stellenanforderungs-ID:</div><div>22086</div>
+    </body></html>
+    """
+
+    job = successfactors.parse_successfactors_detail(
+        html,
+        site=SITE,
+        url=(
+            "https://careers.andritz.com/andritz/job/Weiz-Projekt-Manager-"
+            "Turbo-Generatoren-Service-Styr/1364235657/"
+        ),
+    )
+
+    assert job is not None
+    assert "3.583,02" in (job.description or "")
+    assert enrich_raw_job_salary(job) is True
+    assert job.salary_min == Decimal("3583.02")
+    assert job.salary_max is None
+    assert job.salary_currency == "EUR"
+    assert job.salary_period == "month"
+    assert job.salary_payment_count is None
+    assert job.salary_is_minimum_only is True
+    assert job.raw_payload["successfactors_requisition_id"] == "22086"
+
+
 def test_parse_non_austrian_detail_is_filtered() -> None:
     html = """
     <html><body>
