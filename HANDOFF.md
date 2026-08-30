@@ -10,10 +10,11 @@ This is the authoritative recovery point for a fresh context.
 
 ## Current release state
 
-- Production is verified through `v0.3.11`.
-- Branch target after this checkpoint: `v0.3.12` source-value observability.
+- Production is verified through **v0.3.15**.
+- Current branch target is **v0.3.16 observability maintenance** after the first validated Workday import.
 - Father has used the service continuously for several days and reports that it is stable and useful.
 - Product work should favor evidence-driven maintenance and acquisition quality over speculative rewrites.
+- Exact-head GitHub CI success is a hard production deployment gate.
 
 ## Product invariants
 
@@ -24,24 +25,25 @@ WohnWerk is a private/self-hosted Austria-first property + job acquisition, pers
 - Source lifecycle, discovery relevance and candidate fit are separate concerns.
 - Failed/partial crawls never mass-deactivate authoritative data.
 - Missing from a frontier search is not proof of disappearance.
+- Disabled sources must never contribute father-visible jobs.
 - Hidden/favorite/viewed curation survives lifecycle/canonical merges.
 - Never invent coordinates, images, prices or semantic property attributes.
 - Geography/commute remains separate from intrinsic job fit.
 - No permanent Job×Property pair table unless future measurements justify it.
-- Production deploys require a green GitHub CI run on the exact branch HEAD before a deploy command is handed to the operator.
 
 ## Production runtime
 
 Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 
 - Caddy -> `127.0.0.1:8000`
-- `wohnwerk.service`: Uvicorn/FastAPI, loopback only
+- `wohnwerk.service`: FastAPI/Uvicorn, loopback only
 - local OSRM: `127.0.0.1:5000`, Austria graph, MLD, mmap
-- `wohnwerk-refresh.timer`: dynamic source refresh, scheduler wake-up every 15 minutes
-- `wohnwerk-images.timer`: image/detail/liveness maintenance batches
+- `wohnwerk-refresh.timer`: dynamic source scheduler wake-up every 15 minutes
+- `wohnwerk-images.timer`: image/detail maintenance
 - `wohnwerk-liveness.timer`: property liveness maintenance
 - `/health`: lightweight service health/version endpoint
-- `/admin/health`: protected operations/coverage overview
+- `/admin/health`: protected Betrieb/source-value overview
+- `/admin/concepts`: protected concept administration with the same top navigation/style as Betrieb
 
 Existing Starlette TestClient/httpx deprecation warning is non-blocking.
 
@@ -55,33 +57,27 @@ Root `/` redirects to `/houses`.
 
 ### Houses
 
-`/houses` is the independent property catalog with:
-- pagination
-- price/location/verified-area filters
-- sorting by price, novelty and viewed state, asc/desc
-- source-backed images only
-- explicit `Wohnfläche`, `Nutzfläche`, `Grundstück` when semantically verified
-- neutral `Fläche` for unresolved source display-area semantics
-- favorite/hide/viewed curation
-- `Bei WohnWerk seit DD.MM.YYYY`
+`/houses` provides pagination, price/location/verified-area filters, sorting, source-backed images only, semantic area display, favorite/hide/viewed curation and `Bei WohnWerk seit` dates.
 
-`/houses/{id}` provides property details, original source links and nearby eligible jobs.
+`/houses/{id}` provides details, original source links and nearby eligible jobs.
+
 Descriptions may remain stored internally but are intentionally not shown unevenly in the father-facing house UI.
 
 ### Jobs
 
-`/jobs` provides:
-- intrinsic candidate fit
-- salary/source/location data
-- favorite/hide/viewed curation
-- sorting and filters
-- `Bei WohnWerk seit DD.MM.YYYY`
+`/jobs` provides intrinsic candidate fit, salary/source/location data, favorite/hide/viewed curation, sorting/filters and `Bei WohnWerk seit` dates.
 
 `/jobs/{id}` provides source links and nearby houses.
 
-Hourly salary rows remain missing-last in annual salary sorting unless defensible working-hours evidence exists; do not invent an annual equivalent.
+Hourly salary rows remain missing-last in annual salary sorting unless defensible working-hours evidence exists; never invent an annual equivalent.
 
-## Property acquisition, identity and semantics
+Father-facing job visibility requires all of:
+- canonical `Job` active
+- at least one `JobListing` active
+- source enabled
+- persisted `wohnwerk_discovery_gate.accepted == true`
+
+## Property acquisition and semantics
 
 Authoritative property sources:
 - `immmo.at`
@@ -97,157 +93,147 @@ Safe continuity strategies only:
 - PLZ + normalized title + price + provider-neutral display-area fingerprint
 - PLZ + normalized title + display-area fingerprint
 
-Historical deterministic repair was completed and verified idempotent. Do not reopen this without a concrete production regression.
+Historical deterministic repair is complete and idempotent. Do not reopen without concrete production evidence.
 
-### Cross-source property dedupe
+### Property dedupe / areas / images
 
-A conservative cross-source merge exists for deterministic duplicates such as the same s REAL property syndicated through IMMMO/Nachrichten.
+Cross-source property dedupe remains conservative: compatible PLZ, exact price, strong normalized-title identity and no conflicting explicit area evidence.
 
-Merge requirements remain strict:
-- compatible PLZ
-- exact price
-- sufficiently strong normalized title identity
-- no conflicting explicit area evidence
+Area semantics:
+- explicit Wohnfläche/Wohnnutzfläche -> living area
+- explicit Grundstück/Grundstücksfläche/Grundfläche -> plot area
+- explicit Nutzfläche -> usable area
+- generic source area -> neutral display-only `Fläche`
 
-Curation and source/image state must survive merges.
+Images are exact listing-backed only. Never title-search the web for a substitute.
 
-### Area semantics
-
-Do not infer semantic area type from a generic card number.
-
-Verified mappings include:
-- explicit Wohnfläche/Wohnnutzfläche -> `living_area_m2`
-- explicit Grundstück/Grundstücksfläche/Grundfläche -> `plot_area_m2`
-- explicit Nutzfläche -> detail usable area, not Wohnfläche
-- generic source area -> display-only neutral `Fläche`
-
-Current detail-facts policy supports provider-native extraction from ImmoScout24 and FindMyHome, including structured GraphQL/visible page facts where source semantics are explicit.
-
-Known production controls already fixed:
-- ImmoScout `6a91...`: usable 83.38, plot 785, living remains null
-- ImmoScout `6a5f79...`: living 86, usable 120, plot 1522
-- promotional-title listing `6579...`: true purchase price 573500; excluded by max-price policy
-- FindMyHome `5657040`: living 91, plot 653
-- FindMyHome `5640125`: living 90, plot 566
-
-## Property images
-
-Policy: exact listing-backed images only. Never title-search the web for a substitute.
-
-- s REAL exact image extraction is supported.
-- provider detail enrichment can persist exact `primary_image_url`.
-- local image cache is used by the catalog.
-- targeted authoritative refresh exists for wrongly associated cached images.
-
-A production wrong-image case (`6a8d...`) was repaired by re-reading the exact ImmoScout listing and refreshing the cache, not by manual image substitution.
+Known repaired production controls include the ImmoScout area/price cases, FindMyHome area cases, the wrong-image case and the deterministic Neuhofen duplicate merge from earlier checkpoints.
 
 ## Property liveness
 
 Two layers exist:
 
-1. Global safety sweep: conservative maintenance scan.
-2. Visible-page liveness: `/houses` schedules a background check for listings rendered on the current page when their last check is older than roughly 30 minutes.
+1. Global conservative maintenance sweep.
+2. Visible-page liveness: `/houses` schedules non-blocking checks for rendered listings older than roughly 30 minutes.
 
-Important semantics:
-- page response is not blocked by source HTTP requests
-- definitive 404/410/provider removed markers can deactivate an observation
-- 403, CAPTCHA, 429, timeouts and transient network errors do not hide previously live listings
-- repeated page refreshes are deduplicated to avoid source hammering
+Definitive 404/410/provider removed evidence can deactivate an observation. 403/CAPTCHA/429/timeouts/network uncertainty do not hide previously live listings. Repeated page refreshes are deduplicated.
 
-This behavior exists because the father repeatedly revisits houses within the same day and stale dead listings were operationally annoying.
-
-## Jobs and candidate fit
+## Candidate profile and discovery
 
 Candidate profile:
 - slug `mechanical-project-engineer`
 - label `Maschinenbau / technische Projektleitung`
 - roughly 30 years mechanical engineering / technical project leadership experience
 
-The fit model is concept-based and separates hard incompatibility from intrinsic fit and geography.
+Current discovery gate in production: **`profile-seed-2026-08-30-v18`**.
 
-Father-facing job visibility requires all of:
-- canonical `Job` active
-- at least one `JobListing` active
-- source enabled
-- persisted `wohnwerk_discovery_gate.accepted == true`
+The discovery gate is a high-recall professional-neighborhood filter, not the candidate-fit score. Obvious software/IT, academic/student, generic unsolicited applications, manual-production trades, logistics/procurement and other structural false positives must be rejected before persistence/fit.
 
-This prevents disabled or rejected source rows from entering candidate fit.
+Recent production regressions now covered by tests include:
+- Greenhouse software/QA false positives
+- pure building/electrical false positives without relevant mechanical/vehicle domain
+- CNC turning/milling trades
+- laboratory technician roles
+- Workday academic thesis / Initiativbewerbung
+- Workday `Program / Project Responsible IT`
+- Workday packaging/logistics planning
 
-### Production job sources
+Legitimate adjacent engineering such as automotive electrical systems, supplier quality development, commissioning, plant planning and manufacturing engineering must remain eligible for fit ranking.
+
+## Production job sources
 
 Enabled/operational:
-- karriere.at — bounded discovery frontier, no disappearance authority
-- jobs.at — bounded discovery frontier, no disappearance authority
-- stepstone.at — bounded discovery frontier, no disappearance authority
-- willhaben jobs — bounded discovery frontier, no disappearance authority
-- Lever public postings — tenant feeds, reconciliation-capable where complete
-- Personio public XML — complete tenant feeds, reconciliation-capable
-- SmartRecruiters public postings — tenant feeds, reconciliation-capable when full coverage is obtained
+- `karriere.at` — bounded discovery frontier; no disappearance authority
+- `jobs.at` — bounded discovery frontier; no disappearance authority
+- `stepstone.at` — bounded discovery frontier; no disappearance authority
+- `willhaben-jobs` — bounded discovery frontier; no disappearance authority
+- `lever-public-postings` — tenant feeds; reconciliation-capable where complete
+- `personio-public-xml` — complete tenant feeds; reconciliation-capable
+- `smartrecruiters-public-postings` — tenant feeds; reconciliation-capable when full coverage is obtained
+- `workday-public-cxs` — **production-validated in v0.3.15**, discovery-only, no disappearance authority
 
-Greenhouse public boards are implemented but currently **disabled** pending relevance-gate review. The first bootstrap exposed false-positive software/QA/electrical/building roles; stale rows were purged and disabled-source visibility was fixed in `v0.3.10`.
+### Workday production validation
 
-Existing Adzuna/Jooble adapters may be present in code but should not be treated as production coverage unless explicitly enabled/configured.
+Validated tenants:
+- `kiongroup:KIONGroup` — KION Group / Linde Material Handling
+- `magna:Magna` — Magna
 
-### Discovery gate
+First controlled production import in v0.3.15:
+- 12/12 shards successful
+- 8 persisted relevant listings
+- 4 KION + 4 Magna
+- all persisted rows carried gate v18 `accepted=true`
+- all imported source-backed locations resolved successfully
+- source enabled only after persisted-corpus and geo audit
 
-Current gate after the Greenhouse regression work is `profile-seed-2026-08-30-v16`.
+Accepted examples include KION AGV commissioning/service engineering and Magna chassis development, supplier quality development, electric propulsion/electronics and body-shop plant planning.
 
-Important principle: the discovery gate is a high-recall professional-neighborhood filter, not the candidate-fit score. Obvious software/IT/QA/building-service false positives must be rejected before persistence/fit.
+Workday search-text shards are discovery frontiers only. Never use absence from one query union as disappearance proof.
 
-Greenhouse preflight after v16 still admitted two GROPYUS electrical roles for manual review. Do not enable Greenhouse until those live cases are resolved safely without losing legitimate adjacent electrical/vehicle roles.
+### SmartRecruiters
+
+Production tenant expansion is valuable and currently includes the earlier base tenants plus IMS Nanofabrication, Anton Paar, Umdasch/Doka and Kronospan/Kaindl where operator state is enabled.
+
+v17 reclassified known false positives such as `CNC-Dreher/-Fräser` and `Labortechniker` while preserving legitimate manufacturing/quality engineering.
+
+### Personio candidate note
+
+`beyondcarbon-energy` remains disabled because the tested Personio XML endpoints returned 404. Do not force it through the Personio XML adapter; use a future direct-source adapter only if coverage value justifies it.
+
+### Greenhouse
+
+`greenhouse-public-job-board` remains **disabled**.
+
+The first bootstrap exposed software/QA/building/electrical false positives; stale rows were purged, disabled-source visibility was fixed, and subsequent gates narrowed the corpus. Re-evaluate Greenhouse only with a clean live preflight and no father-facing import before approval.
+
+### Lever
+
+Keep the adapter. Current tenant set has comparatively low yield/value, so future effort should focus on better tenant discovery rather than rewriting the adapter.
 
 ## Job geography
 
 Principles:
 - explicit source PLZ wins
-- otherwise use a conservative locality centroid
-- broad Bundesland/country labels remain unresolved rather than receiving a fake centre point
-- approximate area labels may use an explicit named anchor only when provenance is retained
+- otherwise conservative locality centroid
+- broad Bundesland/country labels remain unresolved rather than receiving a fake center
+- approximate area labels use explicit semantics/provenance only
 
-Implemented repairs include:
-- `Salzburg Umgebung` / `Raum Salzburg` -> Salzburg anchor with approximate-area semantics
-- `Oberösterreich Zentralraum` -> Linz/Wels/Steyr multi-locality centroid
-- pure `Kärnten`, `Österreich`, etc. -> deliberately unresolved
-- `Niederranna` source-backed PLZ 4085 from Karriere evidence, propagated conservatively
-- punctuation-safe locality fallback fixes `St. Valentin`, `St. Gallen`, `Nußbach`, etc.
-- jobs.at can repair broad structured region data from a concrete visible header locality
-- `Salzburg Stadt` and Vienna district labels resolve conservatively
-- `X bei Y` is accepted only when the base locality is unambiguous
+Implemented repairs include Salzburg-area semantics, Oberösterreich Zentralraum, Niederranna PLZ evidence, punctuation-safe locality matching (`St. Valentin`, etc.), jobs.at visible-header repair, Salzburg Stadt/Vienna district handling and conservative `X bei Y` fallback.
 
-Never force broad labels such as `AT`, `österreichweit`, Bundesländer or large regional sales territories into arbitrary centre coordinates.
+Current intentionally unresolved examples include:
+- `Standort: Tirol (Außendienst & Homeoffice)`
+- `österreichweit`
+- `Wels-Land`
+- `Schaftenau`
+- `Ranshofen`
+- `AT`
+- `Graz Umgebung-West`
+- `Traboch`
+
+Do not force these to arbitrary coordinates without better source evidence/locality semantics.
 
 ## Routing
 
-- PostGIS geography handles scalable straight-line inclusion/prefilter.
+- PostGIS geography handles scalable straight-line prefiltering.
 - local OSRM Table API provides road distance/time for displayed results.
 - coordinates are centroid-level, not street-address precision.
-- same-centroid pairs can legitimately display 0 km / 0 min.
 
 ## Source health semantics
 
-Since `v0.3.11`, execution success and coverage authority are explicitly separate:
+Execution success and coverage authority are separate:
 
 - all shards executed + complete coverage -> `run=success`, `coverage=ok`
 - all shards executed + intentionally bounded/incomplete coverage -> `run=success`, `coverage=degraded`
 - some shards actually failed -> `run=partial`, `coverage=degraded`
 - all shards failed -> `run=failed`, `coverage=failed`
 
-A bounded frontier run is therefore not an operational failure.
+A bounded frontier run is not an operational failure.
 
-The production source sweep on 2026-08-30 verified:
-- jobs.at: healthy frontier
-- karriere.at: healthy frontier
-- stepstone.at: healthy frontier
-- willhaben: healthy frontier
-- Personio: healthy complete feed
-- Lever/SmartRecruiters/IMMMO/s REAL had old pre-v0.3.11 `partial/degraded` latest-run records with zero failed/unhealthy shards; these are legacy bounded-run semantics, not actual execution failures
-- Greenhouse remains disabled/degraded by design
-
-`v0.3.12` adds backward-compatible health interpretation so legacy bounded runs with all shards completed and zero failures no longer show as warnings when the source's authoritative coverage remains OK.
+`v0.3.12` added backward-compatible interpretation for legacy pre-v0.3.11 bounded partial runs so healthy sources do not remain yellow only because of historical status semantics.
 
 ## Operations / source value
 
-`/admin/health` shows:
+`/admin/health` / Betrieb shows:
 - active houses
 - raw active canonical jobs
 - father-visible relevant jobs
@@ -255,70 +241,71 @@ The production source sweep on 2026-08-30 verified:
 - enabled sources
 - per-source execution/coverage state
 - latest run/status/items
-- active failing shards
-- last success/error
+- failing shards and last success/error
 - top unresolved location labels
+- active accepted listings per job source
+- unique/exclusive/shared visible jobs
+- latest accepted/rejected counts and gate yield
 
-`v0.3.12` also adds a **Wert der Stellenquellen** section with:
-- active accepted source listings
-- unique visible canonical jobs contributed by each source
-- exclusive jobs only that source currently supplies
-- jobs shared with another active accepted source
-- accepted/rejected candidate counts from the latest run
-- latest gate yield percentage
+Use source-value evidence before adding/removing tenants or sources. A source should not be kept merely to inflate listing count.
 
-Use this evidence before adding/removing tenants or sources. A source should not be kept merely to inflate total listing count.
+## v0.3.16 maintenance target
+
+After Workday production validation, two observability quirks were identified:
+
+1. Workday CXS can report `total=0` on a later page even when the adapter materialized dozens of rows. `SourceBatch.source_reported_count` must never under-report the number of materialized source items.
+2. Workday uses multiple search shards per tenant (`tenant:site:index`), while the registry key is `tenant:site`; successful shards must still update the tenant's `last_verified_at`.
+
+These fixes are observability-only. They must not alter discovery/fit/lifecycle decisions or the validated 8-job Workday corpus.
 
 ## Approved near-term roadmap
 
-Priority order:
+Priority order from the current checkpoint:
 
-1. Keep `HANDOFF.md` current after meaningful production changes.
-2. Use source-value/overlap data to tune current job sources and tenant registries.
-3. Continue conservative geo cleanup from actual unresolved production labels.
-4. Resolve the two remaining Greenhouse GROPYUS electrical false positives, then re-evaluate enabling Greenhouse.
-5. Add Workday public career sites as a separate acquisition model after Greenhouse is stable.
-6. Add selected direct Austrian employer career pages only where they materially improve useful coverage.
-7. Add real-time UI synchronization so page reload is not required for catalog/admin state changes.
+1. Complete v0.3.16 observability maintenance and verify Workday tenant timestamps/count diagnostics.
+2. Re-evaluate Greenhouse with the current v18 gate and clean preflight; enable only if live accepted families are defensible.
+3. Improve Lever tenant discovery based on source-value evidence.
+4. Add selected direct Austrian employer career pages only where they materially improve exclusive useful coverage.
+5. Continue conservative geo cleanup only from real production unresolved labels/source evidence.
+6. Implement real-time UI synchronization.
 
-### Real-time UI synchronization TODO
+## Real-time UI synchronization TODO
 
-Goal: updates should appear without a full page refresh for:
+Goal: no full page refresh should be required for:
 - newly discovered/removed houses
 - newly discovered/removed jobs
 - `Neu` / no longer `Neu`
 - viewed/unviewed
 - favorite/unfavorite
 - hidden/unhidden
-- list counters and tabs
+- list counters/tabs
 - `/admin/health` source/run/location metrics
 
 Preferred first implementation for the current single-node FastAPI deployment:
 - **Server-Sent Events (SSE)** for server -> browser invalidation/update notifications
 - existing HTTP POST actions remain authoritative for user writes
-- small client-side reconciliation/fetch of affected cards/counters after an event
+- small client-side reconciliation/fetch of affected cards/counters after events
 - Caddy-compatible keepalive/reconnect behavior
-- event IDs / reconnect safety so a temporary connection drop does not leave stale UI
+- event IDs/reconnect safety
 
-Use WebSockets only if a genuine bidirectional low-latency protocol becomes necessary. SSE is sufficient for the currently requested behavior and is operationally simpler.
+Use WebSockets only if a genuine bidirectional low-latency protocol becomes necessary. Do not replace page reloads with aggressive JavaScript polling.
 
-Do not build this by polling every few seconds; the goal is lower reload/poll churn, not moving polling into JavaScript.
-
-### Acquisition expansion rules
+## Acquisition expansion rules
 
 For every new job source:
 - Austria-only filtering must be explicit.
-- Base professional relevance filtering remains separate from candidate fit.
+- Base professional relevance stays separate from candidate fit.
 - Prefer public documented/observable endpoints over browser automation.
 - Preserve source identifiers and canonical source URLs.
 - Reconciliation/liveness semantics must fail safely.
-- Add parser/coverage regression tests before enabling production tenants.
+- Add parser/coverage regression tests before production enablement.
+- New tenant seeds should be disabled by default unless already explicitly operator-enabled.
 - Do not add a source merely to inflate listing count.
 
-## Deferred / only if evidence justifies it
+## Deferred / evidence-only work
 
 - broader IMMMO image coverage beyond exact source-backed associations
-- automatic annualization of hourly salaries without explicit hours/week
+- annualizing hourly salaries without explicit hours/week
 - permanent Job×Property pair storage
 - aggressive fuzzy property dedupe
 - fake centroids for broad regions
@@ -333,6 +320,6 @@ For branch changes:
 3. require Install + Ruff + Compile + Tests success
 4. only then provide production deployment commands
 5. production still runs Ruff/compile/tests before restart
-6. verify `/health` and targeted data controls
+6. verify `/health` and targeted production data controls
 
 This rule exists because earlier iterations exposed transient red CI states that must never be treated as deployable.
