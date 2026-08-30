@@ -188,9 +188,8 @@ def _label_value(blocks: list[str], labels: tuple[str, ...]) -> str | None:
     for index, block in enumerate(blocks):
         folded = block.casefold()
         for label, normalized in zip(labels, normalized_labels, strict=True):
-            if folded == normalized:
-                if index + 1 < len(blocks):
-                    return blocks[index + 1].strip() or None
+            if folded == normalized and index + 1 < len(blocks):
+                return blocks[index + 1].strip() or None
             if folded.startswith(normalized):
                 value = block[len(label) :].strip()
                 if value:
@@ -368,7 +367,10 @@ class SuccessFactorsJobSource(JobSource):
         origin = params.get("origin")
         search_path = params.get("search_path")
         page_size = params.get("page_size", 25)
-        if not all(isinstance(value, str) and value.strip() for value in (tenant, company, origin, search_path)):
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (tenant, company, origin, search_path)
+        ):
             raise TypeError(f"Invalid SuccessFactors shard parameters for {shard.key!r}")
         if not isinstance(page_size, int):
             raise TypeError(f"Invalid SuccessFactors page size for {shard.key!r}")
@@ -472,15 +474,16 @@ class SuccessFactorsJobSource(JobSource):
                     if parsed is not None:
                         items.append(parsed)
 
+                search_pages = (
+                    min(self.hard_max_pages, math.ceil(source_reported / site.page_size))
+                    if source_reported is not None
+                    else None
+                )
                 return SourceBatch(
                     items=items,
                     next_cursor={
                         "candidate_detail_urls": len(candidate_urls),
-                        "search_pages": (
-                            min(self.hard_max_pages, math.ceil(source_reported / site.page_size))
-                            if source_reported is not None
-                            else None
-                        ),
+                        "search_pages": search_pages,
                     },
                     source_reported_count=source_reported,
                     coverage_complete=not cap_hit,
