@@ -120,17 +120,21 @@ def _first_index(values: list[str], labels: tuple[str, ...], *, start: int = 0) 
     return None
 
 
-def _location_after_title(parts: list[str], title: str) -> RawJobLocation | None:
-    try:
-        start = parts.index(title)
-    except ValueError:
-        start = 0
+def _main_start(parts: list[str]) -> int:
+    for index, value in enumerate(parts):
+        if value.casefold().rstrip("!") == "join team possible":
+            return index
+    return 0
+
+
+def _location_after_title(parts: list[str]) -> RawJobLocation | None:
+    start = _main_start(parts)
     stop = _first_index(
         parts,
         ("What you'll be handling:", "What you’ll be handling:"),
         start=start,
     )
-    stop = stop if stop is not None else min(len(parts), start + 30)
+    stop = stop if stop is not None else min(len(parts), start + 40)
     for value in parts[start:stop]:
         match = _AUSTRIAN_LOCATION_RE.match(value)
         if match is None:
@@ -142,18 +146,15 @@ def _location_after_title(parts: list[str], title: str) -> RawJobLocation | None
     return None
 
 
-def _description(parts: list[str], title: str) -> str | None:
-    try:
-        title_index = parts.index(title)
-    except ValueError:
-        title_index = 0
+def _description(parts: list[str]) -> str | None:
+    main_start = _main_start(parts)
     start = _first_index(
         parts,
         ("What you'll be handling:", "What you’ll be handling:"),
-        start=title_index,
+        start=main_start,
     )
     if start is None:
-        start = title_index + 1
+        start = main_start + 1
     stop = _first_index(
         parts,
         ("What you'll receive:", "What you’ll receive:"),
@@ -161,7 +162,7 @@ def _description(parts: list[str], title: str) -> str | None:
     )
     if stop is None:
         stop = _first_index(parts, ("Ready to start?",), start=start)
-    stop = stop if stop is not None else min(len(parts), start + 80)
+    stop = stop if stop is not None else min(len(parts), start + 100)
     selected = parts[start:stop]
     value = "\n".join(selected).strip()
     return value or None
@@ -175,7 +176,7 @@ def parse_tgw_detail_page(value: str, *, posting_id: str, url: str) -> RawJob | 
     title = _main_title(parser.headings)
     if title is None:
         raise ValueError("TGW detail page has no job title")
-    location = _location_after_title(parser.text_parts, title)
+    location = _location_after_title(parser.text_parts)
     if location is None:
         return None
 
@@ -193,7 +194,7 @@ def parse_tgw_detail_page(value: str, *, posting_id: str, url: str) -> RawJob | 
         url=url,
         title=title,
         company="TGW Logistics",
-        description=_description(parser.text_parts, title),
+        description=_description(parser.text_parts),
         locations=[location],
         raw_payload=payload,
     )
