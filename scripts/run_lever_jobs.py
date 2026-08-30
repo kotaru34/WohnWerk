@@ -7,11 +7,14 @@ from sqlalchemy import select
 
 from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
+from app.jobs.discovery import partition_job_candidates
 from app.jobs.tenant_registry import TenantSeed, enabled_tenants, seed_tenants
-from app.models import Source, SourceCategory
+from app.models import CoverageStatus, RunStatus, Source, SourceCategory
+from app.sources.base import SourceFetchError
 from app.sources.job.lever import GLOBAL_API_BASE, LeverJobSource, LeverSite
 
 ADAPTER_PATH = "app.sources.job.lever.LeverJobSource"
+SOURCE_NAME = "lever-public-postings"
 
 DEFAULT_TENANTS = [
     TenantSeed(tenant_key="blackshark", company="Blackshark.ai", namespace="eu"),
@@ -30,6 +33,14 @@ def parse_args() -> argparse.Namespace:
         "--reconcile",
         action="store_true",
         help="Traverse each enabled tenant feed to completion and reconcile complete shards.",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help=(
+            "Fetch and classify every bootstrap tenant without touching the database. "
+            "Exit non-zero if any tenant cannot be read to completion."
+        ),
     )
     parser.add_argument(
         "--incremental-pages",
@@ -58,9 +69,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _bootstrap_sites() -> list[LeverSite]:
+    return [
+        LeverSite(
+            site=seed.tenant_key,
+            company=seed.company,
+            region=seed.namespace,
+        )
+        for seed in DEFAULT_TENANTS
+    ]
+
+
 def get_or_create_source() -> int:
     with SessionLocal() as session:
-        source = session.scalar(select(Source).where(Source.name == "lever-public-postings"))
+        source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
             "scope": "Austrian vacancies from registered Lever tenants",
             "acquisition": "documented public Lever Postings API; published postings only",
@@ -70,7 +92,7 @@ def get_or_create_source() -> int:
         }
         if source is None:
             source = Source(
-                name="lever-public-postings",
+                name=SOURCE_NAME,
                 category=SourceCategory.JOB,
                 adapter=ADAPTER_PATH,
                 base_url=GLOBAL_API_BASE,
@@ -83,7 +105,8 @@ def get_or_create_source() -> int:
             session.refresh(source)
         else:
             source.adapter = ADAPTER_PATH
-            source.enabled = True
+            # Preserve an explicit operator disable. Running the script manually must not
+            # silently re-enable a source that was taken out of scheduler rotation.
             source.config = config
             session.commit()
 
@@ -110,8 +133,69 @@ def load_sites(source_id: int) -> list[LeverSite]:
         return sites
 
 
+async def preflight_sites(
+    *,
+    page_size: int,
+    hard_max_pages: int,
+    delay: float,
+) -> bool:
+    """Validate bootstrap tenant connectivity and discovery yield without persistent writes."""
+    adapter = LeverJobSource(
+        sites=_bootstrap_sites(),
+        request_delay_seconds=delay,
+        incremental_pages=1,
+        page_size=page_size,
+        hard_max_pages=hard_max_pages,
+    )
+    ok = True
+
+    for shard in adapter.default_shards():
+        try:
+            batch = await adapter.fetch_shard(shard, reconciliation=True)
+            if not batch.coverage_complete or batch.result_cap_hit:
+                ok = False
+                print(
+                    f"preflight[{shard.key}]=failed "
+                    f"error=incomplete_coverage pages={batch.pages_fetched} "
+                    f"austrian={len(batch.items)} cap={batch.result_cap_hit}"
+                )
+                continue
+
+            accepted, rejected = partition_job_candidates(batch.items)
+            print(
+                f"preflight[{shard.key}]=ok "
+                f"source_reported={batch.source_reported_count} "
+                f"austrian={len(batch.items)} accepted={len(accepted)} "
+                f"rejected={len(rejected)} pages={batch.pages_fetched}"
+            )
+            for item in accepted[:20]:
+                gate = (item.raw_payload or {}).get("wohnwerk_discovery_gate") or {}
+                print(
+                    f"  accepted={item.title} "
+                    f"reason={gate.get('reason')} url={item.url}"
+                )
+        except SourceFetchError as exc:
+            ok = False
+            print(f"preflight[{shard.key}]=failed error={type(exc).__name__}: {exc}")
+
+    print(f"lever_preflight={'success' if ok else 'failed'}")
+    return ok
+
+
 async def async_main() -> int:
     args = parse_args()
+
+    if args.preflight:
+        return (
+            0
+            if await preflight_sites(
+                page_size=args.page_size,
+                hard_max_pages=args.hard_max_pages,
+                delay=args.delay,
+            )
+            else 1
+        )
+
     source_id = get_or_create_source()
     adapter = LeverJobSource(
         sites=load_sites(source_id),
@@ -146,7 +230,11 @@ async def async_main() -> int:
         if args.reconcile:
             print(f"disappeared={run.items_disappeared}")
 
-    return 0 if summary.run_status != "failed" else 1
+    if summary.run_status != RunStatus.SUCCESS:
+        return 1
+    if args.reconcile and summary.coverage_status != CoverageStatus.OK:
+        return 1
+    return 0
 
 
 def main() -> None:
