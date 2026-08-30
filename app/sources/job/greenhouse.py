@@ -17,8 +17,11 @@ from app.sources.base import (
     SourceShardSpec,
 )
 
+# Greenhouse documents one public Job Board API host for published boards. The
+# browser-facing career UI may live on job-boards.eu.greenhouse.io, but that does
+# not imply a boards-api.eu.greenhouse.io API endpoint.
 GLOBAL_API_BASE = "https://boards-api.greenhouse.io/v1/boards"
-EU_API_BASE = "https://boards-api.eu.greenhouse.io/v1/boards"
+EU_API_BASE = GLOBAL_API_BASE
 
 _POSTAL_CODE_RE = re.compile(r"(?<!\d)(\d{4})(?!\d)")
 _SPACE_RE = re.compile(r"\s+")
@@ -264,7 +267,8 @@ class GreenhouseJobSource(JobSource):
 
     @staticmethod
     def _api_base(board: GreenhouseBoard) -> str:
-        return EU_API_BASE if board.region == "eu" else GLOBAL_API_BASE
+        del board
+        return GLOBAL_API_BASE
 
     async def fetch_shard(
         self,

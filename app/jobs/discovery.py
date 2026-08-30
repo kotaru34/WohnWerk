@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-28-v14"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v15"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -129,6 +129,23 @@ _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+# Concrete production false-positive families. These are title semantics, not
+# employer/body keywords, so they can safely reject a generic adjacent-role hit
+# without making the source adapter itself responsible for professional fit.
+_NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "qa_ra_regulatory",
+        re.compile(
+            r"\b(?:qa\s*/\s*ra|quality\s+assurance\s*/\s*regulatory\s+affairs|"
+            r"regulatory\s+affairs)\b"
+        ),
+    ),
+    (
+        "solution_delivery_engineer",
+        re.compile(r"\bsolution\s+delivery\s+engineer\b"),
+    ),
+)
+
 _AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
 
 # These title semantics are structural exclusions for this experienced
@@ -141,6 +158,20 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "software_role",
         "ai_data_role",
         "vehicle_workshop_trade",
+    }
+)
+
+# A generic "Engineer" title is intentionally high-recall. However, when the
+# title itself explicitly identifies the role as software/IT/data work, body
+# boilerplate mentioning validation, CAD, manufacturing, etc. must not promote it
+# into the mechanical corpus. Strong mechanical titles are checked before this
+# rule, preserving roles such as "Mechanical Engineer - AI-assisted design".
+_BLOCKING_NEGATIVE_TITLE_CONTEXTS = frozenset(
+    {
+        "software",
+        "generic_it",
+        "data_ai",
+        "enterprise_it",
     }
 )
 
@@ -233,6 +264,7 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
                 *_matches(_STRUCTURAL_STAGE_TITLE_PATTERNS, title),
                 *_matches(_MANUAL_TRADE_TITLE_PATTERNS, title),
                 *_matches(_BUSINESS_OPERATION_TITLE_PATTERNS, title),
+                *_matches(_NON_TARGET_PROFESSIONAL_TITLE_PATTERNS, title),
             )
         )
     )
@@ -286,6 +318,18 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
         return _decision(
             accepted=False,
             reason="low_relevance_operational_title",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=low_relevance_title,
+        )
+
+    if negative_title.intersection(_BLOCKING_NEGATIVE_TITLE_CONTEXTS):
+        return _decision(
+            accepted=False,
+            reason="insufficient_base_relevance",
             strong_title=strong_title,
             adjacent_role=adjacent_role,
             domain=domain,

@@ -97,7 +97,7 @@ def test_austrian_postal_code_is_preserved() -> None:
     assert job.locations[0].city == "Graz"
 
 
-def test_greenhouse_source_shards_and_regions_are_tenant_specific() -> None:
+def test_greenhouse_source_shards_keep_region_as_identity_not_api_host() -> None:
     source = GreenhouseJobSource(
         boards=[
             GreenhouseBoard(token="alpha", company="Alpha GmbH", region="eu"),
@@ -110,5 +110,6 @@ def test_greenhouse_source_shards_and_regions_are_tenant_specific() -> None:
     assert [shard.key for shard in shards] == ["alpha", "beta"]
     assert shards[0].params["region"] == "eu"
     assert shards[1].params["company"] == "Beta GmbH"
-    assert source._api_base(source._board_from_shard(shards[0])) == EU_API_BASE
+    assert EU_API_BASE == GLOBAL_API_BASE
+    assert source._api_base(source._board_from_shard(shards[0])) == GLOBAL_API_BASE
     assert source._api_base(source._board_from_shard(shards[1])) == GLOBAL_API_BASE
