@@ -15,6 +15,7 @@ class TenantSeed:
     company: str
     namespace: str = "default"
     config: dict = field(default_factory=dict)
+    enabled: bool = True
 
 
 def seed_tenants(
@@ -27,7 +28,8 @@ def seed_tenants(
 
     Existing operator values are never overwritten. This lets adapters introduce a
     new source-specific default for an already discovered tenant without resetting
-    manual enable/disable state or explicit configuration.
+    manual enable/disable state or explicit configuration. The seed ``enabled``
+    value is therefore used only when a tenant row is first created.
     """
     if not seeds:
         return []
@@ -60,7 +62,7 @@ def seed_tenants(
             namespace=seed.namespace,
             tenant_key=seed.tenant_key,
             company=seed.company,
-            enabled=True,
+            enabled=seed.enabled,
             config=dict(seed.config),
             discovered_at=now,
         )
