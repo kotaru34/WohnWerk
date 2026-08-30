@@ -6,8 +6,10 @@ import pytest
 from app.sources.base import RawJob, RawJobLocation, SourceBatch
 
 _SCRIPT = run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "run_lever_jobs.py"))
+DEFAULT_TENANTS = _SCRIPT["DEFAULT_TENANTS"]
 LeverJobSource = _SCRIPT["LeverJobSource"]
 _bootstrap_sites = _SCRIPT["_bootstrap_sites"]
+_curated_tenant_states = _SCRIPT["_curated_tenant_states"]
 preflight_sites = _SCRIPT["preflight_sites"]
 
 
@@ -31,6 +33,26 @@ def test_bootstrap_sites_preserve_region_and_company() -> None:
         ("global", "qualysoft", "Qualysoft"),
         ("global", "tsmg", "TSMG"),
     ]
+
+
+def test_curated_bootstrap_defaults_only_enable_tsmg() -> None:
+    assert {
+        (seed.namespace, seed.tenant_key): seed.enabled for seed in DEFAULT_TENANTS
+    } == {
+        ("eu", "blackshark"): False,
+        ("eu", "westernacher"): False,
+        ("global", "cargo-partner"): False,
+        ("global", "qualysoft"): False,
+        ("global", "tsmg"): True,
+    }
+
+    assert _curated_tenant_states() == {
+        ("eu", "blackshark"): False,
+        ("eu", "westernacher"): False,
+        ("global", "cargo-partner"): False,
+        ("global", "qualysoft"): False,
+        ("global", "tsmg"): True,
+    }
 
 
 @pytest.mark.asyncio
