@@ -82,15 +82,16 @@ def test_rail_vehicle_fixture_role_is_kept() -> None:
     assert "technical_drawing" in decision.method_tool_matches
 
 
-def test_autonomous_vehicle_technician_is_kept_as_adjacent_candidate() -> None:
+def test_autonomous_vehicle_technician_is_rejected_for_senior_engineering_profile() -> None:
     decision = classify_job_candidate(
         _job(
             "Senior Autonomous Vehicle Technician",
             "Diagnostics, calibration, vehicle maintenance, validation and technical operations.",
         )
     )
-    assert decision.accepted is True
-    assert "technician" in decision.adjacent_title_matches
+    assert decision.accepted is False
+    assert decision.reason == "structural_title_exclusion"
+    assert "technician_position" in decision.low_relevance_title_matches
     assert "vehicle_engineering" in decision.domain_matches
 
 
