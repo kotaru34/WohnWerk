@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from app.jobs.salary import enrich_raw_job_salary
 from app.sources.job import successfactors
 
 SITE = successfactors.SuccessFactorsSite(
@@ -82,6 +85,43 @@ def test_parse_austrian_detail_uses_requisition_id_and_description() -> None:
         job.raw_payload["wohnwerk_stable_identity"]
         == "successfactors:andritz-professionals:req:19221"
     )
+
+
+def test_parse_andritz_live_style_salary_from_description() -> None:
+    html = """
+    <html><body>
+      <h1>Job title: Quality Engineer (m/f/d) for Non-Destructive Testing (NDT)</h1>
+      <div>Contract location:</div><div>Graz, Styria, AT</div>
+      <div>Job description:</div>
+      <p>Completed technical education in Mechanical Engineering or a comparable field.</p>
+      <h2>Our offer</h2>
+      <p>We are legally required to state the collective agreement minimum salary of
+      €4,354.45 gross per month for this position. However, we offer market-competitive
+      compensation depending on qualifications and professional experience.</p>
+      <div>Contact Person:</div><div>Example Recruiter</div>
+      <div>Job requisition ID:</div><div>22849</div>
+    </body></html>
+    """
+
+    job = successfactors.parse_successfactors_detail(
+        html,
+        site=SITE,
+        url=(
+            "https://careers.andritz.com/andritz/job/Graz-Quality-Engineer-NDT-Styr/"
+            "1369375557/"
+        ),
+    )
+
+    assert job is not None
+    assert "€4,354.45 gross per month" in (job.description or "")
+    assert enrich_raw_job_salary(job) is True
+    assert job.salary_min == Decimal("4354.45")
+    assert job.salary_max is None
+    assert job.salary_currency == "EUR"
+    assert job.salary_period == "month"
+    assert job.salary_payment_count is None
+    assert job.salary_is_minimum_only is True
+    assert job.raw_payload["successfactors_requisition_id"] == "22849"
 
 
 def test_parse_non_austrian_detail_is_filtered() -> None:
