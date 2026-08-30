@@ -120,3 +120,58 @@ def test_mark_tenant_verified_resolves_longest_multishard_prefix() -> None:
     assert changed == 1
     assert workday.last_verified_at == verified_at
     assert other.last_verified_at is None
+
+
+def test_mark_tenant_verified_resolves_namespace_qualified_shard() -> None:
+    lever = JobSourceTenant(
+        source_id=4,
+        namespace="global",
+        tenant_key="tsmg",
+        company="TSMG",
+        enabled=True,
+        config={},
+    )
+    other = JobSourceTenant(
+        source_id=4,
+        namespace="eu",
+        tenant_key="tsmg-eu",
+        company="Other",
+        enabled=True,
+        config={},
+    )
+    session = _FakeSession([lever, other])
+    verified_at = datetime(2026, 8, 30, 16, 10, tzinfo=UTC)
+
+    changed = mark_tenant_verified(
+        session,
+        source_id=4,
+        tenant_key="global:tsmg",
+        verified_at=verified_at,
+    )
+
+    assert changed == 1
+    assert lever.last_verified_at == verified_at
+    assert other.last_verified_at is None
+
+
+def test_mark_tenant_verified_resolves_namespaced_multishard_prefix() -> None:
+    tenant = JobSourceTenant(
+        source_id=15,
+        namespace="eu",
+        tenant_key="example",
+        company="Example",
+        enabled=True,
+        config={},
+    )
+    session = _FakeSession([tenant])
+    verified_at = datetime(2026, 8, 30, 16, 12, tzinfo=UTC)
+
+    changed = mark_tenant_verified(
+        session,
+        source_id=15,
+        tenant_key="eu:example:2",
+        verified_at=verified_at,
+    )
+
+    assert changed == 1
+    assert tenant.last_verified_at == verified_at
