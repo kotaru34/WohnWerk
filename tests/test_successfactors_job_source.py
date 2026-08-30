@@ -1,12 +1,7 @@
-from app.sources.job.successfactors import (
-    SuccessFactorsJobSource,
-    SuccessFactorsSite,
-    _parse_search_page,
-    parse_successfactors_detail,
-)
+from app.sources.job import successfactors
 
 
-SITE = SuccessFactorsSite(
+SITE = successfactors.SuccessFactorsSite(
     tenant="andritz-professionals",
     company="ANDRITZ",
     origin="https://careers.andritz.com",
@@ -31,7 +26,7 @@ def test_search_page_extracts_total_and_austrian_row_context() -> None:
     </body></html>
     """
 
-    postings, total = _parse_search_page(html, base_url=SITE.origin)
+    postings, total = successfactors._parse_search_page(html, base_url=SITE.origin)
 
     assert total == 446
     assert len(postings) == 2
@@ -55,7 +50,7 @@ def test_parse_austrian_detail_uses_requisition_id_and_description() -> None:
     </body></html>
     """
 
-    job = parse_successfactors_detail(
+    job = successfactors.parse_successfactors_detail(
         html,
         site=SITE,
         url=(
@@ -91,7 +86,7 @@ def test_parse_non_austrian_detail_is_filtered() -> None:
     </body></html>
     """
 
-    job = parse_successfactors_detail(
+    job = successfactors.parse_successfactors_detail(
         html,
         site=SITE,
         url="https://careers.andritz.com/andritz/job/Berlin-Test/1350000000/",
@@ -101,10 +96,10 @@ def test_parse_non_austrian_detail_is_filtered() -> None:
 
 
 def test_successfactors_source_shards_are_tenant_specific() -> None:
-    source = SuccessFactorsJobSource(
+    source = successfactors.SuccessFactorsJobSource(
         sites=[
             SITE,
-            SuccessFactorsSite(
+            successfactors.SuccessFactorsSite(
                 tenant="other",
                 company="Other AG",
                 origin="https://jobs.example.com",
