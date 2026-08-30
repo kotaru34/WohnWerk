@@ -29,6 +29,11 @@ _DETAIL_PATH_RE = re.compile(
 _SPACE_RE = re.compile(r"\s+")
 _TITLE_FOOTNOTE_RE = re.compile(r"\s*\*\s*$")
 _AUSTRIAN_LOCATION_RE = re.compile(r"^(.+?),\s*Austria(?:\s.*)?$", re.IGNORECASE)
+_SALARY_CUE_RE = re.compile(
+    r"\b(?:salary|gehalt|mindestentgelt|entgelt|compensation|remuneration)\b",
+    re.IGNORECASE,
+)
+_SALARY_CURRENCY_RE = re.compile(r"(?:€|\b(?:EUR|Euro)\b)", re.IGNORECASE)
 
 
 class _ListingParser(HTMLParser):
@@ -168,6 +173,20 @@ def _description(parts: list[str]) -> str | None:
     return value or None
 
 
+def _salary_text(parts: list[str]) -> str | None:
+    """Return an explicit source salary block without mixing benefits into description."""
+    start = _main_start(parts)
+    for index in range(start, len(parts)):
+        for width in (1, 2, 3):
+            selected = parts[index : index + width]
+            if not selected:
+                continue
+            value = _normalize_text(" ".join(selected))
+            if _SALARY_CUE_RE.search(value) and _SALARY_CURRENCY_RE.search(value):
+                return value
+    return None
+
+
 def parse_tgw_detail_page(value: str, *, posting_id: str, url: str) -> RawJob | None:
     parser = _DetailParser()
     parser.feed(value)
@@ -195,6 +214,7 @@ def parse_tgw_detail_page(value: str, *, posting_id: str, url: str) -> RawJob | 
         title=title,
         company="TGW Logistics",
         description=_description(parser.text_parts),
+        salary_text=_salary_text(parser.text_parts),
         locations=[location],
         raw_payload=payload,
     )
