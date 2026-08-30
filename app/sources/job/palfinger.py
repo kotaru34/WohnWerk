@@ -28,7 +28,7 @@ _DETAIL_PATH_RE = re.compile(
 )
 _SPACE_RE = re.compile(r"\s+")
 _POSTAL_LOCATION_RE = re.compile(
-    r"\b(?P<postal>\d{4})\s+(?P<city>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß .'-]*?)\s+AT\b"
+    r"\b(?P<postal>\d{4})\s+(?P<city>[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß ./'-]*?)\s+AT\b"
 )
 _SALARY_CUE_RE = re.compile(
     r"\b(?:gehalt|salary|kv-minimum|mindestgehalt|mindestentgelt|entgelt|compensation)\b",
@@ -161,6 +161,7 @@ def _title(headings: list[tuple[str, str]]) -> str | None:
 def _location(parts: list[str]) -> RawJobLocation | None:
     # PALFINGER commonly renders the address and the trailing country token as
     # separate text nodes, e.g. "..., 5203 Köstendorf" followed by "AT".
+    # Some source-backed localities contain a slash, e.g. Elsbethen/Glasenbach.
     # Search short adjacent-node windows instead of requiring all evidence in one node.
     for end in range(len(parts), 0, -1):
         for width in (1, 2, 3):
