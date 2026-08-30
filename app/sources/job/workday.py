@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import html
-import math
 import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -11,7 +10,7 @@ from urllib.parse import urljoin
 
 import httpx
 
-from app.jobs.identity import workday_requisition_identity, with_stable_identity
+from app.jobs.identity import with_stable_identity, workday_requisition_identity
 from app.jobs.location_resolution import canonicalize_locality
 from app.sources.base import (
     JobSource,
