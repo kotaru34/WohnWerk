@@ -162,10 +162,6 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
         ),
     ),
     (
-        "electrical_engineering_role",
-        re.compile(r"\b(?:electrical\s+engineer|elektroingenieur)\w*"),
-    ),
-    (
         "building_cost_optimization",
         re.compile(
             r"\bcost\s+optimi[sz]ation\b.*\bbuilding\s+systems?\b"
@@ -176,6 +172,29 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
         "r_and_d_operations_manager",
         re.compile(r"\br\s*[&/]\s*d\s+operations\s+manager\b"),
     ),
+)
+
+_ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
+    r"\b(?:electrical\s+engineer|elektroingenieur)\w*"
+)
+_ELECTRICAL_ADJACENT_DOMAINS = frozenset(
+    {
+        "maschinenbau",
+        "mechanical",
+        "vehicle_engineering",
+        "special_vehicle",
+        "rail_vehicle",
+        "autonomous_vehicle_systems",
+        "vehicle_electronics",
+        "fixture_tooling",
+        "plant_engineering",
+        "special_machinery",
+        "manufacturing",
+        "product_development",
+        "component_development",
+        "chassis_structure",
+        "wheel_development",
+    }
 )
 
 _AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
@@ -344,6 +363,23 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             method_tool=method_tool,
             negative=negative,
             low_relevance_title=low_relevance_title,
+        )
+
+    if _ELECTRICAL_ENGINEERING_TITLE_RE.search(title) and not set(domain).intersection(
+        _ELECTRICAL_ADJACENT_DOMAINS
+    ):
+        electrical_low_relevance = tuple(
+            dict.fromkeys((*low_relevance_title, "non_mechanical_electrical_engineering"))
+        )
+        return _decision(
+            accepted=False,
+            reason="insufficient_base_relevance",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=electrical_low_relevance,
         )
 
     if low_relevance_title:
