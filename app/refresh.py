@@ -27,8 +27,10 @@ class DueSourceRun:
 
 
 # Only sources validated in production belong here. Discovery/frontier sources deliberately
-# have no reconciliation authority: disappearing from a first-page search is not evidence
-# that an advert has closed.
+# have no reconciliation authority: disappearing from a first-page/search frontier is not
+# evidence that an advert has closed. Workday is registered ahead of enablement so an
+# operator can activate a validated tenant without another scheduler code change; the source
+# itself is seeded disabled and therefore ignored until that explicit activation.
 SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("immmo.at", "scripts/run_immmo.py", True),
     SourceRefreshPlan("sreal.at", "scripts/run_sreal.py", True),
@@ -44,6 +46,7 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         "scripts/run_smartrecruiters_jobs.py",
         True,
     ),
+    SourceRefreshPlan("workday-public-cxs", "scripts/run_workday_jobs.py", False),
     SourceRefreshPlan("karriere.at", "scripts/run_karriere_at_jobs.py", False),
     SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
     SourceRefreshPlan("stepstone.at", "scripts/run_stepstone_at_jobs.py", False),
