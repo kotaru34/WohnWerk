@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v15"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v16"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -86,6 +86,10 @@ _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"career\s+starter\w*|entry[-\s]*level\w*)"
         ),
     ),
+    (
+        "junior_stage",
+        re.compile(r"\bjunior\b"),
+    ),
 )
 
 _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -143,6 +147,34 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
     (
         "solution_delivery_engineer",
         re.compile(r"\bsolution\s+delivery\s+engineer\b"),
+    ),
+    (
+        "building_physics",
+        re.compile(
+            r"\b(?:bauphysik(?:er|erin)?|ingenieur\s+für\s+bauphysik|"
+            r"building\s+physics(?:\s+engineer)?)\b"
+        ),
+    ),
+    (
+        "fire_safety_engineer",
+        re.compile(
+            r"\b(?:fire\s+safety\s+engineer|brandschutz(?:ingenieur|techniker))\w*"
+        ),
+    ),
+    (
+        "electrical_engineering_role",
+        re.compile(r"\b(?:electrical\s+engineer|elektroingenieur)\w*"),
+    ),
+    (
+        "building_cost_optimization",
+        re.compile(
+            r"\bcost\s+optimi[sz]ation\b.*\bbuilding\s+systems?\b"
+            r"|\bbuilding\s+systems?\b.*\bcost\s+optimi[sz]ation\b"
+        ),
+    ),
+    (
+        "r_and_d_operations_manager",
+        re.compile(r"\br\s*[&/]\s*d\s+operations\s+manager\b"),
     ),
 )
 
