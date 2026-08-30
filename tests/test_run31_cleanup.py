@@ -18,7 +18,7 @@ def _job(title: str, description: str | None = None) -> RawJob:
     )
 
 
-def test_compound_servicetechniker_is_adjacent_with_method_evidence() -> None:
+def test_compound_servicetechniker_is_rejected_despite_method_evidence() -> None:
     decision = classify_job_candidate(
         _job(
             "Außendienst Servicetechniker Analytische Laborsysteme",
@@ -26,9 +26,10 @@ def test_compound_servicetechniker_is_adjacent_with_method_evidence() -> None:
         )
     )
 
-    assert decision.accepted is True
-    assert decision.reason == "engineering_role_with_method"
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
     assert "service_technician" in decision.adjacent_title_matches
+    assert "service_technician_trade" in decision.low_relevance_title_matches
     assert "commissioning" in decision.method_tool_matches
 
 
@@ -37,6 +38,7 @@ def test_service_technician_title_alone_is_not_enough() -> None:
 
     assert decision.accepted is False
     assert "service_technician" in decision.adjacent_title_matches
+    assert "service_technician_trade" in decision.low_relevance_title_matches
 
 
 def test_german_teamleitung_gets_team_lead_parity_in_technical_context() -> None:

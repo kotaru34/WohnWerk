@@ -202,20 +202,14 @@ def _description(parts: list[str]) -> str | None:
 
 
 def _salary_text(parts: list[str]) -> str | None:
-    # PALFINGER sometimes splits one visible salary sentence across several
-    # inline text nodes. Keep the window local, but retain the longest nearby
-    # cue+currency candidate so the amount/period are not cut off prematurely.
-    for index, _value in enumerate(parts):
-        candidate: str | None = None
-        for width in range(1, 7):
+    for index, value in enumerate(parts):
+        for width in (1, 2, 3):
             selected = parts[index : index + width]
             if not selected:
                 continue
             text = _normalize_text(" ".join(selected))
             if _SALARY_CUE_RE.search(text) and _SALARY_CURRENCY_RE.search(text):
-                candidate = text
-        if candidate is not None:
-            return candidate
+                return text
     return None
 
 

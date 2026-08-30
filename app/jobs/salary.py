@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.sources.base import RawJob
 
-SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-30-v6"
+SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-30-v7"
 
 _AMOUNT_TOKEN = (
     r"(?:"
@@ -63,7 +63,7 @@ _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             rf"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt|lohn)?\b|"
             rf"\bjahresbrutto(?:gehalt|entgelt|lohn)?\b|\bjährlich\b|\bjaehrlich\b|"
             rf"/\s*{_FRAGMENTED_YEAR}\b|\bpro\s+{_FRAGMENTED_YEAR}\b|"
-            rf"\bp\.?\s*a\.?\b|\bper\s+year\b|\bannual(?:ly)?\b)",
+            rf"\bp\.?\s*a\.?\b|\bper\s+year\b|\byearly\b|\bannual(?:ly)?\b)",
             re.IGNORECASE,
         ),
     ),

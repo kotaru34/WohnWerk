@@ -24,7 +24,7 @@ def test_v21_rejects_live_andritz_commercial_project_manager() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v22"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v23"
     assert decision.accepted is False
     assert decision.reason == "structural_title_exclusion"
     assert "commercial_project_management" in decision.low_relevance_title_matches

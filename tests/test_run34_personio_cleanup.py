@@ -21,7 +21,7 @@ def test_building_services_engineer_has_cross_source_hkls_parity() -> None:
     assert "building_services" in decision.domain_matches
 
 
-def test_service_technician_is_not_blocked_by_recruiting_boilerplate() -> None:
+def test_service_technician_is_rejected_despite_recruiting_boilerplate() -> None:
     decision = classify_job_candidate(
         _job(
             "Servicetechniker (m/w/d) Oberösterreich",
@@ -29,9 +29,10 @@ def test_service_technician_is_not_blocked_by_recruiting_boilerplate() -> None:
         )
     )
 
-    assert decision.accepted is True
-    assert decision.reason == "engineering_role_with_domain"
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
     assert "service_technician" in decision.adjacent_title_matches
+    assert "service_technician_trade" in decision.low_relevance_title_matches
     assert "mechanical" in decision.domain_matches
     assert "hr" in decision.negative_context_matches
 
