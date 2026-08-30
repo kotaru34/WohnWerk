@@ -9,7 +9,7 @@ from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
 from app.jobs.discovery import partition_job_candidates
 from app.jobs.tenant_registry import TenantSeed, enabled_tenants, seed_tenants
-from app.models import RunStatus, Source, SourceCategory
+from app.models import CoverageStatus, RunStatus, Source, SourceCategory
 from app.sources.base import SourceFetchError
 from app.sources.job.greenhouse import GLOBAL_API_BASE, GreenhouseBoard, GreenhouseJobSource
 
@@ -180,10 +180,14 @@ async def async_main() -> int:
         if args.reconcile:
             print(f"disappeared={run.items_disappeared}")
 
-    # Unlike established frontier sources, every configured Greenhouse board is a
-    # complete authoritative shard. Operational callers must therefore treat a
-    # partial multi-board run as failure rather than silently enabling degraded data.
-    return 0 if summary.run_status == RunStatus.SUCCESS else 1
+    # Unlike frontier sources, every configured Greenhouse board is authoritative.
+    # Execution success is necessary but a reconciliation is operationally acceptable
+    # only when it also proves complete coverage for every shard.
+    if summary.run_status != RunStatus.SUCCESS:
+        return 1
+    if args.reconcile and summary.coverage_status != CoverageStatus.OK:
+        return 1
+    return 0
 
 
 def main() -> None:
