@@ -52,6 +52,7 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         True,
     ),
     SourceRefreshPlan("tgw-direct-careers", "scripts/run_tgw_jobs.py", True),
+    SourceRefreshPlan("palfinger-direct-careers", "scripts/run_palfinger_jobs.py", True),
     SourceRefreshPlan("workday-public-cxs", "scripts/run_workday_jobs.py", False),
     SourceRefreshPlan("karriere.at", "scripts/run_karriere_at_jobs.py", False),
     SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
