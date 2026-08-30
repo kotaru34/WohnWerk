@@ -11,6 +11,7 @@ from app.jobs.discovery import classify_job_candidate
 from app.jobs.location_resolution import canonicalize_locality
 from app.jobs.tenant_registry import TenantSeed, enabled_tenants, seed_tenants
 from app.models import PostalCode, Source, SourceCategory
+from app.sources.base import SourceFetchError
 from app.sources.job.workday import WorkdayJobSource, WorkdaySite
 
 ADAPTER_PATH = "app.sources.job.workday.WorkdayJobSource"
@@ -186,14 +187,14 @@ async def _preflight(delay: float) -> int:
             austrian_localities=localities,
             request_delay_seconds=delay,
         )
-        unique: dict[str, object] = {}
+        unique = {}
         print()
         print(f"===== WORKDAY {site.tenant}/{site.site} =====")
         for shard in adapter.default_shards():
             search_text = shard.params.get("search_text")
             try:
                 batch = await adapter.fetch_shard(shard)
-            except Exception as exc:
+            except (SourceFetchError, TypeError, ValueError, RuntimeError) as exc:
                 failures += 1
                 print(
                     f"query={search_text!r} status=failed "
