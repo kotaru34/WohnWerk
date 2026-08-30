@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from geoalchemy2 import Geometry
 from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
@@ -9,8 +11,43 @@ from app.jobs.location_resolution import (
     PostalCentroidCandidate,
     canonicalize_locality,
     combine_postal_centroids,
+    locality_name_matches,
 )
 from app.models import PostalCode
+
+_QUALIFIED_BY_RE = re.compile(r"^(?P<base>.+?)\s+bei\s+.+$", re.IGNORECASE)
+_CITY_SUFFIX_RE = re.compile(r"^(?P<base>.+?)\s+stadt$", re.IGNORECASE)
+_VIENNA_DISTRICT_RE = re.compile(
+    r"^wien\s+\d{1,2}\.?\s*bezirk(?:\s+.*)?$",
+    re.IGNORECASE,
+)
+
+
+def _unique_base_resolution(
+    city: str,
+    base: str,
+    candidates: list[PostalCentroidCandidate],
+) -> LocalityResolution | None:
+    canonical_base = canonicalize_locality(base)
+    if canonical_base is None:
+        return None
+    matched = [
+        item for item in candidates if locality_name_matches(item.name, canonical_base)
+    ]
+    if not matched:
+        return None
+
+    # `X bei Y` is only safe to collapse to `X` when the Austrian postal table contains
+    # one normalized locality family for that base. Ambiguous bases deliberately remain
+    # unresolved instead of guessing between similarly named municipalities.
+    normalized_names = {
+        canonicalize_locality(item.name)
+        for item in matched
+        if canonicalize_locality(item.name) is not None
+    }
+    if len(normalized_names) != 1:
+        return None
+    return combine_postal_centroids(city, canonical_base, matched)
 
 
 def resolve_from_candidates(
@@ -19,14 +56,30 @@ def resolve_from_candidates(
 ) -> LocalityResolution | None:
     """Resolve one locality against already-loaded postal candidates.
 
-    This intentionally reuses the punctuation-normalizing Python matcher from the normal
-    resolver. It is a fallback for cases where the SQL prefix prefilter is too literal,
-    such as `St. Valentin` becoming canonical `st valentin` before the RTR name is read.
+    The normal path reuses the punctuation-normalizing matcher. A very small set of
+    conservative source-label fallbacks is attempted afterwards: Vienna district labels,
+    `<city> Stadt`, and `X bei Y` only when the postal-table base is unambiguous.
     """
     canonical = canonicalize_locality(city)
     if canonical is None:
         return None
-    return combine_postal_centroids(city, canonical, candidates)
+
+    direct = combine_postal_centroids(city, canonical, candidates)
+    if direct is not None:
+        return direct
+
+    if _VIENNA_DISTRICT_RE.match(canonical):
+        return combine_postal_centroids(city, "wien", candidates)
+
+    city_suffix = _CITY_SUFFIX_RE.match(canonical)
+    if city_suffix is not None:
+        return combine_postal_centroids(city, city_suffix.group("base"), candidates)
+
+    qualified = _QUALIFIED_BY_RE.match(canonical)
+    if qualified is not None:
+        return _unique_base_resolution(city, qualified.group("base"), candidates)
+
+    return None
 
 
 def resolve_localities_full_scan(
@@ -36,8 +89,7 @@ def resolve_localities_full_scan(
     """Fail-safe locality fallback that scans the small Austrian postal table once.
 
     The regular resolver keeps its indexed SQL prefix path. Only unresolved localities
-    reach this function, where matching is done with the same conservative normalized-name
-    predicate as the canonical resolver. No fuzzy matching or invented region centres are
+    reach this function. No fuzzy matching or invented Bundesland/country centres are
     introduced.
     """
     if not cities:

@@ -1,12 +1,19 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-08-28 (Europe/Berlin)  
+**Checkpoint date:** 2026-08-30 (Europe/Berlin)  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
 **Active branch:** `bootstrap/austria-mvp`  
 **Draft PR:** #1 — `Bootstrap Austria-first WohnWerk MVP`
 
 This is the authoritative recovery point for a fresh context.
+
+## Current release state
+
+- Production verified through `v0.3.6`.
+- Branch target after this checkpoint: `v0.3.7` maintenance/observability cleanup.
+- Father has used the service continuously for several days and reports that it is stable and useful.
+- Product work should now favor evidence-driven maintenance over speculative rewrites.
 
 ## Product invariants
 
@@ -17,10 +24,11 @@ WohnWerk is a private/self-hosted Austria-first property + job acquisition, pers
 - Source lifecycle, discovery relevance and candidate fit are separate concerns.
 - Failed/partial crawls never mass-deactivate authoritative data.
 - Missing from a frontier search is not proof of disappearance.
-- Hidden/favorite job curation survives lifecycle/canonical merges.
-- Do not invent coordinates, images or semantic property attributes.
+- Hidden/favorite/viewed curation survives lifecycle/canonical merges.
+- Never invent coordinates, images, prices or semantic property attributes.
 - Geography/commute remains separate from intrinsic job fit.
 - No permanent Job×Property pair table unless future measurements justify it.
+- Production deploys require a green GitHub CI run on the exact branch HEAD before a deploy command is handed to the operator.
 
 ## Production runtime
 
@@ -29,18 +37,50 @@ Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 - Caddy -> `127.0.0.1:8000`
 - `wohnwerk.service`: Uvicorn/FastAPI, loopback only
 - local OSRM: `127.0.0.1:5000`, Austria graph, MLD, mmap
-- `wohnwerk-refresh.timer`: every 15 minutes, dynamic source refresh
-- `wohnwerk-liveness.timer`: daily frontier liveness probe
-- health endpoint: `/health`
+- `wohnwerk-refresh.timer`: dynamic source refresh, scheduler wake-up every 15 minutes
+- `wohnwerk-images.timer`: image/detail/liveness maintenance batches
+- `/health`: lightweight service health/version endpoint
+- `/admin/health`: protected operations/coverage overview added in `v0.3.7`
 
-Latest verified runtime before the house-first UI deploy:
-- web service active and listening on 127.0.0.1:8000
-- `/health` returns `status=ok`, `country=AT`
-- refresh timer active/waiting with a real next trigger
+Existing Starlette TestClient/httpx deprecation warning is non-blocking.
 
-Existing Starlette warning is non-blocking: `starlette.testclient`/`httpx` deprecation.
+## Father-facing UX
 
-## Property acquisition and lifecycle
+Normal navigation:
+- `/houses`
+- `/jobs`
+
+Root `/` redirects to `/houses`.
+
+### Houses
+
+`/houses` is the independent property catalog with:
+- pagination
+- price/location/verified-area filters
+- sorting by price, novelty and viewed state, asc/desc
+- source-backed images only
+- explicit `Wohnfläche`, `Nutzfläche`, `Grundstück` when semantically verified
+- neutral `Fläche` for unresolved source display-area semantics
+- favorite/hide/viewed curation
+- `Bei WohnWerk seit DD.MM.YYYY`
+
+`/houses/{id}` provides property details, original source links and nearby eligible jobs.
+Descriptions may remain stored internally but are intentionally not shown unevenly in the father-facing house UI.
+
+### Jobs
+
+`/jobs` provides:
+- intrinsic candidate fit
+- salary/source/location data
+- favorite/hide/viewed curation
+- sorting and filters
+- `Bei WohnWerk seit DD.MM.YYYY`
+
+`/jobs/{id}` provides source links and nearby houses.
+
+Hourly salary rows remain missing-last in annual salary sorting unless defensible working-hours evidence exists; do not invent an annual equivalent.
+
+## Property acquisition, identity and semantics
 
 Authoritative property sources:
 - `immmo.at`
@@ -48,268 +88,180 @@ Authoritative property sources:
 
 ImmoAds remains disabled.
 
-Lifecycle model:
-- `ListingStatus`: ACTIVE / INACTIVE / UNKNOWN
-- source listing first/last seen timestamps and inactive timestamp
-- canonical property lifecycle is derived conservatively from source listings
-- reconciliation disappearance requires consecutive complete/OK scans
-- incomplete scans cannot mass-deactivate
-
-### IMMMO identity continuity — CLOSED
-
-IMMMO is a meta-search source. Its downstream portal URL is not stable identity: the same physical property can rotate between ImmobilienScout24, FindMyHome, Nachrichten, SN and synthetic IMMMO fallback URLs.
-
-Continuity implementation:
-- `app/ingestion/property_continuity.py`
-- `app/ingestion/immmo_continuity.py`
-- `scripts/repair_immmo_continuity.py`
+### IMMMO continuity — closed unless new evidence appears
 
 Current continuity policy: `immmo-continuity-2026-08-28-v3`.
 
-Safe strategies only:
-- exact: PLZ + normalized title + price + provider-neutral display-area fingerprint
-- title_area: PLZ + normalized title + display-area fingerprint
+Safe continuity strategies only:
+- PLZ + normalized title + price + provider-neutral display-area fingerprint
+- PLZ + normalized title + display-area fingerprint
 
-Run #47 historical repair:
-- raw new: 2267
-- deterministic continuity matches: 1471
-- reclassified genuinely-new rows: 1466
-- effective new after repair: 801
+Historical deterministic repair was completed and verified idempotent. Do not reopen this without a concrete production regression.
 
-v3 idempotency verification on run #47: `deterministic_pairs=0`.
-Subsequent full scans stabilized naturally; controlled scans had `new=0`, `continuity_merged=0`. Do not reopen continuity without concrete new production evidence.
+### Cross-source property dedupe
 
-## IMMMO area semantics — CLOSED
+A conservative cross-source merge exists for deterministic duplicates such as the same s REAL property syndicated through IMMMO/Nachrichten.
 
-IMMMO's card-level `PLZ / N m²` is a provider-defined display area. It can represent Wohnfläche, Nutzfläche or Grundstück and must not be blindly stored as Wohnfläche.
+Merge requirements remain strict:
+- compatible PLZ
+- exact price
+- sufficiently strong normalized title identity
+- no conflicting explicit area evidence
 
-Current parser payload format: `immmo-search-discovery-v12`.
+Curation and source/image state must survive merges.
 
-Current semantics:
-- explicit Wohnfläche / Wohnnutzfläche -> canonical `living_area_m2`
-- explicit Grundstück / Grundstücksfläche -> `plot_area_m2`
-- generic primary card area -> `raw_payload.display_area_m2`
-- ambiguous display area is not promoted to Wohnfläche
+### Area semantics
 
-Run #62 full v12 reconciliation:
-- status success / coverage ok
-- rows seen: 13,990
-- new: 0
-- continuity merged: 0
-- disappeared: 1
-- explicit living: 6,112
-- explicit plot: 3,030
+Do not infer semantic area type from a generic card number.
 
-Historical repair: `immmo-area-semantics-2026-08-28-v2`.
+Verified mappings include:
+- explicit Wohnfläche/Wohnnutzfläche -> `living_area_m2`
+- explicit Grundstück/Grundstücksfläche/Grundfläche -> `plot_area_m2`
+- explicit Nutzfläche -> detail usable area, not Wohnfläche
+- generic source area -> display-only neutral `Fläche`
 
-Controlled repair:
-- dry-run candidates: 7,395
-- applied: `canonical_living_cleared=7395`
-- repeat dry-run: `unverified_immmo_only=0`
+Current detail-facts policy supports provider-native extraction from ImmoScout24 and FindMyHome, including structured GraphQL/visible page facts where source semantics are explicit.
 
-Post-repair audit:
-- canonical_living_mismatch=0
-- suspicious_plot_as_living=0
-- suspicious_immmo_only=0
-- unverified_canonical_living=0
-- unverified_immmo_only=0
+Known production controls already fixed:
+- ImmoScout `6a91...`: usable 83.38, plot 785, living remains null
+- ImmoScout `6a5f79...`: living 86, usable 120, plot 1522
+- promotional-title listing `6579...`: true purchase price 573500; excluded from father catalog by max-price policy
+- FindMyHome `5657040`: living 91, plot 653
+- FindMyHome `5640125`: living 90, plot 566
 
-UI must display ambiguous single-source card area as neutral `Fläche`, never as Wohnfläche.
+## Property images
 
-## Property image policy
+Policy: exact listing-backed images only. Never title-search the web for a substitute.
 
-Do not invent or web-search an image by title. A catalog image must be tied to the exact source listing.
+- s REAL exact image extraction is supported.
+- provider detail enrichment can persist exact `primary_image_url`.
+- local image cache is used by the catalog.
+- targeted authoritative refresh exists for a wrongly associated cached image.
 
-The father-facing catalog reads the first source-backed payload field among:
-- `primary_image_url`
-- `image_url`
-- `thumbnail_url`
+A real production wrong-image case (`6a8d...`) was repaired by re-reading the exact ImmoScout listing and refreshing the cache, not by manual image substitution.
 
-If none exists, the card shows a placeholder.
+## Property liveness
 
-s REAL detail enrichment now extracts a source-backed main image from `og:image`, `twitter:image`/`twitter:image:src` or `rel=image_src` and persists it as `raw_payload.primary_image_url`.
+Two layers exist:
 
-To avoid aggressive source traffic:
-- hourly/incremental s REAL runs do **not** fetch all detail pages
-- full s REAL reconciliation adds `--enrich-details`
-- this keeps exact metadata/images fresh roughly daily on the small s REAL corpus
+1. Global safety sweep: conservative, currently roughly 24 h recheck eligibility.
+2. Visible-page liveness: `/houses` schedules a background check for listings rendered on the current page when their last check is older than ~30 minutes.
 
-IMMMO image extraction is not enabled yet. Do not destabilize the validated IMMMO parser merely for cosmetic coverage; add it only with a deterministic card-to-image association and regression tests.
+Important semantics:
+- page response is not blocked by source HTTP requests
+- definitive 404/410/provider removed markers can deactivate an observation
+- 403, CAPTCHA, 429, timeouts and transient network errors do not hide previously live listings
+- repeated page refreshes are deduplicated to avoid source hammering
 
-## Jobs, concepts and candidate fit
+This behavior was added because the father repeatedly revisits houses within the same day and stale dead listings were operationally annoying.
 
-Current relevant active jobs: 179.
+## Jobs and candidate fit
 
 Candidate profile:
-- slug: `mechanical-project-engineer`
-- label: `Maschinenbau / technische Projektleitung`
-- father profile: ~30 years mechanical engineering / technical project leadership, product development, mechanical design, project steering, machinery/vehicle/rail/special equipment, team/vendor/specification/schedule/FEM/FMEA/test/assembly/commissioning experience
+- slug `mechanical-project-engineer`
+- label `Maschinenbau / technische Projektleitung`
+- ~30 years mechanical engineering / technical project leadership experience
 
-Current fit policy: `candidate-fit-2026-08-28-v3`.
-Concept extractor: `concept-seed-2026-08-28-v3`.
+Current core fit model remains concept-based and separates hard incompatibility from intrinsic fit and geography.
 
-Candidate curation:
-- migration `0009_candidate_job_preferences`
-- sparse favorite/hidden per profile
-- hidden is recoverable
-- favorite does not intrinsically boost fit
-- canonical merge OR-preserves curation
-
-Previously hidden by user and excluded from matching:
-- job #205 HR Group
-- job #214 ACTIEF JOBMADE
-
-Matching excludes hidden, hard-incompatible and unscored jobs before geography.
-
-## Dynamic refresh
-
-Authoritative reconciliation sources:
-- immmo.at
-- sreal.at
-- lever-public-postings
-- personio-public-xml
-- smartrecruiters-public-postings
-
-Frontier job sources:
+Frontier/authoritative job sources currently include:
 - karriere.at
 - jobs.at
 - stepstone.at
-- willhaben-jobs
+- willhaben jobs
+- Lever public postings
+- Personio public XML
+- SmartRecruiters public postings
 
-Scheduler runs every 15 minutes and decides source due-ness from DB state. Successful job acquisition triggers location/concept post-processing.
+Existing Adzuna/Jooble adapters may be present in code but should not be treated as authoritative production coverage unless explicitly enabled/configured.
 
-Known future acquisition expansion:
-- Workday
-- Greenhouse
-- direct Austrian company career pages
-- additional Austrian job sources where useful
+## Job geography
 
-## Geography and routing
+Principles:
+- explicit source PLZ wins
+- otherwise use a conservative locality centroid
+- broad Bundesland/country labels remain unresolved rather than receiving a fake centre point
+- approximate area labels may use an explicit named anchor only when provenance is retained
 
-Property location semantics:
-- Austrian BEV PLZ centroid
+Implemented repairs include:
+- `Salzburg Umgebung` / `Raum Salzburg` -> Salzburg anchor with approximate-area semantics
+- `Oberösterreich Zentralraum` -> Linz/Wels/Steyr multi-locality centroid
+- pure `Kärnten`, `Österreich`, etc. -> deliberately unresolved
+- `Niederranna` source-backed PLZ 4085 from Karriere evidence, propagated conservatively to same canonical job sibling
+- punctuation-safe locality fallback fixes `St. Valentin`, `St. Gallen`, `Nußbach`, etc.
+- jobs.at can repair broad structured region data from a more concrete visible job-header locality; production control `7899099` repaired `Kärnten` to `Klagenfurt`
 
-Job location semantics:
-- explicit PLZ centroid where available
-- otherwise conservative locality centroid
-- unresolved/countrywide remains ungeocoded
+`v0.3.7` extends the fallback conservatively for source labels such as:
+- `Salzburg Stadt`
+- `Wien 3. Bezirk (Landstraße)` -> Vienna city centroid rather than an invented district coordinate
+- `X bei Y` only when the postal-table base locality is unambiguous
 
-Road semantics:
-- PostGIS geography provides scalable Luftlinie inclusion/prefilter
-- local OSRM Table API adds fastest-driving distance/time
-- same-PLZ/same-centroid pairs can legitimately report 0 km / 0 min
+Never force broad labels such as `AT`, `österreichweit`, Bundesländer or large regional sales territories into arbitrary centre coordinates.
 
-Latest post-repair road audit:
-- routing_status=ok
-- routing_seconds=0.749
-- active_properties=14,414
-- located_properties=14,413
-- property_location_ratio≈1.000
-- relevant_jobs=179
-- relevant_job_locations=190
-- located_job_locations=159
-- jobs_with_located_location=151
-- job_location_ratio=0.844
+## Routing
 
-## Father-facing UX — CURRENT TARGET
+- PostGIS geography handles scalable straight-line inclusion/prefilter.
+- local OSRM Table API provides road distance/time for displayed results.
+- coordinates are centroid-level, not street-address precision.
+- same-centroid pairs can legitimately display 0 km / 0 min.
 
-The old `Kombinationen` page is no longer the primary product model. It may remain available as a legacy/debug surface.
+## Operations / maintenance
 
-Normal navigation is:
-- **Häuser**
-- **Stellen**
+`v0.3.7` adds `/admin/health` as a small protected maintenance surface showing:
+- active houses
+- active jobs
+- unresolved non-remote job locations
+- enabled sources
+- per-source coverage state
+- latest run/status/items
+- active failing shards
+- last success/error
+- top unresolved location labels
 
-Root `/` redirects to `/houses`.
+Purpose: make source regressions and coverage drift visible without manually reading systemd logs or SQL every time.
 
-### `/houses`
+## Near-term roadmap
 
-Independent active-property catalog, 36 cards/page.
+Priority order approved by the operator:
 
-Filters:
-- `ort`: city or postal code
-- price min/max
-- verified Wohnfläche min/max
-- explicit Grundstück min/max
+1. Keep `HANDOFF.md` current after meaningful production changes.
+2. Continue conservative geo cleanup from actual unresolved production labels.
+3. Expand job acquisition where it materially increases useful Austrian mechanical/project-engineering coverage:
+   - Greenhouse public boards
+   - Workday public career sites
+   - selected direct Austrian employer career pages
+4. Use `/admin/health` and production behavior to guide maintenance.
+5. Avoid major rewrites while the current product remains stable and useful.
 
-Cards show:
-- source-backed image when available, otherwise placeholder
-- location
-- title
-- price
-- verified Wohnfläche, otherwise neutral source `Fläche` when available
-- explicit Grundstück where semantically safe
+### Acquisition expansion rules
 
-### `/houses/{property_id}`
+For every new job source:
+- Austria-only filtering must be explicit.
+- Base professional relevance filtering remains separate from candidate fit.
+- Prefer public documented/observable endpoints over browser automation.
+- Preserve source identifiers and canonical source URLs.
+- Reconciliation/liveness semantics must fail safely.
+- Add parser/coverage regression tests before enabling production tenants.
+- Do not add a source merely to inflate listing count.
 
-Full active-property detail page:
-- image/placeholder
-- title/location/price/areas
-- source links
-- description if stored
-- radius selector, default 50 km
-- all eligible geolocated jobs within the selected radius
-- intrinsic fit score and salary/source data
-- OSRM road distance/time when available
+## Deferred / only if evidence justifies it
 
-Radius inclusion is currently Luftlinie between resolved PLZ/locality centroids. This is deliberate and scalable. Road time is supplementary and must not be misrepresented as street-address precision.
+- broader IMMMO image coverage beyond exact source-backed associations
+- automatic annualization of hourly salaries without explicit hours/week
+- permanent Job×Property pair storage
+- aggressive fuzzy property dedupe
+- fake centroids for broad regions
+- large UX redesign while father reports the current workflow works well
 
-### `/jobs`
+## Deployment discipline
 
-Existing ranked job list remains the main job catalog:
-- fit filters
-- search
-- favorite/hide curation
-- eligible jobs link to their detail page
+For branch changes:
 
-### `/jobs/{job_id}`
+1. inspect final diff
+2. wait for GitHub CI on the exact branch HEAD
+3. require Install + Ruff + Compile + Tests success
+4. only then provide production deployment commands
+5. production still runs Ruff/compile/tests before restart
+6. verify `/health` and targeted data controls
 
-Full eligible-job detail page:
-- job fit/salary/location/source links
-- radius selector, default 50 km
-- all active geolocated houses inside the selected Luftlinie radius
-- 40 houses/page
-- only the current page is road-refined through OSRM
-
-This avoids giant all-to-all routing matrices while still giving useful travel information.
-
-### Technical/admin surfaces
-
-Keep protected legacy/admin tools available:
-- `/admin/concepts`
-- `/admin/jobs`
-- `/admin/matches`
-- `/matches` may remain as legacy/debug combinations view
-
-Basic auth remains shared for now.
-
-## New house-first implementation
-
-Main code:
-- `app/catalog.py`
-- `app/templates/houses.html`
-- `app/templates/house_detail.html`
-- `app/templates/job_detail.html`
-
-Existing `app/templates/admin_jobs.html` is reused for `/jobs`, now with house-first navigation and links to `/jobs/{id}`.
-
-Tests cover:
-- father-facing route registration/root redirect
-- job curation redirect behavior
-- source-backed image/neutral-area presentation
-- duplicate ambiguous Fläche/Grund suppression
-- PostGIS `ST_DWithin` + nearest-location radius query
-- s REAL main-image extraction
-- reconciliation-only s REAL detail enrichment command
-
-## Immediate production steps after current CI is green
-
-1. Pull branch on production and run Ruff/compile/tests. No migration required.
-2. Restart `wohnwerk.service` and verify `/health`.
-3. Verify `/` redirects to `/houses` and `/houses` + `/jobs` are Basic-auth protected.
-4. Open `/houses` in browser and exercise filters/pagination.
-5. Open one house and verify nearby jobs/radius semantics.
-6. Open one eligible job and verify paginated nearby houses + current-page road refinement.
-7. Run one controlled s REAL `--reconcile --enrich-details` with refresh timer paused to immediately backfill available source-backed images.
-8. Count/list payloads with `primary_image_url` and visually verify several cards.
-9. Restore refresh timer.
-10. Only then consider deterministic IMMMO card-image extraction to raise image coverage beyond the s REAL subset.
+This rule exists because earlier development iterations exposed transient red CI states that must never be treated as deployable.

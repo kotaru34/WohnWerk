@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Betrieb</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
+    h1 { margin: 0 0 4px; }
+    h2 { margin-top: 30px; }
+    .subtle { opacity: .7; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .topnav a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; margin: 20px 0 28px; }
+    .stat, .panel { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .stat { padding: 14px 16px; }
+    .stat strong { display: block; font-size: 1.55rem; }
+    .panel { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); vertical-align: top; }
+    th { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; opacity: .7; }
+    tr:last-child td { border-bottom: 0; }
+    .state { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; font-size: .82rem; }
+    .state.ok { border-color: color-mix(in srgb, #4f9d69 55%, transparent); background: color-mix(in srgb, #4f9d69 10%, Canvas); }
+    .state.warnung, .state.veraltet, .state.ohne_erfolg { border-color: color-mix(in srgb, #c28c2d 60%, transparent); background: color-mix(in srgb, #c28c2d 10%, Canvas); }
+    .state.deaktiviert { opacity: .55; }
+    .error { max-width: 500px; white-space: normal; font-size: .82rem; opacity: .76; }
+    .labels { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px; }
+    .label { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; }
+    @media (max-width: 850px) { .stats { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Administration">
+    <a href="/houses">Häuser</a>
+    <a href="/jobs">Stellen</a>
+    <a href="/admin/concepts">Konzepte</a>
+    <a href="/admin/health" class="active">Betrieb</a>
+  </nav>
+
+  <h1>Betriebsübersicht</h1>
+  <div class="subtle">Kompakter Zustand von Katalog, Geodaten und Quellen.</div>
+
+  <div class="stats">
+    <div class="stat"><strong>{{ snapshot.active_properties }}</strong>aktive Häuser</div>
+    <div class="stat"><strong>{{ snapshot.active_jobs }}</strong>aktive Stellen</div>
+    <div class="stat"><strong>{{ snapshot.unresolved_job_locations }}</strong>ungeocodierte Job-Orte</div>
+    <div class="stat"><strong>{{ snapshot.enabled_sources }}</strong>aktive Quellen</div>
+  </div>
+
+  <h2>Quellen</h2>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr>
+          <th>Quelle</th>
+          <th>Zustand</th>
+          <th>Coverage</th>
+          <th>Letzter Erfolg</th>
+          <th>Letzter Lauf</th>
+          <th>Elemente</th>
+          <th>Shard-Probleme</th>
+          <th>Letzter Fehler</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in snapshot.sources %}
+          <tr>
+            <td><strong>{{ row.name }}</strong><br><span class="subtle">{{ row.category }} · {{ row.poll_interval_minutes }} min</span></td>
+            <td><span class="state {{ row.state }}">{{ row.state|replace('_', ' ') }}</span></td>
+            <td>{{ row.coverage_status }}</td>
+            <td>{{ row.last_success_at.strftime('%d.%m.%Y %H:%M') if row.last_success_at else 'nie' }}</td>
+            <td>
+              {% if row.latest_run_id %}
+                #{{ row.latest_run_id }} · {{ row.latest_mode }} · {{ row.latest_status }}<br>
+                <span class="subtle">{{ row.latest_started_at.strftime('%d.%m.%Y %H:%M') if row.latest_started_at else '' }}</span>
+              {% else %}
+                –
+              {% endif %}
+            </td>
+            <td>{{ row.latest_items_seen if row.latest_items_seen is not none else '–' }}</td>
+            <td>{{ row.failing_shards }} aktiv · {{ row.latest_shards_failed if row.latest_shards_failed is not none else '–' }} im letzten Lauf</td>
+            <td class="error">{{ row.last_error or '–' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Noch nicht aufgelöste konkrete Ortsangaben</h2>
+  <div class="panel">
+    <div class="labels">
+      {% for label, count in snapshot.unresolved_labels %}
+        <span class="label">{{ label }} · {{ count }}</span>
+      {% else %}
+        <span class="subtle">Keine ungeocodierten nicht-remote Job-Orte.</span>
+      {% endfor %}
+    </div>
+  </div>
+</main>
+</body>
+</html>
