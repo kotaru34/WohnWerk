@@ -1,4 +1,4 @@
-from app.sources.job import successfactors
+import app.sources.job.successfactors as successfactors
 
 
 SITE = successfactors.SuccessFactorsSite(
