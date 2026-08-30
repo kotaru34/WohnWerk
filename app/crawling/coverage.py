@@ -49,7 +49,13 @@ class CoverageSummary:
 
 
 def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
-    """Summarize shard outcomes without pretending a partial scan is complete."""
+    """Summarize execution health and source coverage as independent dimensions.
+
+    A deliberately bounded incremental/frontier scan can execute perfectly while not
+    claiming complete source coverage. In that case the run is SUCCESS and coverage is
+    DEGRADED. PARTIAL is reserved for mixed execution outcomes, such as one failed shard
+    alongside successful shards. This keeps operational health separate from authority.
+    """
     total = len(outcomes)
     completed = sum(outcome.status == RunStatus.SUCCESS for outcome in outcomes)
     failed = sum(outcome.status == RunStatus.FAILED for outcome in outcomes)
@@ -87,14 +93,14 @@ def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
         for outcome in outcomes
     )
 
-    if complete:
+    if all_success:
         run_status = RunStatus.SUCCESS
-        coverage_status = CoverageStatus.OK
+        coverage_status = CoverageStatus.OK if complete else CoverageStatus.DEGRADED
     elif failed == total:
         run_status = RunStatus.FAILED
         coverage_status = CoverageStatus.FAILED
     else:
-        run_status = RunStatus.PARTIAL if not all_success or not complete else RunStatus.SUCCESS
+        run_status = RunStatus.PARTIAL
         coverage_status = CoverageStatus.DEGRADED
 
     return CoverageSummary(
