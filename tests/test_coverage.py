@@ -29,7 +29,25 @@ def test_complete_shards_produce_ok_coverage() -> None:
     assert summary.items_seen == 140
 
 
-def test_cap_hit_degrades_coverage_even_when_request_succeeded() -> None:
+def test_successful_frontier_scan_is_success_with_degraded_coverage() -> None:
+    summary = summarize_shards(
+        [
+            ShardOutcome(
+                status=RunStatus.SUCCESS,
+                pages_fetched=1,
+                items_seen=14,
+                coverage_complete=False,
+            )
+        ]
+    )
+
+    assert summary.run_status == RunStatus.SUCCESS
+    assert summary.coverage_status == CoverageStatus.DEGRADED
+    assert summary.shards_completed == 1
+    assert summary.shards_failed == 0
+
+
+def test_cap_hit_degrades_coverage_without_turning_execution_partial() -> None:
     summary = summarize_shards(
         [
             ShardOutcome(
@@ -41,7 +59,7 @@ def test_cap_hit_degrades_coverage_even_when_request_succeeded() -> None:
         ]
     )
 
-    assert summary.run_status == RunStatus.PARTIAL
+    assert summary.run_status == RunStatus.SUCCESS
     assert summary.coverage_status == CoverageStatus.DEGRADED
 
 
