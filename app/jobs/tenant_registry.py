@@ -96,16 +96,39 @@ def mark_tenant_verified(
     tenant_key: str,
     verified_at: datetime,
 ) -> int:
-    """Record a successful source-level tenant check without committing the session."""
-    rows = list(
+    """Record a successful source-level tenant check without committing the session.
+
+    Most tenant-backed adapters use the tenant key as the shard key. Multi-frontier
+    adapters such as Workday append a shard suffix (for example
+    ``magna:Magna:4``). In that case resolve the longest enabled registry-key prefix
+    instead of leaving ``last_verified_at`` permanently empty.
+    """
+    enabled = list(
         session.scalars(
             select(JobSourceTenant).where(
                 JobSourceTenant.source_id == source_id,
-                JobSourceTenant.tenant_key == tenant_key,
                 JobSourceTenant.enabled.is_(True),
             )
         )
     )
+
+    exact = [row for row in enabled if row.tenant_key == tenant_key]
+    if exact:
+        rows = exact
+    else:
+        prefixes = [
+            row
+            for row in enabled
+            if tenant_key.startswith(f"{row.tenant_key}:")
+        ]
+        if not prefixes:
+            rows = []
+        else:
+            longest = max(len(row.tenant_key) for row in prefixes)
+            rows = [row for row in prefixes if len(row.tenant_key) == longest]
+            if len(rows) != 1:
+                rows = []
+
     for row in rows:
         row.last_verified_at = verified_at
     return len(rows)
