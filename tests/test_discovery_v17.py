@@ -47,7 +47,7 @@ def test_v17_rejects_live_ims_laboratory_technician() -> None:
     )
 
     assert decision.accepted is False
-    assert decision.reason == "structural_title_exclusion"
+    assert decision.reason == "low_relevance_operational_title"
     assert "laboratory_technician" in decision.low_relevance_title_matches
 
 
