@@ -1,7 +1,14 @@
+from pathlib import Path
+from runpy import run_path
+
 import pytest
 
 from app.sources.base import RawJob, RawJobLocation, SourceBatch
-from scripts import run_lever_jobs
+
+_SCRIPT = run_path(str(Path(__file__).resolve().parents[1] / "scripts" / "run_lever_jobs.py"))
+LeverJobSource = _SCRIPT["LeverJobSource"]
+_bootstrap_sites = _SCRIPT["_bootstrap_sites"]
+preflight_sites = _SCRIPT["preflight_sites"]
 
 
 def _job(title: str, description: str) -> RawJob:
@@ -15,7 +22,7 @@ def _job(title: str, description: str) -> RawJob:
 
 
 def test_bootstrap_sites_preserve_region_and_company() -> None:
-    sites = run_lever_jobs._bootstrap_sites()
+    sites = _bootstrap_sites()
 
     assert [(site.region, site.site, site.company) for site in sites] == [
         ("eu", "blackshark", "Blackshark.ai"),
@@ -48,9 +55,9 @@ async def test_preflight_classifies_every_bootstrap_site_without_database(monkey
             pages_fetched=1,
         )
 
-    monkeypatch.setattr(run_lever_jobs.LeverJobSource, "fetch_shard", fake_fetch_shard)
+    monkeypatch.setattr(LeverJobSource, "fetch_shard", fake_fetch_shard)
 
-    ok = await run_lever_jobs.preflight_sites(
+    ok = await preflight_sites(
         page_size=100,
         hard_max_pages=10,
         delay=0,
@@ -76,9 +83,9 @@ async def test_preflight_fails_closed_on_incomplete_tenant(monkeypatch, capsys) 
             pages_fetched=3,
         )
 
-    monkeypatch.setattr(run_lever_jobs.LeverJobSource, "fetch_shard", fake_fetch_shard)
+    monkeypatch.setattr(LeverJobSource, "fetch_shard", fake_fetch_shard)
 
-    ok = await run_lever_jobs.preflight_sites(
+    ok = await preflight_sites(
         page_size=100,
         hard_max_pages=3,
         delay=0,
