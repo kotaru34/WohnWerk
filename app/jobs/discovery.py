@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v16"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v17"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -25,9 +25,6 @@ _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-# Narrow parity aliases that still require the normal domain/method evidence
-# below. They intentionally do not make arbitrary service/management titles
-# relevant by themselves.
 _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "service_technician",
@@ -36,10 +33,7 @@ _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"servicetechniker|service\s+techniker)\w*"
         ),
     ),
-    (
-        "field_service_manager",
-        re.compile(r"\bfield[-\s]+service[-\s]+manager\w*"),
-    ),
+    ("field_service_manager", re.compile(r"\bfield[-\s]+service[-\s]+manager\w*")),
     (
         "production_lead",
         re.compile(
@@ -47,16 +41,9 @@ _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"manufacturing\s+manager)\w*"
         ),
     ),
-    (
-        "team_lead",
-        re.compile(r"\bteamleitung\w*"),
-    ),
+    ("team_lead", re.compile(r"\bteamleitung\w*")),
 )
 
-# Source vocabularies that are clearly technical but were missing from the
-# original CV-seeded domain set. These are intentionally support evidence only:
-# an adjacent engineering/management role is still required unless other normal
-# gate criteria are satisfied.
 _DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "building_services",
@@ -65,10 +52,7 @@ _DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"building\s+(?:services?|systems?))\w*"
         ),
     ),
-    (
-        "manufacturing_compound",
-        re.compile(r"\b\w*fertigung\w*"),
-    ),
+    ("manufacturing_compound", re.compile(r"\b\w*fertigung\w*")),
 )
 
 _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -86,10 +70,7 @@ _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"career\s+starter\w*|entry[-\s]*level\w*)"
         ),
     ),
-    (
-        "junior_stage",
-        re.compile(r"\bjunior\b"),
-    ),
+    ("junior_stage", re.compile(r"\bjunior\b")),
 )
 
 _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -107,6 +88,19 @@ _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"automotive\s+(?:mechanic|technician))\w*"
         ),
     ),
+    (
+        "cnc_turning_milling_trade",
+        re.compile(
+            r"\bcnc[-\s]*(?:dreher|fräser|fraeser)\w*"
+            r"(?:\s*/?\s*-\s*(?:dreher|fräser|fraeser)\w*)?"
+            r"|\bcnc\s+(?:turner|miller|machinist)\w*"
+            r"|\bcnc[-\s]*(?:turning|milling)\s+(?:operator|machinist)\w*"
+        ),
+    ),
+    (
+        "laboratory_technician",
+        re.compile(r"\b(?:labortechniker|laboratory\s+technician|lab\s+technician)\w*"),
+    ),
 )
 
 _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -116,14 +110,8 @@ _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"\b(?:procurement|purchas(?:er|ing)|buyer|einkäufer\w*|einkauf\w*)\b"
         ),
     ),
-    (
-        "logistics_operations",
-        re.compile(r"\b(?:logistics?|logistik)\w*"),
-    ),
-    (
-        "expansion_management",
-        re.compile(r"\bexpansion\s+(?:project\s+)?manager\w*"),
-    ),
+    ("logistics_operations", re.compile(r"\b(?:logistics?|logistik)\w*")),
+    ("expansion_management", re.compile(r"\bexpansion\s+(?:project\s+)?manager\w*")),
     (
         "production_operator",
         re.compile(
@@ -133,9 +121,6 @@ _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-# Concrete production false-positive families. These are title semantics, not
-# employer/body keywords, so they can safely reject a generic adjacent-role hit
-# without making the source adapter itself responsible for professional fit.
 _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "qa_ra_regulatory",
@@ -144,10 +129,7 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
             r"regulatory\s+affairs)\b"
         ),
     ),
-    (
-        "solution_delivery_engineer",
-        re.compile(r"\bsolution\s+delivery\s+engineer\b"),
-    ),
+    ("solution_delivery_engineer", re.compile(r"\bsolution\s+delivery\s+engineer\b")),
     (
         "building_physics",
         re.compile(
@@ -168,10 +150,7 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
             r"|\bbuilding\s+systems?\b.*\bcost\s+optimi[sz]ation\b"
         ),
     ),
-    (
-        "r_and_d_operations_manager",
-        re.compile(r"\br\s*[&/]\s*d\s+operations\s+manager\b"),
-    ),
+    ("r_and_d_operations_manager", re.compile(r"\br\s*[&/]\s*d\s+operations\s+manager\b")),
 )
 
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
@@ -199,9 +178,6 @@ _ELECTRICAL_ADJACENT_DOMAINS = frozenset(
 
 _AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
 
-# These title semantics are structural exclusions for this experienced
-# working-professional corpus and therefore win even over an otherwise strong
-# mechanical title.
 _HARD_TITLE_EXCLUSIONS = frozenset(
     {
         "student_training_stage",
@@ -212,11 +188,6 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
     }
 )
 
-# A generic "Engineer" title is intentionally high-recall. However, when the
-# title itself explicitly identifies the role as software/IT/data work, body
-# boilerplate mentioning validation, CAD, manufacturing, etc. must not promote it
-# into the mechanical corpus. Strong mechanical titles are checked before this
-# rule, preserving roles such as "Mechanical Engineer - AI-assisted design".
 _BLOCKING_NEGATIVE_TITLE_CONTEXTS = frozenset(
     {
         "software",
@@ -334,9 +305,6 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
         _matches(NEGATIVE_CONTEXT_PATTERNS, _negative_context_text(title))
     )
 
-    # HR/recruiting boilerplate is common in otherwise technical Personio job
-    # descriptions. Preserve it in audit evidence, but only let HR block a weak
-    # technical match when HR semantics are actually present in the title.
     blocking_negative = tuple(
         name for name in negative if name != "hr" or name in negative_title
     )
