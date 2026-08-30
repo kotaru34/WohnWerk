@@ -22,6 +22,22 @@ def smartrecruiters_job_ad_identity(tenant: object, job_ad_id: object) -> str | 
     return f"smartrecruiters:{tenant_value}:jobad:{job_ad_value}"
 
 
+def workday_requisition_identity(
+    tenant: object,
+    site: object,
+    requisition_id: object,
+) -> str | None:
+    """Return a source-backed Workday identity for one requisition on one career site."""
+    if not all(isinstance(value, str) for value in (tenant, site, requisition_id)):
+        return None
+    tenant_value = tenant.strip()
+    site_value = site.strip()
+    requisition_value = requisition_id.strip()
+    if not tenant_value or not site_value or not requisition_value:
+        return None
+    return f"workday:{tenant_value}:{site_value}:req:{requisition_value}"
+
+
 def stable_identity_from_payload(payload: Mapping[str, Any] | None) -> str | None:
     """Read a source-backed canonical identity, including legacy SR payloads."""
     if not payload:
@@ -31,9 +47,17 @@ def stable_identity_from_payload(payload: Mapping[str, Any] | None) -> str | Non
     if isinstance(explicit, str) and explicit.strip():
         return explicit.strip()
 
-    return smartrecruiters_job_ad_identity(
+    smartrecruiters = smartrecruiters_job_ad_identity(
         payload.get("wohnwerk_smartrecruiters_tenant"),
         payload.get("smartrecruiters_job_ad_id"),
+    )
+    if smartrecruiters is not None:
+        return smartrecruiters
+
+    return workday_requisition_identity(
+        payload.get("wohnwerk_workday_tenant"),
+        payload.get("wohnwerk_workday_site"),
+        payload.get("workday_job_req_id"),
     )
 
 
