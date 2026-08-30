@@ -72,7 +72,8 @@ def test_palfinger_detail_parser_extracts_mechanical_job_salary_and_location() -
       <div>Quick Application</div>
       <div>Köstendorf</div>
       <div>Location</div>
-      <div>Palfinger Europe GmbH Moosmühlstraße 1 , 5203 Köstendorf AT</div>
+      <div>Palfinger Europe GmbH Moosmühlstraße 1 , 5203 Köstendorf</div>
+      <div>AT</div>
     </body></html>
     """
 
@@ -118,7 +119,8 @@ def test_palfinger_detail_parser_handles_special_lifting_salary_spacing() -> Non
       <h2>WAS WIR BIETEN</h2>
       <p>KV-Minimum auf Basis einer Vollzeitbeschäftigung ist EUR EUR 53 241,02 brutto pro Jahr.</p>
       <div>Quick Application</div>
-      <div>Palfinger Europe GmbH Moosmühlstraße 1, 5203 Köstendorf AT</div>
+      <div>Palfinger Europe GmbH Moosmühlstraße 1, 5203 Köstendorf</div>
+      <div>AT</div>
     </body></html>
     """
 
@@ -131,6 +133,8 @@ def test_palfinger_detail_parser_handles_special_lifting_salary_spacing() -> Non
         ),
     )
 
+    assert job.locations[0].postal_code == "5203"
+    assert job.locations[0].city == "Köstendorf"
     assert enrich_raw_job_salary(job) is True
     assert job.salary_min == Decimal("53241.02")
     assert job.salary_currency == "EUR"
