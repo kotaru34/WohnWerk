@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v18"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v19"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -193,7 +193,10 @@ _ELECTRICAL_ADJACENT_DOMAINS = frozenset(
         "fixture_tooling",
         "plant_engineering",
         "special_machinery",
-        "manufacturing",
+        # Generic manufacturing/fertigung language is intentionally not enough to
+        # rescue an electrical-engineering title. Employer boilerplate frequently
+        # contains those words even when the vacancy itself is pure electrical /
+        # automation work (for example EPLAN/control-cabinet roles).
         "product_development",
         "component_development",
         "chassis_structure",
