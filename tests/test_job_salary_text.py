@@ -62,6 +62,28 @@ def test_extracts_andritz_english_grouped_monthly_minimum() -> None:
     assert parsed.minimum_only is True
 
 
+def test_extracts_andritz_fragmented_german_monthly_minimum() -> None:
+    parsed = parse_salary_text(
+        "Wir sind gesetzlich verpflichtet für diese Position das kollektivvertragliche "
+        "Mindestgehalt von brutt o € 3.583,02 / M onat anz uführen. Wir bieten jedoch in "
+        "jedem Fall eine marktkonforme Bezahlung in Abhängigkeit von Qualifikation und "
+        "Berufserfahrung!"
+    )
+
+    assert parsed is not None
+    assert parsed.minimum == Decimal("3583.02")
+    assert parsed.maximum is None
+    assert parsed.period == "month"
+    assert parsed.payment_count is None
+    assert parsed.minimum_only is True
+
+
+def test_fragmented_period_does_not_turn_budget_into_salary() -> None:
+    assert parse_salary_text(
+        "Für Schulungen steht ein Weiterbildungsbudget von € 3.583,02 / M onat zur Verfügung."
+    ) is None
+
+
 def test_spelled_euro_non_salary_budget_stays_rejected() -> None:
     assert parse_salary_text(
         "For professional development, a training budget of 5.000 Euro per year is available."
