@@ -9,19 +9,50 @@ from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
 from app.jobs.discovery import partition_job_candidates
 from app.jobs.tenant_registry import TenantSeed, enabled_tenants, seed_tenants
-from app.models import CoverageStatus, RunStatus, Source, SourceCategory
+from app.models import CoverageStatus, JobSourceTenant, RunStatus, Source, SourceCategory
 from app.sources.base import SourceFetchError
 from app.sources.job.lever import GLOBAL_API_BASE, LeverJobSource, LeverSite
 
 ADAPTER_PATH = "app.sources.job.lever.LeverJobSource"
 SOURCE_NAME = "lever-public-postings"
 
+# Production preflight on 2026-08-30 found six accepted Austrian vacancies in TSMG and
+# zero accepted vacancies across Blackshark, Westernacher, cargo-partner, and Qualysoft.
+# Keep the full bootstrap set available to --preflight, but new databases should only
+# schedule the tenant with demonstrated catalog value.
+CURATED_ACTIVE_TENANTS = frozenset({("global", "tsmg")})
+
 DEFAULT_TENANTS = [
-    TenantSeed(tenant_key="blackshark", company="Blackshark.ai", namespace="eu"),
-    TenantSeed(tenant_key="westernacher", company="Westernacher Consulting", namespace="eu"),
-    TenantSeed(tenant_key="cargo-partner", company="cargo-partner", namespace="global"),
-    TenantSeed(tenant_key="qualysoft", company="Qualysoft", namespace="global"),
-    TenantSeed(tenant_key="tsmg", company="TSMG", namespace="global"),
+    TenantSeed(
+        tenant_key="blackshark",
+        company="Blackshark.ai",
+        namespace="eu",
+        enabled=False,
+    ),
+    TenantSeed(
+        tenant_key="westernacher",
+        company="Westernacher Consulting",
+        namespace="eu",
+        enabled=False,
+    ),
+    TenantSeed(
+        tenant_key="cargo-partner",
+        company="cargo-partner",
+        namespace="global",
+        enabled=False,
+    ),
+    TenantSeed(
+        tenant_key="qualysoft",
+        company="Qualysoft",
+        namespace="global",
+        enabled=False,
+    ),
+    TenantSeed(
+        tenant_key="tsmg",
+        company="TSMG",
+        namespace="global",
+        enabled=True,
+    ),
 ]
 
 
@@ -40,6 +71,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Fetch and classify every bootstrap tenant without touching the database. "
             "Exit non-zero if any tenant cannot be read to completion."
+        ),
+    )
+    parser.add_argument(
+        "--apply-curation",
+        action="store_true",
+        help=(
+            "Explicitly apply the production-validated enable/disable state to the five "
+            "bootstrap tenants before running. Other discovered Lever tenants are untouched."
         ),
     )
     parser.add_argument(
@@ -80,6 +119,14 @@ def _bootstrap_sites() -> list[LeverSite]:
     ]
 
 
+def _curated_tenant_states() -> dict[tuple[str, str], bool]:
+    return {
+        (seed.namespace, seed.tenant_key): (seed.namespace, seed.tenant_key)
+        in CURATED_ACTIVE_TENANTS
+        for seed in DEFAULT_TENANTS
+    }
+
+
 def get_or_create_source() -> int:
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
@@ -112,6 +159,41 @@ def get_or_create_source() -> int:
 
         seed_tenants(session, source=source, seeds=DEFAULT_TENANTS)
         return source.id
+
+
+def apply_curated_tenant_states(source_id: int) -> dict[str, bool]:
+    """Apply the reviewed bootstrap curation without touching non-bootstrap tenants."""
+    desired = _curated_tenant_states()
+
+    with SessionLocal() as session:
+        source = session.get(Source, source_id)
+        if source is None:
+            raise RuntimeError("Lever public-postings source disappeared before curation")
+
+        rows = list(
+            session.scalars(
+                select(JobSourceTenant).where(JobSourceTenant.source_id == source.id)
+            )
+        )
+        by_key = {(row.namespace, row.tenant_key): row for row in rows}
+        missing = sorted(set(desired) - set(by_key))
+        if missing:
+            raise RuntimeError(f"Missing bootstrap Lever tenants before curation: {missing!r}")
+
+        changed = False
+        for key, enabled in desired.items():
+            row = by_key[key]
+            if row.enabled != enabled:
+                row.enabled = enabled
+                changed = True
+
+        if changed:
+            session.commit()
+
+        return {
+            f"{namespace}:{tenant_key}": by_key[(namespace, tenant_key)].enabled
+            for namespace, tenant_key in sorted(desired)
+        }
 
 
 def load_sites(source_id: int) -> list[LeverSite]:
@@ -186,6 +268,8 @@ async def async_main() -> int:
     args = parse_args()
 
     if args.preflight:
+        if args.apply_curation:
+            raise SystemExit("--preflight is zero-write and cannot be combined with --apply-curation")
         return (
             0
             if await preflight_sites(
@@ -197,6 +281,13 @@ async def async_main() -> int:
         )
 
     source_id = get_or_create_source()
+
+    if args.apply_curation:
+        states = apply_curated_tenant_states(source_id)
+        print("lever_curation=applied")
+        for tenant, enabled in states.items():
+            print(f"  tenant={tenant} enabled={enabled}")
+
     adapter = LeverJobSource(
         sites=load_sites(source_id),
         request_delay_seconds=args.delay,
