@@ -53,13 +53,19 @@ def main() -> None:
         print(f"source={source.name} enabled={source.enabled}")
         print(f"source_listings={len(rows)} affected_jobs={len(affected_job_ids)}")
         print(f"exclusive_jobs={len(exclusive)} shared_jobs={len(shared)}")
+        # Stable one-key-per-line fields for deployment automation. Keep the combined
+        # human-readable summary above for operators, but never make shell safety
+        # decisions by parsing its word layout.
+        print(f"exclusive_jobs_count={len(exclusive)}")
+        print(f"shared_jobs_count={len(shared)}")
+        print(f"purge_safe={'yes' if not shared else 'no'}")
         if shared:
             print("shared_jobs_need_review:")
             for job_id, title, listing_count in shared:
                 print(f"  job_id={job_id} listings={listing_count} title={title}")
 
         if not args.apply:
-            print("dry_run=yes; rerun with --apply only when shared_jobs=0")
+            print("dry_run=yes; rerun with --apply only when purge_safe=yes")
             return
 
         if shared:
