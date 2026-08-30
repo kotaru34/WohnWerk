@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
@@ -26,7 +27,7 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-templates = Jinja2Templates(directory=__import__("pathlib").Path(__file__).parent / "templates")
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +67,9 @@ class JobSourceValueRow:
             return None
         if self.latest_candidates <= 0:
             return 0.0
-        return self.latest_accepted * 100.0 / self.latest_candidates if self.latest_accepted is not None else None
+        if self.latest_accepted is None:
+            return None
+        return self.latest_accepted * 100.0 / self.latest_candidates
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,9 +311,8 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
                 else []
             )
             candidates, accepted, rejected = _latest_candidate_totals(latest_shards)
-            active_listings, catalog_jobs, exclusive_jobs, shared_jobs = contribution_by_source.get(
-                source.id,
-                (0, 0, 0, 0),
+            active_listings, catalog_jobs, exclusive_jobs, shared_jobs = (
+                contribution_by_source.get(source.id, (0, 0, 0, 0))
             )
             value_rows.append(
                 JobSourceValueRow(
