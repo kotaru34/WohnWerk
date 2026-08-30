@@ -20,7 +20,7 @@ def test_v17_rejects_live_anton_paar_cnc_turning_trade() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v18"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v19"
     assert decision.accepted is False
     assert decision.reason == "low_relevance_operational_title"
     assert "cnc_turning_milling_trade" in decision.low_relevance_title_matches
