@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from app.jobs.tenant_registry import TenantSeed, seed_tenants
+from app.jobs.tenant_registry import TenantSeed, mark_tenant_verified, seed_tenants
 from app.models import JobSourceTenant
 
 
@@ -87,3 +88,35 @@ def test_existing_operator_enablement_is_never_overwritten_by_seed() -> None:
     assert existing_disabled.config == {"new_default": "kept"}
     assert existing_enabled.enabled is True
     assert session.commits == 1
+
+
+def test_mark_tenant_verified_resolves_longest_multishard_prefix() -> None:
+    workday = JobSourceTenant(
+        source_id=12,
+        namespace="default",
+        tenant_key="magna:Magna",
+        company="Magna",
+        enabled=True,
+        config={},
+    )
+    other = JobSourceTenant(
+        source_id=12,
+        namespace="default",
+        tenant_key="other",
+        company="Other",
+        enabled=True,
+        config={},
+    )
+    session = _FakeSession([workday, other])
+    verified_at = datetime(2026, 8, 30, 15, 30, tzinfo=UTC)
+
+    changed = mark_tenant_verified(
+        session,
+        source_id=12,
+        tenant_key="magna:Magna:4",
+        verified_at=verified_at,
+    )
+
+    assert changed == 1
+    assert workday.last_verified_at == verified_at
+    assert other.last_verified_at is None
