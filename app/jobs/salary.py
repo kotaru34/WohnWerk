@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from app.sources.base import RawJob
 
-SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-30-v5"
+SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-30-v6"
 
 _AMOUNT_TOKEN = (
     r"(?:"
@@ -39,31 +39,40 @@ _PAYMENT_14_RE = re.compile(
     r"\b14\s*(?:monats)?gehaelter(?:n)?\b|\b14\s*(?:bezüge|bezuege|zahlungen)\b)",
     re.IGNORECASE,
 )
+# Some SuccessFactors templates split visible words across inline HTML nodes. The detail
+# parser preserves those boundaries as whitespace, so `/ M onat` may be the exact source
+# text even though a browser renders `/ Monat`. Only tolerate fragmentation in explicit
+# slash/pro period constructions; do not globally glue arbitrary words together.
+_FRAGMENTED_MONTH = r"m\s*onat"
+_FRAGMENTED_YEAR = r"j\s*ahr"
+_FRAGMENTED_HOUR = r"st\s*unde"
 _PERIOD_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "month",
         re.compile(
-            r"(?:\b(?:brutto)?monats(?:gehalt|entgelt|brutto|lohn)?\b|"
-            r"\bmonatsbrutto(?:gehalt|entgelt|lohn)?\b|\bmonatlich(?:e[snmr]?)?\b|"
-            r"/\s*monat\b|\bpro\s+monat\b|\bper\s+month\b|\bmonthly\b)",
+            rf"(?:\b(?:brutto)?monats(?:gehalt|entgelt|brutto|lohn)?\b|"
+            rf"\bmonatsbrutto(?:gehalt|entgelt|lohn)?\b|\bmonatlich(?:e[snmr]?)?\b|"
+            rf"/\s*{_FRAGMENTED_MONTH}\b|\bpro\s+{_FRAGMENTED_MONTH}\b|"
+            rf"\bper\s+month\b|\bmonthly\b)",
             re.IGNORECASE,
         ),
     ),
     (
         "year",
         re.compile(
-            r"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt|lohn)?\b|"
-            r"\bjahresbrutto(?:gehalt|entgelt|lohn)?\b|\bjährlich\b|\bjaehrlich\b|"
-            r"/\s*jahr\b|\bpro\s+jahr\b|\bp\.?\s*a\.?\b|\bper\s+year\b|"
-            r"\bannual(?:ly)?\b)",
+            rf"(?:\b(?:brutto)?jahres(?:brutto)?(?:gehalt|entgelt|lohn)?\b|"
+            rf"\bjahresbrutto(?:gehalt|entgelt|lohn)?\b|\bjährlich\b|\bjaehrlich\b|"
+            rf"/\s*{_FRAGMENTED_YEAR}\b|\bpro\s+{_FRAGMENTED_YEAR}\b|"
+            rf"\bp\.?\s*a\.?\b|\bper\s+year\b|\bannual(?:ly)?\b)",
             re.IGNORECASE,
         ),
     ),
     (
         "hour",
         re.compile(
-            r"(?:\bstundenlohn\b|\bstündlich(?:e[snmr]?)?\b|\bstuendlich(?:e[snmr]?)?\b|"
-            r"/\s*stunde\b|\bpro\s+stunde\b|\bper\s+hour\b|\bhourly\b)",
+            rf"(?:\bstundenlohn\b|\bstündlich(?:e[snmr]?)?\b|\bstuendlich(?:e[snmr]?)?\b|"
+            rf"/\s*{_FRAGMENTED_HOUR}\b|\bpro\s+{_FRAGMENTED_HOUR}\b|"
+            rf"\bper\s+hour\b|\bhourly\b)",
             re.IGNORECASE,
         ),
     ),
