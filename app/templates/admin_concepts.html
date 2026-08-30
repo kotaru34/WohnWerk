@@ -8,9 +8,9 @@
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { margin: 0; background: Canvas; color: CanvasText; }
     main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
-    h1 { margin-bottom: 4px; }
+    h1 { margin: 0 0 4px; }
     .subtle { opacity: .7; }
-    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
     .topnav a, .toolbar a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
     .topnav a.active, .toolbar a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
     .toolbar, .notice, .concept { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
@@ -53,8 +53,10 @@
 <body>
 <main>
   <nav class="topnav" aria-label="Administration">
-    <a href="/admin/jobs">Stellen</a>
+    <a href="/houses">Häuser</a>
+    <a href="/jobs">Stellen</a>
     <a href="/admin/concepts" class="active">Konzepte</a>
+    <a href="/admin/health">Betrieb</a>
   </nav>
 
   <h1>Kandidatenprofil</h1>
