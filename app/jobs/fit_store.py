@@ -49,8 +49,26 @@ def _gate_accepted(listing: JobListing) -> bool:
     return isinstance(gate, dict) and gate.get("accepted") is True
 
 
+def _listing_is_catalog_eligible(
+    listing: JobListing,
+    enabled_source_ids: set[int],
+) -> bool:
+    """Keep source lifecycle and user-visible relevance as explicit prerequisites."""
+    return (
+        listing.source_id in enabled_source_ids
+        and listing.status == ListingStatus.ACTIVE
+        and _gate_accepted(listing)
+    )
+
+
 def relevant_active_jobs(session: Session) -> list[Job]:
-    """Return canonical jobs that still have at least one active, discovery-accepted listing."""
+    """Return jobs backed by an enabled, active, discovery-accepted source listing."""
+
+    enabled_source_ids = set(
+        session.scalars(select(Source.id).where(Source.enabled.is_(True)))
+    )
+    if not enabled_source_ids:
+        return []
 
     jobs = list(
         session.scalars(
@@ -64,7 +82,7 @@ def relevant_active_jobs(session: Session) -> list[Job]:
         job
         for job in jobs
         if any(
-            listing.status == ListingStatus.ACTIVE and _gate_accepted(listing)
+            _listing_is_catalog_eligible(listing, enabled_source_ids)
             for listing in job.listings
         )
     ]
@@ -126,18 +144,28 @@ def _source_links(session: Session, jobs: list[Job]) -> dict[int, tuple[JobSourc
     source_names = (
         {
             source.id: source.name
-            for source in session.scalars(select(Source).where(Source.id.in_(source_ids)))
+            for source in session.scalars(
+                select(Source).where(
+                    Source.id.in_(source_ids),
+                    Source.enabled.is_(True),
+                )
+            )
         }
         if source_ids
         else {}
     )
+    enabled_source_ids = set(source_names)
 
     result: dict[int, tuple[JobSourceLink, ...]] = {}
     for job in jobs:
         links: list[JobSourceLink] = []
         seen_urls: set[str] = set()
         for listing in job.listings:
-            if listing.status != ListingStatus.ACTIVE or not listing.url or listing.url in seen_urls:
+            if (
+                not _listing_is_catalog_eligible(listing, enabled_source_ids)
+                or not listing.url
+                or listing.url in seen_urls
+            ):
                 continue
             seen_urls.add(listing.url)
             links.append(
