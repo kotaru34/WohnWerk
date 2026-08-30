@@ -86,16 +86,19 @@ class _DetailParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
-        self.headings: list[str] = []
+        self.headings: list[tuple[str, str]] = []
         self._heading_depth = 0
+        self._heading_tag: str | None = None
         self._heading_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         del attrs
-        if tag.casefold() in {"h1", "h2", "h3"}:
-            self._heading_depth += 1
-            if self._heading_depth == 1:
+        normalized_tag = tag.casefold()
+        if normalized_tag in {"h1", "h2", "h3"}:
+            if self._heading_depth == 0:
+                self._heading_tag = normalized_tag
                 self._heading_parts = []
+            self._heading_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
         if tag.casefold() not in {"h1", "h2", "h3"} or not self._heading_depth:
@@ -104,8 +107,9 @@ class _DetailParser(HTMLParser):
         if self._heading_depth:
             return
         value = _normalize_text(" ".join(self._heading_parts))
-        if value:
-            self.headings.append(value)
+        if value and self._heading_tag is not None:
+            self.headings.append((self._heading_tag, value))
+        self._heading_tag = None
         self._heading_parts = []
 
     def handle_data(self, data: str) -> None:
@@ -140,8 +144,12 @@ def parse_palfinger_listing_page(value: str) -> tuple[list[tuple[str, str]], int
     return list(parser.urls.items()), max_page
 
 
-def _title(headings: list[str]) -> str | None:
-    for heading in headings:
+def _title(headings: list[tuple[str, str]]) -> str | None:
+    # PALFINGER renders navigation/overlay headings before the actual job heading
+    # (for example "About Us Close"). The job title itself is the page's h1.
+    for tag, heading in headings:
+        if tag != "h1":
+            continue
         value = heading.strip()
         if value.casefold() in _GENERIC_HEADINGS:
             continue
