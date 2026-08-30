@@ -1,5 +1,4 @@
-import app.sources.job.successfactors as successfactors
-
+from app.sources.job import successfactors
 
 SITE = successfactors.SuccessFactorsSite(
     tenant="andritz-professionals",
