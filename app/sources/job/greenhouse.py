@@ -188,7 +188,7 @@ def parse_greenhouse_posting(
     absolute_url = payload.get("absolute_url")
 
     if isinstance(posting_id, bool) or not isinstance(posting_id, (int, str)):
-        raise ValueError("Greenhouse posting is missing a stable id")
+        raise TypeError("Greenhouse posting is missing a stable id")
     posting_id_text = str(posting_id).strip()
     if not posting_id_text:
         raise ValueError("Greenhouse posting is missing a stable id")
