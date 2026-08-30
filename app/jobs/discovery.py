@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v20"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v21"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -193,6 +193,13 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
             r"microelectronics)\b"
         ),
     ),
+    (
+        "commercial_project_management",
+        re.compile(
+            r"\bcommercial\s+project\s+manager\w*"
+            r"|\bkaufmännisch\w*\s+(?:projektleiter|projektmanager)\w*"
+        ),
+    ),
 )
 
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
@@ -251,6 +258,7 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "ai_data_role",
         "vehicle_workshop_trade",
         "embedded_hardware_electronics",
+        "commercial_project_management",
     }
 )
 
