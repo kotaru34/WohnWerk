@@ -32,7 +32,7 @@ def test_technical_project_lead_in_product_development_is_accepted() -> None:
         )
     )
     assert decision.accepted is True
-    assert decision.reason == "engineering_role_with_domain"
+    assert decision.reason == "industrial_project_title"
     assert "technical_project_lead" in decision.adjacent_title_matches
     assert "product_development" in decision.domain_matches
 
