@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v17"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v18"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -71,6 +71,20 @@ _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("junior_stage", re.compile(r"\bjunior\b")),
+    (
+        "academic_thesis",
+        re.compile(
+            r"\b(?:bachelor(?:'s)?[-/\s]*(?:master)?arbeit|bachelorarbeit|masterarbeit|"
+            r"bachelor(?:'s)?\s+thesis|master(?:'s)?\s+thesis)\b"
+        ),
+    ),
+    (
+        "unsolicited_application",
+        re.compile(
+            r"\b(?:initiativbewerbung|unsolicited\s+application|"
+            r"speculative\s+application)\w*"
+        ),
+    ),
 )
 
 _MANUAL_TRADE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -119,6 +133,10 @@ _BUSINESS_OPERATION_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"|\b(?:maschinen|anlagen)bediener\w*"
         ),
     ),
+    (
+        "packaging_planning",
+        re.compile(r"\b(?:verpackungsplaner|packaging\s+(?:planner|planning))\w*"),
+    ),
 )
 
 _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -151,6 +169,13 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
         ),
     ),
     ("r_and_d_operations_manager", re.compile(r"\br\s*[&/]\s*d\s+operations\s+manager\b")),
+    (
+        "it_program_project_role",
+        re.compile(
+            r"\b(?:program\s*/\s*project\s+responsible|project\s+responsible)\s+it\b"
+            r"|\bit\s+(?:program|project)\s+(?:responsible|manager|lead)\b"
+        ),
+    ),
 )
 
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
@@ -182,6 +207,8 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
     {
         "student_training_stage",
         "graduate_entry_stage",
+        "academic_thesis",
+        "unsolicited_application",
         "software_role",
         "ai_data_role",
         "vehicle_workshop_trade",
