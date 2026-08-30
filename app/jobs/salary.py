@@ -6,12 +6,20 @@ from decimal import Decimal, InvalidOperation
 
 from app.sources.base import RawJob
 
-SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-29-v4"
+SALARY_TEXT_POLICY = "explicit-salary-text-2026-08-30-v5"
 
-_AMOUNT_TOKEN = r"(?:\d{1,3}(?:[.\s\u00a0]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+_AMOUNT_TOKEN = (
+    r"(?:"
+    r"\d{1,3}(?:[.\s\u00a0]\d{3})+(?:,\d{1,2})?"
+    r"|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?"
+    r"|\d+(?:[.,]\d{1,2})?"
+    r")"
+)
+_CURRENCY_WORD = r"(?:EUR|Euro)"
 _MONEY_RE = re.compile(
-    rf"(?:\bEUR\s*(?P<prefix>{_AMOUNT_TOKEN})|€\s*(?P<euro_prefix>{_AMOUNT_TOKEN})|"
-    rf"(?P<suffix>{_AMOUNT_TOKEN})\s*(?:€|\bEUR\b))",
+    rf"(?:\b{_CURRENCY_WORD}\s*(?P<prefix>{_AMOUNT_TOKEN})|"
+    rf"€\s*(?P<euro_prefix>{_AMOUNT_TOKEN})|"
+    rf"(?P<suffix>{_AMOUNT_TOKEN})\s*(?:€|\b{_CURRENCY_WORD}\b))",
     re.IGNORECASE,
 )
 _SALARY_CUE_RE = re.compile(
