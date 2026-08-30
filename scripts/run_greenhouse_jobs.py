@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.jobs.discovery import partition_job_candidates
 from app.jobs.tenant_registry import TenantSeed, enabled_tenants, seed_tenants
 from app.models import RunStatus, Source, SourceCategory
+from app.sources.base import SourceFetchError
 from app.sources.job.greenhouse import GLOBAL_API_BASE, GreenhouseBoard, GreenhouseJobSource
 
 ADAPTER_PATH = "app.sources.job.greenhouse.GreenhouseJobSource"
@@ -134,7 +135,7 @@ async def preflight_boards(*, timeout_seconds: float) -> bool:
             for item in accepted[:10]:
                 gate = (item.raw_payload or {}).get("wohnwerk_discovery_gate") or {}
                 print(f"  accepted={item.title} reason={gate.get('reason')}")
-        except Exception as exc:
+        except SourceFetchError as exc:
             ok = False
             print(f"preflight[{shard.key}]=failed error={type(exc).__name__}: {exc}")
 
