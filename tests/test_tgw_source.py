@@ -20,13 +20,17 @@ def test_tgw_listing_parser_finds_and_deduplicates_public_job_links() -> None:
     assert parse_tgw_listing_page(html) == [
         (
             "830",
-            "https://www.tgw-group.com/en/career/jobs/detail/"
-            "project-manager-mechatronic-product-development-830/",
+            (
+                "https://www.tgw-group.com/en/career/jobs/detail/"
+                "project-manager-mechatronic-product-development-830/"
+            ),
         ),
         (
             "901",
-            "https://www.tgw-group.com/en/career/jobs/detail/"
-            "technical-support-engineer-mechanics-901/",
+            (
+                "https://www.tgw-group.com/en/career/jobs/detail/"
+                "technical-support-engineer-mechanics-901/"
+            ),
         ),
     ]
 
