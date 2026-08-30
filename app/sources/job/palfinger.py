@@ -151,20 +151,26 @@ def _title(headings: list[str]) -> str | None:
 
 
 def _location(parts: list[str]) -> RawJobLocation | None:
-    for value in reversed(parts):
-        match = _POSTAL_LOCATION_RE.search(value)
-        if match is None:
-            continue
-        postal = match.group("postal")
-        city = _normalize_text(match.group("city"))
-        if not city:
-            continue
-        return RawJobLocation(
-            postal_code=postal,
-            city=city,
-            location_text=f"{postal} {city}, AT",
-            remote=False,
-        )
+    # PALFINGER commonly renders the address and the trailing country token as
+    # separate text nodes, e.g. "..., 5203 Köstendorf" followed by "AT".
+    # Search short adjacent-node windows instead of requiring all evidence in one node.
+    for end in range(len(parts), 0, -1):
+        for width in (1, 2, 3):
+            start = max(0, end - width)
+            value = _normalize_text(" ".join(parts[start:end]))
+            match = _POSTAL_LOCATION_RE.search(value)
+            if match is None:
+                continue
+            postal = match.group("postal")
+            city = _normalize_text(match.group("city"))
+            if not city:
+                continue
+            return RawJobLocation(
+                postal_code=postal,
+                city=city,
+                location_text=f"{postal} {city}, AT",
+                remote=False,
+            )
     return None
 
 
