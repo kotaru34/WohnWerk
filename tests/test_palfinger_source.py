@@ -108,6 +108,38 @@ def test_palfinger_detail_parser_extracts_mechanical_job_salary_and_location() -
     assert job.salary_is_minimum_only is True
 
 
+def test_palfinger_detail_parser_handles_source_backed_slash_locality() -> None:
+    html = """
+    <html><body>
+      <h1>Entwicklungsingenieur Kransysteme oder Fahrzeugtechnik (w/m/d)</h1>
+      <h2>Was dich erwartet:</h2>
+      <p>Konzipierung und konstruktive Ausarbeitung von Kransystemen und Fahrzeugaufbauten.</p>
+      <h2>Was du mitbringst:</h2>
+      <p>Technische Ausbildung in Maschinenbau oder Fahrzeugtechnik.</p>
+      <div>Quick Application</div>
+      <div>Elsbethen</div>
+      <div>Location</div>
+      <div>Epsilon Kran GmbH Christophorusstraße 30 , 5061 Elsbethen/Glasenbach</div>
+      <div>AT</div>
+    </body></html>
+    """
+
+    job = parse_palfinger_detail_page(
+        html,
+        posting_id="8689",
+        url=(
+            "https://www.palfinger.com/worldwide/en/career/jobs/"
+            "entwicklungsingenieur-kransysteme-oder-fahrzeugtechnik--w-m-d-_8689.html"
+        ),
+    )
+
+    assert job.locations[0].postal_code == "5061"
+    assert job.locations[0].city == "Elsbethen/Glasenbach"
+    assert job.locations[0].location_text == "5061 Elsbethen/Glasenbach, AT"
+    assert job.description is not None
+    assert "Kransystemen" in job.description
+
+
 def test_palfinger_detail_parser_handles_special_lifting_salary_spacing() -> None:
     html = """
     <html><body>
