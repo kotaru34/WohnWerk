@@ -23,6 +23,17 @@ DEFAULT_TENANTS = [
     TenantSeed(tenant_key="axess-ag", company="Axess AG"),
     TenantSeed(tenant_key="lcm", company="Linz Center of Mechatronics GmbH"),
     TenantSeed(tenant_key="denzel-gruppe", company="DENZEL Gruppe"),
+    # Candidate has a current Vienna technical-project-lead vacancy but is kept
+    # disabled until a production preflight validates the live XML feed and
+    # discovery result. Seeding candidates must not alter the catalogue by itself.
+    TenantSeed(
+        tenant_key="beyondcarbon-energy",
+        company="BCE Beyond Carbon Energy Holding GmbH",
+        enabled=False,
+        config={
+            "candidate_evidence": "Vienna technical project leadership for energy / plant systems",
+        },
+    ),
 ]
 
 
