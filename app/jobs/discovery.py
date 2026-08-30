@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v19"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v20"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -42,6 +42,8 @@ _ADJACENT_TITLE_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("team_lead", re.compile(r"\bteamleitung\w*")),
+    ("project_manager_de_spaced", re.compile(r"\bprojekt\s+manager\w*")),
+    ("group_lead_de", re.compile(r"\bgruppenleiter\w*")),
 )
 
 _DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -53,6 +55,13 @@ _DOMAIN_AUGMENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("manufacturing_compound", re.compile(r"\b\w*fertigung\w*")),
+    (
+        "rotating_equipment",
+        re.compile(
+            r"\b(?:turbo[-\s]*generator\w*|generator\w*|turbine\w*|"
+            r"pump(?:e|en|s)?\w*|hydropower|wasserkraft)\b"
+        ),
+    ),
 )
 
 _STRUCTURAL_STAGE_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -176,6 +185,14 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
             r"|\bit\s+(?:program|project)\s+(?:responsible|manager|lead)\b"
         ),
     ),
+    (
+        "embedded_hardware_electronics",
+        re.compile(
+            r"\bhardware[-\s]*(?:entwicklungsingenieur|development\s+engineer|engineer)\w*"
+            r".*\b(?:embedded\s+systems?|electronics?|elektronik|mikroelektronik|"
+            r"microelectronics)\b"
+        ),
+    ),
 )
 
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
@@ -204,6 +221,24 @@ _ELECTRICAL_ADJACENT_DOMAINS = frozenset(
     }
 )
 
+_INDUSTRIAL_PROJECT_TITLE_DOMAINS = frozenset(
+    {
+        "maschinenbau",
+        "mechanical",
+        "vehicle_engineering",
+        "special_vehicle",
+        "rail_vehicle",
+        "fixture_tooling",
+        "plant_engineering",
+        "special_machinery",
+        "product_development",
+        "component_development",
+        "chassis_structure",
+        "wheel_development",
+        "rotating_equipment",
+    }
+)
+
 _AFTER_SALES_SERVICE_RE = re.compile(r"\bafter[-\s]+sales(?:\s+service)?\b")
 
 _HARD_TITLE_EXCLUSIONS = frozenset(
@@ -215,6 +250,7 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "software_role",
         "ai_data_role",
         "vehicle_workshop_trade",
+        "embedded_hardware_electronics",
     }
 )
 
@@ -320,6 +356,14 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
             )
         )
     )
+    title_domain = tuple(
+        dict.fromkeys(
+            (
+                *_matches(DOMAIN_PATTERNS, title),
+                *_matches(_DOMAIN_AUGMENT_PATTERNS, title),
+            )
+        )
+    )
     domain = tuple(
         dict.fromkeys(
             (
@@ -396,6 +440,26 @@ def classify_job_candidate(job: RawJob) -> JobDiscoveryDecision:
         return _decision(
             accepted=False,
             reason="insufficient_base_relevance",
+            strong_title=strong_title,
+            adjacent_role=adjacent_role,
+            domain=domain,
+            method_tool=method_tool,
+            negative=negative,
+            low_relevance_title=low_relevance_title,
+        )
+
+    title_domain_set = set(title_domain)
+    has_project_manager_title = bool(
+        {"project_manager", "project_manager_de_spaced"}.intersection(adjacent_role)
+    )
+    if (
+        has_project_manager_title
+        and title_domain_set.intersection(_INDUSTRIAL_PROJECT_TITLE_DOMAINS)
+        and not {"sales", "finance"}.intersection(negative_title)
+    ):
+        return _decision(
+            accepted=True,
+            reason="industrial_project_title",
             strong_title=strong_title,
             adjacent_role=adjacent_role,
             domain=domain,
