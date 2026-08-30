@@ -16,10 +16,12 @@ def test_search_page_extracts_total_and_austrian_row_context() -> None:
         <tr class="data-row">
           <td><a href="/andritz/job/Vienna-Mechanical-Engineer-Vien/1354678857/">Mechanical Engineer</a></td>
           <td>Vienna, Vienna, AT</td>
+          <td>Aug 22, 2026</td>
         </tr>
         <tr class="data-row">
           <td><a href="/andritz/job/Berlin-Software-Engineer-BE/1354679999/">Software Engineer</a></td>
           <td>Berlin, Berlin, DE</td>
+          <td>Aug 22, 2026</td>
         </tr>
       </table>
     </body></html>
@@ -30,8 +32,15 @@ def test_search_page_extracts_total_and_austrian_row_context() -> None:
     assert total == 446
     assert len(postings) == 2
     assert postings[0].url.endswith("/1354678857/")
-    assert "Vienna, Vienna, AT" in postings[0].row_text
-    assert "Berlin, Berlin, DE" in postings[1].row_text
+    assert "Vienna, Vienna, AT Aug 22, 2026" in postings[0].row_text
+    assert successfactors._looks_austrian(postings[0].row_text) is True
+    assert "Berlin, Berlin, DE Aug 22, 2026" in postings[1].row_text
+    assert successfactors._looks_austrian(postings[1].row_text) is False
+
+
+def test_austrian_at_token_does_not_match_lowercase_preposition() -> None:
+    assert successfactors._looks_austrian("Weiz, Styria, AT Aug 22, 2026") is True
+    assert successfactors._looks_austrian("Senior Engineer at Vienna") is False
 
 
 def test_parse_austrian_detail_uses_requisition_id_and_description() -> None:
