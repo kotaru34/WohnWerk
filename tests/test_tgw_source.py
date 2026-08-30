@@ -82,7 +82,7 @@ def test_tgw_detail_parser_extracts_source_backed_austrian_job() -> None:
     assert "mechanical engineering" in job.description
     assert "Benefits and training" not in job.description
     assert job.raw_payload["tgw_posting_id"] == "932"
-    assert job.raw_payload["wohnwerk_identity_key"] == "direct:tgw:932"
+    assert job.raw_payload["wohnwerk_stable_identity"] == "direct:tgw:932"
 
 
 def test_tgw_detail_parser_ignores_non_austrian_job() -> None:
