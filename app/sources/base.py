@@ -65,6 +65,13 @@ class SourceBatch[T]:
     result_cap_hit: bool = False
     pages_fetched: int = 1
 
+    def __post_init__(self) -> None:
+        # A provider-reported total may be flaky across pagination (Workday CXS is
+        # known to return zero on later pages). It must never under-report rows that
+        # the adapter has actually materialized in this batch.
+        if self.source_reported_count is not None:
+            self.source_reported_count = max(self.source_reported_count, len(self.items))
+
 
 class SourceFetchError(RuntimeError):
     """Source failure that preserves useful progress from a partially fetched shard."""
