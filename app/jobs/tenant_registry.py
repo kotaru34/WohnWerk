@@ -89,6 +89,17 @@ def enabled_tenants(session: Session, *, source: Source) -> list[JobSourceTenant
     )
 
 
+def _tenant_key_candidates(row: JobSourceTenant) -> tuple[str, ...]:
+    qualified = (
+        f"{row.namespace}:{row.tenant_key}"
+        if row.namespace and row.namespace != "default"
+        else row.tenant_key
+    )
+    if qualified == row.tenant_key:
+        return (row.tenant_key,)
+    return (qualified, row.tenant_key)
+
+
 def mark_tenant_verified(
     session: Session,
     *,
@@ -98,10 +109,10 @@ def mark_tenant_verified(
 ) -> int:
     """Record a successful source-level tenant check without committing the session.
 
-    Most tenant-backed adapters use the tenant key as the shard key. Multi-frontier
-    adapters such as Workday append a shard suffix (for example
-    ``magna:Magna:4``). In that case resolve the longest enabled registry-key prefix
-    instead of leaving ``last_verified_at`` permanently empty.
+    Shards may use the bare tenant key, a namespace-qualified key such as
+    ``global:tsmg``, or a multi-frontier suffix such as ``magna:Magna:4``.
+    Resolve the most specific unique enabled registry key instead of leaving
+    ``last_verified_at`` empty for otherwise healthy tenant-backed sources.
     """
     enabled = list(
         session.scalars(
@@ -112,22 +123,33 @@ def mark_tenant_verified(
         )
     )
 
-    exact = [row for row in enabled if row.tenant_key == tenant_key]
-    if exact:
+    exact = [
+        row
+        for row in enabled
+        if tenant_key in _tenant_key_candidates(row)
+    ]
+    if len(exact) == 1:
         rows = exact
+    elif exact:
+        rows = []
     else:
-        prefixes = [
-            row
-            for row in enabled
-            if tenant_key.startswith(f"{row.tenant_key}:")
-        ]
-        if not prefixes:
+        prefix_matches: list[tuple[int, JobSourceTenant]] = []
+        for row in enabled:
+            for candidate in _tenant_key_candidates(row):
+                if tenant_key.startswith(f"{candidate}:"):
+                    prefix_matches.append((len(candidate), row))
+
+        if not prefix_matches:
             rows = []
         else:
-            longest = max(len(row.tenant_key) for row in prefixes)
-            rows = [row for row in prefixes if len(row.tenant_key) == longest]
-            if len(rows) != 1:
-                rows = []
+            longest = max(length for length, _row in prefix_matches)
+            most_specific = [
+                row
+                for length, row in prefix_matches
+                if length == longest
+            ]
+            unique = {id(row): row for row in most_specific}
+            rows = list(unique.values()) if len(unique) == 1 else []
 
     for row in rows:
         row.last_verified_at = verified_at
