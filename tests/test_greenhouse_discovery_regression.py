@@ -67,3 +67,57 @@ def test_qa_ra_and_solution_delivery_are_explicit_low_relevance_titles() -> None
     assert "qa_ra_regulatory" in qa.low_relevance_title_matches
     assert delivery.accepted is False
     assert "solution_delivery_engineer" in delivery.low_relevance_title_matches
+
+
+def test_gropyus_preflight_false_positive_titles_stay_out_of_mechanical_corpus() -> None:
+    titles = (
+        "Bauphysiker / Ingenieur für Bauphysik (m/w/d)",
+        "Building Physics Engineer (all genders)",
+        "Electrical Engineer (all genders)",
+        "Elektroingenieur (m/w/d)",
+        "Junior Projektmanager Anlagen- und Automatisierungstechnik (m/w/d)",
+        "R&D Operations Manager (w/m/d)",
+        "Senior Fire Safety Engineer (all genders)",
+        "Senior Manager Cost Optimization - Building System (Construction focus) (all genders)",
+        "Senior Manager Cost Optimization – Building Systems (Schwerpunkt Bauwesen) (m/w/d)",
+    )
+    employer_boilerplate = (
+        "Product development, manufacturing, validation, system integration, testing, "
+        "supplier coordination, technical documentation, CAD, FMEA and commissioning."
+    )
+
+    for title in titles:
+        decision = classify_job_candidate(_job(title, employer_boilerplate))
+        assert decision.accepted is False, title
+
+
+def test_strong_mechanical_title_still_wins_over_adjacent_exclusion_words() -> None:
+    decision = classify_job_candidate(
+        _job(
+            "Mechanical Engineer - Electrical Systems",
+            "Mechanical design, CAD, FEM, product development and validation.",
+        )
+    )
+
+    assert decision.accepted is True
+    assert decision.reason == "strong_mechanical_title"
+
+
+def test_junior_generic_project_role_is_rejected_but_mechanical_title_keeps_recall() -> None:
+    generic = classify_job_candidate(
+        _job(
+            "Junior Project Manager Automation",
+            "Project coordination, commissioning and manufacturing systems.",
+        )
+    )
+    mechanical = classify_job_candidate(
+        _job(
+            "Junior Mechanical Engineer",
+            "Mechanical design, CAD, FEM and product development.",
+        )
+    )
+
+    assert generic.accepted is False
+    assert "junior_stage" in generic.low_relevance_title_matches
+    assert mechanical.accepted is True
+    assert mechanical.reason == "strong_mechanical_title"
