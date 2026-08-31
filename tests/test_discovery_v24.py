@@ -20,7 +20,7 @@ def test_v24_service_technician_trade_overrides_incidental_strong_mechatronics_t
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v25"
     assert "mechatronik" in decision.strong_title_matches
     assert "service_technician_trade" in decision.low_relevance_title_matches
     assert decision.accepted is False
@@ -40,7 +40,7 @@ def test_v24_field_service_manager_remains_adjacent_management_role() -> None:
     assert decision.accepted is True
 
 
-def test_v24_shopfloor_management_remains_broad() -> None:
+def test_v24_shopfloor_management_is_narrowed_by_live_palfinger_evidence() -> None:
     decision = classify_job_candidate(
         _job(
             "Teamlead Shopfloor (w/m/d)",
@@ -49,4 +49,6 @@ def test_v24_shopfloor_management_remains_broad() -> None:
     )
 
     assert "electrical_assembly_lead" not in decision.low_relevance_title_matches
-    assert decision.accepted is True
+    assert "shopfloor_operations_lead" in decision.low_relevance_title_matches
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"

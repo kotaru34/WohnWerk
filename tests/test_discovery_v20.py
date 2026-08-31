@@ -23,7 +23,7 @@ def test_v20_rejects_live_andritz_embedded_hardware_engineer() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v25"
     assert decision.accepted is False
     assert decision.reason == "structural_title_exclusion"
     assert "embedded_hardware_electronics" in decision.low_relevance_title_matches

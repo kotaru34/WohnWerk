@@ -22,7 +22,7 @@ def test_v23_accepts_special_lifting_product_project_management() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v25"
     assert decision.accepted is True
     assert decision.reason == "industrial_project_title"
     assert "special_machinery" in decision.domain_matches
@@ -70,7 +70,7 @@ def test_v23_rejects_electrical_assembly_team_lead() -> None:
     assert "electrical_assembly_lead" in decision.low_relevance_title_matches
 
 
-def test_v23_keeps_shopfloor_management_broad_for_fit_ranking() -> None:
+def test_v23_shopfloor_management_is_rejected_by_live_palfinger_evidence() -> None:
     decision = classify_job_candidate(
         _job(
             "Teamlead Shopfloor (w/m/d)",
@@ -79,7 +79,9 @@ def test_v23_keeps_shopfloor_management_broad_for_fit_ranking() -> None:
         )
     )
 
-    assert decision.accepted is True
+    assert decision.accepted is False
+    assert decision.reason == "low_relevance_operational_title"
+    assert "shopfloor_operations_lead" in decision.low_relevance_title_matches
 
 
 def test_v23_does_not_expand_generic_lean_management() -> None:

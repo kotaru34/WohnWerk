@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v24"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v25"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -210,6 +210,17 @@ _NON_TARGET_PROFESSIONAL_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...]
             r"|\bkaufmännisch\w*\s+(?:projektleiter|projektmanager)\w*"
         ),
     ),
+    (
+        "enterprise_application_management",
+        re.compile(r"\bapplication\s+management\b"),
+    ),
+    (
+        "shopfloor_operations_lead",
+        re.compile(
+            r"\b(?:team\s*lead|teamleiter|teamleitung|supervisor)\w*\s+shopfloor\b"
+            r"|\bshopfloor\s+(?:team\s*lead|teamleiter|teamleitung|supervisor)\w*"
+        ),
+    ),
 )
 
 _ELECTRICAL_ENGINEERING_TITLE_RE = re.compile(
@@ -290,6 +301,7 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "service_technician_trade",
         "maintenance_trade",
         "electrical_assembly_lead",
+        "enterprise_application_management",
     }
 )
 
