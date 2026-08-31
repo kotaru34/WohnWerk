@@ -20,7 +20,7 @@ def test_v22_rejects_tgw_sales_engineer() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v23"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
     assert decision.accepted is False
     assert decision.reason == "structural_title_exclusion"
     assert "sales_title_role" in decision.low_relevance_title_matches

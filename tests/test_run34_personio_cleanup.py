@@ -30,7 +30,7 @@ def test_service_technician_is_rejected_despite_recruiting_boilerplate() -> None
     )
 
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "service_technician" in decision.adjacent_title_matches
     assert "service_technician_trade" in decision.low_relevance_title_matches
     assert "mechanical" in decision.domain_matches

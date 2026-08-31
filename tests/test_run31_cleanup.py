@@ -27,7 +27,7 @@ def test_compound_servicetechniker_is_rejected_despite_method_evidence() -> None
     )
 
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "service_technician" in decision.adjacent_title_matches
     assert "service_technician_trade" in decision.low_relevance_title_matches
     assert "commissioning" in decision.method_tool_matches

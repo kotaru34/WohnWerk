@@ -24,7 +24,7 @@ def test_v19_rejects_gropyus_electrical_engineer_when_manufacturing_is_only_adja
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v23"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
     assert decision.accepted is False
     assert decision.reason == "insufficient_base_relevance"
     assert "non_mechanical_electrical_engineering" in decision.low_relevance_title_matches

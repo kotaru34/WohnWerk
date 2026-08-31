@@ -22,7 +22,7 @@ def test_v23_accepts_special_lifting_product_project_management() -> None:
         )
     )
 
-    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v23"
+    assert DISCOVERY_GATE_VERSION == "profile-seed-2026-08-30-v24"
     assert decision.accepted is True
     assert decision.reason == "industrial_project_title"
     assert "special_machinery" in decision.domain_matches
@@ -38,7 +38,7 @@ def test_v23_rejects_service_technician_compound_title() -> None:
     )
 
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "service_technician_trade" in decision.low_relevance_title_matches
 
 
@@ -52,7 +52,7 @@ def test_v23_rejects_maintenance_trade_even_with_engineering_methods() -> None:
     )
 
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "maintenance_trade" in decision.low_relevance_title_matches
 
 
@@ -66,7 +66,7 @@ def test_v23_rejects_electrical_assembly_team_lead() -> None:
     )
 
     assert decision.accepted is False
-    assert decision.reason == "low_relevance_operational_title"
+    assert decision.reason == "structural_title_exclusion"
     assert "electrical_assembly_lead" in decision.low_relevance_title_matches
 
 

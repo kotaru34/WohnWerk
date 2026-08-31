@@ -13,7 +13,7 @@ from app.jobs.profile_seed import (
 )
 from app.sources.base import RawJob
 
-DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v23"
+DISCOVERY_GATE_VERSION = "profile-seed-2026-08-30-v24"
 
 _OPERATIONAL_TEST_TITLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -287,6 +287,9 @@ _HARD_TITLE_EXCLUSIONS = frozenset(
         "commercial_project_management",
         "technician_position",
         "installation_specialist",
+        "service_technician_trade",
+        "maintenance_trade",
+        "electrical_assembly_lead",
     }
 )
 
