@@ -5,6 +5,7 @@ from app.admin import router as admin_router
 from app.catalog import router as catalog_router
 from app.config import get_settings
 from app.http_normalization import NormalizeHouseQueryMiddleware
+from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.matches import router as matches_router
 from app.ops import router as ops_router
 from app.product_ui import router as product_ui_router
@@ -42,6 +43,7 @@ def health() -> dict[str, str | bool]:
         "status": "ok",
         "service": "wohnwerk",
         "version": __version__,
+        "job_concept_extractor": EXTRACTOR_VERSION,
         "country": settings.country_code,
         "ai_enabled": settings.ai_enabled,
     }

@@ -9,14 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+import httpx
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.models import Source, SourceCategory
 from app.refresh import DueSourceRun, due_source_runs
+from app.version import __version__
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOCK_PATH = Path("/run/wohnwerk-refresh/refresh.lock")
+DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/health"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +49,14 @@ def parse_args() -> argparse.Namespace:
         help=f"Single-instance lock path (default: {DEFAULT_LOCK_PATH}).",
     )
     parser.add_argument(
+        "--health-url",
+        default=DEFAULT_HEALTH_URL,
+        help=(
+            "Running web health endpoint used to gate mutating refresh work "
+            f"(default: {DEFAULT_HEALTH_URL})."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print due work without running source or post-processing commands.",
@@ -71,6 +83,42 @@ def _source_command(run: DueSourceRun) -> list[str]:
         if run.plan.source_name == "sreal.at":
             args.append("--enrich-details")
     return args
+
+
+def _runtime_release_gate(health_url: str) -> tuple[bool, str]:
+    """Fail closed if this refresh process is newer/different than the running web reader."""
+
+    try:
+        response = httpx.get(health_url, timeout=3.0)
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        print(f"runtime_gate_error={type(exc).__name__}:{exc}", flush=True)
+        return False, "web_health_unavailable"
+
+    if not isinstance(payload, dict):
+        print(f"runtime_gate_error=invalid_payload_type:{type(payload).__name__}", flush=True)
+        return False, "invalid_web_health"
+
+    runtime_status = payload.get("status")
+    runtime_service = payload.get("service")
+    runtime_version = payload.get("version")
+    runtime_extractor = payload.get("job_concept_extractor")
+
+    print(f"refresh_code_version={__version__}", flush=True)
+    print(f"refresh_code_extractor={EXTRACTOR_VERSION}", flush=True)
+    print(f"runtime_service={runtime_service}", flush=True)
+    print(f"runtime_status={runtime_status}", flush=True)
+    print(f"runtime_version={runtime_version}", flush=True)
+    print(f"runtime_extractor={runtime_extractor}", flush=True)
+
+    if runtime_status != "ok" or runtime_service != "wohnwerk":
+        return False, "invalid_web_health"
+    if runtime_version != __version__:
+        return False, "web_version_mismatch"
+    if runtime_extractor != EXTRACTOR_VERSION:
+        return False, "web_extractor_mismatch"
+    return True, "ok"
 
 
 def _acquire_lock(path: Path) -> TextIO | None:
@@ -114,6 +162,11 @@ def main() -> None:
             return
         if not due:
             print("refresh_status=ok work=none")
+            return
+
+        runtime_ok, runtime_reason = _runtime_release_gate(args.health_url)
+        if not runtime_ok:
+            print(f"refresh_status=deferred reason={runtime_reason}")
             return
 
         failures: list[CommandResult] = []
