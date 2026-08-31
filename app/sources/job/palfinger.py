@@ -379,6 +379,7 @@ class PalfingerJobSource(JobSource):
                 coverage_complete = (
                     not cap_hit
                     and not pagination_failed
+                    and detail_missing == 0
                     and detail_failed == 0
                     and expected_pages is not None
                     and listing_pages_fetched >= expected_pages
