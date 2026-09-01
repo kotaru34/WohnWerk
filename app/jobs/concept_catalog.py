@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.jobs.concepts import ConceptKind
 
-EXTRACTOR_VERSION = "concept-seed-2026-08-31-v4"
+EXTRACTOR_VERSION = "concept-seed-2026-09-01-v5"
 _NON_WORD_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -50,7 +50,11 @@ CONCEPT_SEEDS: tuple[ConceptSeed, ...] = (
         ConceptKind.ROLE,
         "mechanical-engineer",
         "Maschinenbauingenieur",
-        ("Maschinenbauingenieur", "Mechanical Engineer"),
+        (
+            "Maschinenbauingenieur",
+            "Mechanical Engineer",
+            "Mechanical/Fluids Engineer",
+        ),
     ),
     ConceptSeed(
         ConceptKind.ROLE,

@@ -1,5 +1,5 @@
 from app.jobs.candidate_profile_seed import PROFILE_PREFERENCES
-from app.jobs.concept_catalog import EXTRACTOR_VERSION, JobTextSnapshot, extract_concepts
+from app.jobs.concept_catalog import JobTextSnapshot, extract_concepts
 from app.jobs.concepts import ConceptKind
 
 
@@ -10,10 +10,6 @@ def _slugs(title: str, description: str | None = None) -> set[tuple[str, str]]:
             JobTextSnapshot(job_id=1, title=title, description=description)
         )
     }
-
-
-def test_v4_version_is_explicit() -> None:
-    assert EXTRACTOR_VERSION == "concept-seed-2026-08-31-v4"
 
 
 def test_industrial_engineer_is_a_neutral_role_with_manufacturing_context() -> None:
