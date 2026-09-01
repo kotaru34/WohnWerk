@@ -80,6 +80,29 @@ def test_statistics_austria_postal_membership_resolves_known_locality_labels() -
         assert resolution.method == fallback.OFFICIAL_LOCALITY_POSTAL_METHOD
 
 
+def test_verified_sublocalities_use_only_their_evidence_backed_postal_centroid() -> None:
+    candidates = [
+        _candidate("6336", "Langkampfen", 12.10, 47.55, 500),
+        _candidate("8055", "Graz", 15.43, 47.02, 900),
+        _candidate("6020", "Innsbruck", 11.39, 47.26, 1000),
+    ]
+
+    schaftenau = fallback.resolve_from_candidates("Schaftenau", candidates)
+    puntigam = fallback.resolve_from_candidates("Puntigam", candidates)
+
+    assert schaftenau is not None
+    assert schaftenau.canonical_locality == "schaftenau"
+    assert schaftenau.postal_codes == ("6336",)
+    assert schaftenau.method == fallback.VERIFIED_SUBLOCALITY_POSTAL_METHOD
+    assert schaftenau.source == fallback.VERIFIED_SUBLOCALITY_LOCATION_SOURCE
+
+    assert puntigam is not None
+    assert puntigam.canonical_locality == "puntigam"
+    assert puntigam.postal_codes == ("8055",)
+    assert puntigam.method == fallback.VERIFIED_SUBLOCALITY_POSTAL_METHOD
+    assert puntigam.source == fallback.VERIFIED_SUBLOCALITY_LOCATION_SOURCE
+
+
 def test_region_labels_are_not_smuggled_into_point_fallbacks() -> None:
     candidates = [
         _candidate("9020", "Klagenfurt am Wörthersee", 14.31, 46.62),

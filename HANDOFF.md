@@ -10,10 +10,10 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Release state
 
-- Current production: **v0.3.44**.
-- Production SHA: `c2d4965c7d4b7cdae5beb19abb4f399fc4cbcbf2`.
+- Current production: **v0.3.45**.
+- Production SHA: `1b97f5e16d5e6e196237c2046f577a43cf1966cd`.
 - Production DB migration: `0011_live_ui_events` (head).
-- Current branch release candidate: **v0.3.45** — no-navigation curation UX and scroll-preserving live refresh.
+- Current branch release candidate: **v0.3.46** — remaining evidence-backed job geography cleanup.
 - Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
@@ -114,25 +114,44 @@ v0.3.39 repaired the active `/houses` route after the v0.3.38 radius regression.
 
 ## Job geography
 
-v0.3.41 repaired 11 concrete unresolved location rows without inventing points. Father-visible unresolved fell from 18 to 7. Broad regions remain intentionally non-point.
+v0.3.41 repaired 11 concrete unresolved location rows without inventing points. Broad regions remain intentionally non-point.
 
-Known remaining geo work includes broad/non-point labels such as `Kärnten`, `Wels-Land`, `Bezirk Wels-Land`, `Graz Umgebung-West`, plus later candidates `Schaftenau`, `Puntigam`, and source-parser case `AT` on jobs.at. Do not map broad areas to arbitrary centroids.
+A read-only production audit on v0.3.45 (`crawl_runs` stayed 691) established the remaining concrete cases:
+
+- job #138 / SPIEGLTEC has five source locations: Innsbruck, Wien, Kundl, Brixlegg and **Schaftenau**. The first four are already resolved; only Schaftenau is missing. karriere.at employer/location evidence maps the Schaftenau site to postal code **6336 Langkampfen**. This is a real worksite, not a duplicate to discard.
+- job #352 / teampool has source-backed `Graz, 8055` plus `Puntigam`; the job description explicitly says `Standort Graz-Puntigam`. Public Graz/ÖBB evidence confirms Puntigam in **8055 Graz**. Preserve the source label while using the verified 8055 centroid.
+- job #160 / Lam Research already has a correct resolved Salzburg location plus an unresolved non-remote `city=AT, location_text='AT, Österreich'`. The latter is a country-code parser artifact, not a second worksite.
+
+v0.3.46 release-candidate policy:
+- add a tiny **verified sublocality** postal-membership table, separate from the Statistics-Austria municipality fallback
+- `Schaftenau -> 6336`
+- `Puntigam -> 8055`
+- method: `verified_sublocality_postal_centroid`
+- source metadata: `verified Austrian sublocality postal membership + BEV postal centroids`
+- only the postal membership is curated; the actual point still comes exclusively from the locally imported BEV-backed postal centroid table
+- no fuzzy matching and no region/country centre
+- add postprocess cleanup for country-code city artifacts such as `AT`, but only when the row is non-remote, has no PLZ/point, and the same canonical job already has another concrete PLZ/point sibling
+- countrywide remote scopes survive
+- an `AT` row that is the only location evidence also survives rather than being silently discarded
+- scheduled refresh publishes its job SSE invalidation only after this postprocessing, so father-facing UI never receives the transient artifact as the final refreshed state
+
+Broad/non-point labels such as `Kärnten`, `Wels-Land`, `Bezirk Wels-Land` and `Graz Umgebung-West` must remain unresolved.
+
+Development CI for v0.3.46 before squash: Ruff/Compile clean, **538 tests passed**. Added tests cover exact Schaftenau/Puntigam postal membership and fail-closed country-code cleanup semantics.
 
 ## IMMMO coverage authority
 
-v0.3.42 is deployed in production history and remains the active IMMMO coverage policy. It repaired IMMMO reconciliation authority by separating structural source coverage from stable synthetic/source-less identity share.
+v0.3.42 remains the active IMMMO coverage policy. It separates structural source coverage from stable synthetic/source-less identity share.
 
-Coverage policy: `immmo-identity-churn-2026-09-01-v1` in `app/crawling/immmo_quality.py`:
+Policy `immmo-identity-churn-2026-09-01-v1`:
 - structural authority requires reconciliation + traversal complete + no cap + cards_seen==cards_parsed + count delta in tolerance
-- after ingest, each shard counts genuinely **new synthetic identities**
+- after ingest, each shard counts genuinely new synthetic identities
 - identity churn fails closed if new synthetic rows exceed `max(3, 1% of cards seen)`
 - legacy total-synthetic link-quality remains diagnostic only
-- a stable population of source-less cards can therefore be authoritative
-- a parser regression that suddenly converts many stable external URLs into new synthetic identities still degrades coverage
+- stable source-less cards can therefore remain authoritative
+- a parser regression that creates many new synthetic identities still degrades coverage
 
-Evidence that motivated the policy: reconciliation #654 completed 9/9 shards with cards parsed == cards seen and source-count deltas in tolerance; 1321 source-less/synthetic cards existed across 580 pages but only 3 synthetic identities were genuinely new in the run. A live audit found most apparent link gaps were source cards with no current external link rather than parser misses.
-
-Do not manually change `Source.coverage_status`. Only the result of a real complete reconciliation controls disappearance authority.
+Do not manually change `Source.coverage_status`. Only a real complete reconciliation controls disappearance authority.
 
 ## Source health semantics
 
@@ -146,58 +165,49 @@ Only `coverage=ok` reconciliation may prove disappearance.
 
 ## SSE/live synchronization
 
-v0.3.43 introduced server-sent invalidation events while keeping existing server-rendered pages and POST write paths authoritative. v0.3.44 fixed isolated-process SQLAlchemy model registration for durable event writes.
+v0.3.43 introduced durable SSE invalidation events; v0.3.44 fixed isolated-process SQLAlchemy model registration for durable event writes.
 
 Production-proven architecture:
-- durable `live_ui_events` journal in Postgres via Alembic revision `0011_live_ui_events`
-- authenticated `GET /events` SSE endpoint
-- monotonic event IDs and `Last-Event-ID`/query-cursor replay across reconnects and web-process restarts
-- 15-second keepalive; DB polling is bounded and uses short sessions
-- no Redis and no in-memory-only broker, because crawler and web processes are separate
-- events have `houses`, `jobs` or `all` topic plus kind/entity/profile/payload metadata
-- favorite/hidden/viewed events are queued in the same DB transaction as their authoritative state change
-- property crawler emits one `houses/catalog_refresh` after the completed run
-- job source runners deliberately do **not** emit intermediate catalog events
-- `scripts/refresh_sources.py` emits one `jobs/catalog_refresh` only after all successful job-source runs have completed location resolution, location propagation and concept normalization
-- if any job postprocess fails, no job invalidation is published
+- durable `live_ui_events` journal in Postgres, migration `0011_live_ui_events`
+- authenticated `GET /events`
+- monotonic event IDs and reconnect replay
+- separate crawler/web processes work through Postgres, not an in-memory broker
+- curation events are atomic with authoritative writes
+- job catalog invalidation is emitted only after location resolution/propagation and concept normalization all succeed
 
-v0.3.44 production proof:
-- server release gate passed with 530 tests
-- isolated `LiveUiEvent.profile_id -> candidate_profiles.id` FK registration passed
-- controlled durable `deployment_probe` insert succeeded
-- `/houses` and `/jobs` publicly rendered the live client
-- unauthenticated `/events` returned 401
-- authenticated SSE `ready` + replay of probe event succeeded through Caddy/TLS
-- all refresh/images/liveness timers were restored active
+v0.3.44 production proof included successful durable event insert and authenticated replay through Caddy/TLS.
 
-## v0.3.45 curation UX fix
+## v0.3.45 in-place curation UX
 
-User-visible defect found after SSE deployment: clicking house `Ausblenden` still used the old browser form navigation path (`POST -> 303 -> /houses...`), causing a full navigation and scroll jump to the top. SSE itself did not remove that navigation.
+v0.3.45 is production-proven manually. The original SSE release still allowed legacy browser `POST -> 303` navigation when clicking `Ausblenden`/`Favorit`, causing scroll jumps. v0.3.45 fixes that interaction layer while preserving backend POST+CSRF authority.
 
-v0.3.45 fixes the browser interaction layer without changing the authoritative backend write paths:
-- shared live client delegates `submit` events for existing house/job `favorite` and `hidden` POST forms
-- matched curation forms are sent with `fetch()` and `FormData`; `preventDefault()` stops browser navigation
-- existing CSRF fields and backend POST handlers remain authoritative and unchanged
-- submit buttons are disabled while the request is in flight to prevent duplicate writes
-- after a successful write, the existing server-rendered current page is refreshed in-place
-- before `<main>` replacement the client captures a visible `house-*`/`job-*` viewport anchor and `scrollY`
-- after replacement the client restores the same visual anchor; if the anchor disappeared (for example the just-hidden card), it restores the previous scroll offset rather than jumping to the top
-- SSE-triggered refresh uses the same viewport-preserving path, so crawler/cross-tab invalidations also should not jump the page
-- progressive enhancement remains: without JS, legacy POST+303 still works
-- deliberate exception: hiding a house while already on `/houses/{id}` keeps the navigation fallback, because that detail URL is intentionally no longer valid after the house is hidden
+Current behavior:
+- catalog house/job favorite/hidden forms are delegated through `fetch()` + `FormData`
+- `preventDefault()` prevents browser navigation
+- buttons are disabled while the POST is in flight
+- successful updates refresh the current server-rendered `<main>` in place
+- viewport anchor + `scrollY` are captured/restored around replacement
+- if the just-hidden card disappears, prior scroll offset is retained instead of jumping to top
+- SSE-triggered refresh uses the same viewport-preserving mechanism
+- without JS, legacy POST+303 remains a fallback
+- hiding the currently open `/houses/{id}` detail page deliberately keeps navigation semantics because the hidden detail URL is no longer valid
 
-The interception automatically covers catalog house actions, catalog job actions and house curation inside job-detail pages by matching the existing action URL shape; no template contract changes are required.
-
-Development CI for v0.3.45: Ruff/Compile clean and 533 tests passed. Added regression assertions verify delegated submit interception, `preventDefault`, fetch/FormData submission, duplicate-submit guard, viewport snapshot/restore and the house-detail-hide navigation exception.
+Manual production verification by the user: `Ausblenden` now works correctly without reload/navigation and without the page jumping upward.
 
 ## Current near-term roadmap
 
-1. Squash v0.3.45 development commits into one atomic commit whose parent is exact production v0.3.44 SHA `c2d4965...`.
+1. Squash v0.3.46 development commits into one atomic commit whose parent is exact production v0.3.45 SHA `1b97f5e...`.
 2. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
-3. Deploy v0.3.45 with the usual timer quiesce/server gate/restart procedure; no DB migration is required.
-4. Production UX proof should be manual/browser-based: scroll well down `/houses`, click `Ausblenden`, verify no browser navigation/reload and no jump to page top; also test Favorit and one Stellen curation action.
-5. Confirm public health and restore exactly the timers that were active before deploy.
-6. Only after this UX regression is closed return to geo/matching backlog.
+3. Deploy v0.3.46 with timers quiesced; no DB migration required.
+4. Run `scripts/resolve_job_locations.py` exactly once as the targeted repair/postprocess.
+5. Production proof must show:
+   - Schaftenau resolved by `verified_sublocality_postal_centroid` to the local 6336 centroid
+   - Puntigam resolved by the same method to the local 8055 centroid
+   - redundant non-remote `AT` row on job #160 removed while Salzburg remains
+   - broad region rows remain unresolved
+   - no crawl run is created by the repair
+6. Restore exactly the timers active before deployment.
+7. Close geo cleanup and move to matching/commute product work; do not resume generic job-source expansion.
 
 ## Deployment discipline
 
