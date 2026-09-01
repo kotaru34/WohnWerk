@@ -10,9 +10,11 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Release state
 
-- Current production: **v0.3.42**.
-- Production SHA: `dc7aa0b81f6e7e00bf0dab7cfd5d0502c970159a`.
-- Current branch release candidate: **v0.3.43** — durable SSE-based live synchronization for Häuser/Stellen pages.
+- Current production: **v0.3.43**.
+- Production SHA: `e133e330a3d3da84c7a58797318bb7c55b0a5d56`.
+- Production DB migration: `0011_live_ui_events` (head).
+- Current branch release candidate: **v0.3.44** — runtime model-registration hotfix for durable live-event writes.
+- v0.3.43 web rendering, Basic Auth protection and live-client injection are healthy, but the final deployment probe exposed an isolated-process SQLAlchemy metadata bug before the first `live_ui_events` insert: `app.live_events` referenced `candidate_profiles` without registering `CandidateProfile`. Keep acquisition timers quiesced until v0.3.44 is deployed and the insert/replay probe passes.
 - Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
@@ -119,7 +121,7 @@ Known remaining geo work includes broad/non-point labels such as `Kärnten`, `We
 
 ## IMMMO coverage authority
 
-v0.3.42 is deployed in production. It repaired IMMMO reconciliation authority by separating structural source coverage from stable synthetic/source-less identity share.
+v0.3.42 is deployed in production history and remains the active IMMMO coverage policy. It repaired IMMMO reconciliation authority by separating structural source coverage from stable synthetic/source-less identity share.
 
 Coverage policy: `immmo-identity-churn-2026-09-01-v1` in `app/crawling/immmo_quality.py`:
 - structural authority requires reconciliation + traversal complete + no cap + cards_seen==cards_parsed + count delta in tolerance
@@ -145,7 +147,7 @@ Only `coverage=ok` reconciliation may prove disappearance.
 
 ## v0.3.43 live UI synchronization
 
-Current release candidate replaces manual refresh dependency with server-sent invalidation events while keeping existing server-rendered pages and POST write paths authoritative.
+v0.3.43 introduced server-sent invalidation events while keeping existing server-rendered pages and POST write paths authoritative.
 
 Architecture:
 - durable `live_ui_events` journal in Postgres via Alembic revision `0011_live_ui_events`
@@ -170,17 +172,24 @@ Browser behavior:
 - current POST forms remain unchanged and authoritative
 - unauthenticated product requests do not perform a live-event DB cursor read before Basic Auth
 
-Development CI has already exercised the live event journal, SSE framing/cursor semantics, shared-client injection, job curation events, property favorite/hidden/viewed events, job viewed events, migration head and the job postprocess invalidation boundary. Development commits remain non-deployable until squashed into one atomic release commit over production SHA.
+Production deployment of v0.3.43 succeeded through code/tests/migration/web startup: 529 tests passed, DB migrated `0010_property_activity -> 0011_live_ui_events`, `/houses` and `/jobs` rendered the live client, public `/health` reported v0.3.43, and unauthenticated `/events` returned 401. The first controlled durable insert then failed with `NoReferencedTableError` because isolated `app.live_events` import did not register `candidate_profiles` in SQLAlchemy metadata. The transaction rolled back, so no probe event was persisted.
+
+## v0.3.44 runtime hotfix
+
+The hotfix makes `app.live_events` explicitly import/register `CandidateProfile`, eliminating the runtime dependency on unrelated import order. `candidate_fit.py` does not import `live_events`, so this does not introduce a circular import.
+
+Regression coverage deliberately removes the previous explicit `CandidateProfile` import from `tests/test_live_events.py` and verifies that `LiveUiEvent.profile_id` resolves its FK target from an isolated live-events import. Development CI after the fix: Ruff/Compile clean and 530 tests passed.
 
 ## Current near-term roadmap
 
-1. Finish v0.3.43 development checks and inspect the complete diff against production `dc7aa0b...`.
-2. Squash all v0.3.43 development commits into one atomic commit whose parent is exact production SHA.
-3. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
-4. Deploy with timers quiesced; run Alembic `0010_property_activity -> 0011_live_ui_events`; rerun server checks before restart.
-5. Production-verify authenticated SSE ready/replay behavior and cross-tab invalidation without opening `/jobs/{id}` as a smoke target.
-6. Restore exactly the timers that were active before deployment.
-7. Continue product/matching/property work; do not resume generic job-source expansion.
+1. Squash the v0.3.44 development commits into one atomic commit whose parent is exact deployed v0.3.43 SHA `e133e330...`.
+2. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
+3. Keep refresh/images/liveness timers quiesced during the hotfix deployment.
+4. Fast-forward production to v0.3.44; migration remains `0011_live_ui_events` (no new DB schema change).
+5. Rerun server Ruff/compile/tests and restart web.
+6. Repeat the controlled `deployment_probe` insert, authenticated public SSE ready/replay test, `/houses` + `/jobs` live-client smoke, and public health check.
+7. Only after successful durable insert/replay restore exactly the timers that were active before the incident.
+8. Continue product/matching/property work; do not resume generic job-source expansion.
 
 ## Deployment discipline
 

@@ -7,6 +7,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, func,
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
+from app.jobs.candidate_fit import CandidateProfile  # noqa: F401
 
 
 class LiveUiEvent(Base):

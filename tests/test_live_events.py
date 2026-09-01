@@ -2,7 +2,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database import Base
-from app.jobs.candidate_fit import CandidateProfile  # noqa: F401
 from app.live_events import (
     LiveUiEvent,
     latest_live_event_id,
@@ -15,6 +14,17 @@ def _session() -> Session:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[LiveUiEvent.__table__])
     return Session(engine)
+
+
+def test_live_event_model_resolves_profile_foreign_key_without_import_order_dependency() -> None:
+    profile_fk = next(
+        foreign_key
+        for foreign_key in LiveUiEvent.__table__.foreign_keys
+        if foreign_key.parent.name == "profile_id"
+    )
+
+    assert profile_fk.column.table.name == "candidate_profiles"
+    assert profile_fk.column.name == "id"
 
 
 def test_live_event_journal_orders_and_replays_after_cursor() -> None:
