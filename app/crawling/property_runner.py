@@ -12,6 +12,11 @@ from app.crawling.coverage import (
     finalize_run,
     reconcile_missing_listings,
 )
+from app.crawling.immmo_quality import (
+    annotate_immmo_coverage_cursor,
+    decide_immmo_coverage,
+    synthetic_new_in_shard,
+)
 from app.crawling.shards import sync_source_shards
 from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
@@ -100,6 +105,25 @@ async def run_property_source(
                 items=batch.items,
             )
 
+            coverage_complete = batch.coverage_complete
+            if source.name == "immmo.at":
+                synthetic_new = synthetic_new_in_shard(
+                    session,
+                    source=source,
+                    run=run,
+                    items=batch.items,
+                )
+                decision = decide_immmo_coverage(
+                    batch,
+                    reconciliation=reconciliation,
+                    synthetic_new=synthetic_new,
+                )
+                coverage_complete = decision.coverage_complete
+                next_cursor = annotate_immmo_coverage_cursor(
+                    next_cursor,
+                    decision,
+                )
+
             now = datetime.now(UTC)
             shard_run.status = RunStatus.SUCCESS
             shard_run.finished_at = now
@@ -109,14 +133,14 @@ async def run_property_source(
             shard_run.items_updated = updated_count
             shard_run.source_reported_count = batch.source_reported_count
             shard_run.result_cap_hit = batch.result_cap_hit
-            shard_run.coverage_complete = batch.coverage_complete
+            shard_run.coverage_complete = coverage_complete
             shard_run.next_cursor = next_cursor
 
             shard.cursor = next_cursor
             shard.last_item_count = len(batch.items)
             shard.last_success_at = now
             shard.consecutive_failures = 0
-            if reconciliation and batch.coverage_complete and not batch.result_cap_hit:
+            if reconciliation and coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
         except Exception as exc:
             # A failed flush/commit leaves SQLAlchemy in a failed transaction state. Roll it

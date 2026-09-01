@@ -10,31 +10,31 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Release state
 
-- Production baseline before the current radius-filter rollout: **v0.3.37**.
-- Production baseline SHA: `e9e9883565ab97e9ad6c375b4fd1a39e057f8622`.
-- Current branch release candidate: **v0.3.38** — saved house locality + radius filtering.
-- Current concept extractor: `concept-seed-2026-08-31-v4`.
+- Current production: **v0.3.41**.
+- Production SHA: `49db7ac20102f34ea6045668fa3deebc14e67bd6`.
+- Current branch release candidate: **v0.3.42** — repair IMMMO reconciliation authority by separating structural coverage from synthetic-identity churn.
+- Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
 - Candidate fit policy: `candidate-fit-2026-08-28-v3`.
-- Exact-head GitHub CI is a hard deployment gate. Never deploy one of the temporary development commits used while building a release.
+- Exact-head GitHub CI is a hard deployment gate. Never deploy temporary development commits.
 
-`/health` exposes both application version and `job_concept_extractor`. Since v0.3.37, mutating refresh work fails closed when the code on disk and the running web reader do not report the same release/extractor pair. This release-mismatch guard was proven on production in both negative and positive directions without database writes.
+`/health` exposes application version and `job_concept_extractor`. Mutating refresh work fails closed when disk and running web release/extractor differ.
 
 ## Product invariants
 
 WohnWerk is a private/self-hosted Austria-first property + job acquisition, personalization and matching system for the candidate/father.
 
-- App/user UI is German-only.
-- Father-facing product has independent **Häuser** and **Stellen** catalogs.
+- User UI is German-only.
+- Häuser and Stellen catalogs are independent.
 - Source lifecycle, discovery relevance and candidate fit are separate concerns.
-- Failed/partial crawls never mass-deactivate authoritative data.
-- Missing from a bounded frontier search is not disappearance proof.
+- Failed/partial/degraded reconciliations never prove disappearance.
+- Missing from bounded frontier scans is not disappearance proof.
 - Disabled sources never contribute father-visible jobs.
-- Hidden/favorite/viewed curation survives lifecycle/canonical merges.
+- Hidden/favorite/viewed state survives lifecycle/canonical merges.
 - Never invent coordinates, images, prices, salary semantics or property attributes.
-- Geography/commute remains separate from intrinsic job fit.
-- No permanent Job×Property pair table unless future measurements justify it.
+- Geography/commute is separate from intrinsic candidate fit.
+- No permanent Job×Property pair table unless measurements justify it.
 - Only a complete authoritative `coverage=ok` reconciliation may prove disappearance.
 
 ## Runtime
@@ -42,14 +42,14 @@ WohnWerk is a private/self-hosted Austria-first property + job acquisition, pers
 Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 
 - Caddy -> `127.0.0.1:8000`
-- FastAPI/Uvicorn service: `wohnwerk.service`
+- FastAPI/Uvicorn: `wohnwerk.service`
 - local OSRM: `127.0.0.1:5000`
-- refresh scheduler: `wohnwerk-refresh.timer`
+- refresh: `wohnwerk-refresh.timer`
 - image worker: `wohnwerk-images.timer`
 - liveness worker: `wohnwerk-liveness.timer`
-- `/health` is lightweight and unauthenticated
-- father-facing `/houses`, `/jobs`, `/houses/{id}`, `/jobs/{id}` use HTTP Basic through `AdminDependency`
-- do not use `/jobs/{id}` as an automated HTTP smoke test because the detail route marks the job viewed
+- `/health` is unauthenticated
+- father-facing routes use HTTP Basic
+- never automate `/jobs/{id}` smoke because opening a job detail marks it viewed
 
 Server timezone: `Europe/Vienna`.
 
@@ -58,94 +58,37 @@ Server timezone: `Europe/Vienna`.
 Profile slug: `mechanical-project-engineer`  
 UI label: `Maschinenbau / technische Projektleitung`
 
-Approx. 30 years in mechanical engineering and technical project leadership, including product development, mechanical design, machinery, vehicles/special vehicles, rail, special machinery/fixtures, technical project leadership, suppliers, requirements/specifications, schedules, testing/assembly/commissioning, FEM and FMEA.
+Approx. 30 years mechanical engineering + technical project leadership. Strong neighborhood: senior mechanical engineering, development engineering, technical project/program leadership and engineering leadership. Structural/near exclusions include sales, software/IT development, pure electrical, construction/TGA/HKLS, technician/trade, junior/trainee, commercial PM, procurement and HR.
 
-Strong target neighborhood:
-- senior mechanical engineering
-- development engineering
-- technical project/program leadership
-- engineering leadership
-
-Structural/near-structural exclusions include Sales/Vertrieb, software/IT development, pure electrical, construction/TGA/HKLS, technician/trade roles, junior/trainee roles, commercial PM, procurement and HR.
-
-Discovery remains deliberately broader than candidate fit. Fit is recomputed live from persisted current-extractor concept evidence and persisted profile preferences; `Job.job_fit_score` is not the source of truth.
-
-## Candidate preference state
-
-Profile seed: `candidate-profile-2026-08-28-v2`.
-
-Manual preferences override seed-managed preferences and survive future seed synchronization.
-
-The two concepts introduced during PALFINGER calibration are manually rated by the father:
+Manual father preferences include:
 - `role:industrial-engineer = cannot_not_want`
 - `role:quality-manager = cannot_not_want`
 
-These primary role states intentionally make matching Industrial Engineer / Quality Manager postings hard-incompatible under fit policy v3.
+Concept extractor v5 adds the exact composite title alias `Mechanical/Fluids Engineer` to existing `role:mechanical-engineer`. Production proof: job #374 became score 69, coverage 1.000, compatible; v4->v5 changed exactly job #374 and all 248 relevant active jobs became scored.
 
 ## Job-source expansion phase: CLOSED
 
-Do **not** continue adding job sources merely to increase raw source count. The acquisition phase is considered sufficiently broad. From this checkpoint onward, job-source work is maintenance/repair only unless a concrete coverage gap justifies reopening expansion.
+Do not continue generic job-source expansion. Existing enabled job sources are maintained/fixed only unless a concrete coverage gap justifies reopening.
 
-Enabled job sources include:
-- `karriere.at`
-- `jobs.at`
-- `stepstone.at`
-- `willhaben-jobs`
-- `lever-public-postings` (useful retained tenant: TSMG)
-- `personio-public-xml`
-- `smartrecruiters-public-postings`
-- `workday-public-cxs`
-- `greenhouse-public-job-board` (validated watcher)
-- `successfactors-public-career-site`
-- `tgw-direct-careers`
-- `palfinger-direct-careers`
+PALFINGER promotion is complete; do not rerun PALFINGER reconciliation merely to re-prove it.
 
-`immoads.at` remains disabled.
+## Salary state
 
-### PALFINGER final production promotion
+Policy: `explicit-salary-text-2026-08-30-v7`.
 
-PALFINGER is fully promoted and enabled. Do not rerun its reconciliation merely to re-prove the promotion.
-
-Promotion proof:
-- source id 15
-- 7 active discovery-accepted persisted listings
-- enable changed father-visible catalog by exactly +7, with no removals
-- enable itself did not change crawl count or concept evidence corpus
-- refresh timer restored afterward
-
-Promoted jobs at enable time:
-- 355 Experienced Mechanical Engineer — score 65, compatible
-- 356 Industrial Engineer — score 25, hard incompatible via `role:industrial-engineer`
-- 357 Arbeitstechniker / Industrial Engineer — score 25, hard incompatible via `role:industrial-engineer`
-- 358 Plant Quality Manager — score 24, hard incompatible via `role:quality-manager`
-- 359 Projekt Manager - Special Lifting Solutions — score 92, compatible
-- 360 Entwicklungsingenieur Kransysteme oder Fahrzeugtechnik — score 79, compatible
-- 361 Development Engineer - Service & Diagnostic Tools — score 70, compatible
-
-Observed father-visible count immediately before/after promotion was 240 -> 247. This count may drift naturally as sources refresh; the exact +7 promotion delta is the invariant, not 247 forever.
-
-## Job concept / salary policies
-
-Concept extractor: `concept-seed-2026-08-31-v4`.
-
-v4 added/expanded industrial engineering vocabulary without silently assigning father preferences, including:
-- `role:industrial-engineer`
-- `role:quality-manager`
-- project manager alias coverage
-- automotive/special-machinery/mechanical aliases
-- product development, production/manufacturing, calculation/simulation, project management and technical documentation phrases
-
-Salary policy: `explicit-salary-text-2026-08-30-v7`.
-
-Important salary invariants:
-- preserve source pay period
-- no automatic Austrian monthly ×14 assumption
+Important invariants:
+- preserve source period
+- no automatic Austrian monthly ×14
 - monthly annualization only with explicit payment count
-- hourly annualization remains missing-last without defensible hours/week evidence
-- structured source salary wins text-derived salary
-- text parsing requires explicit currency/period/plausibility and appropriate cue unless trusted source semantics provide the cue context
-- narrow fragmented period forms are supported; arbitrary whitespace gluing is not
-- explicit yearly wording is supported in v7
+- hourly remains non-annualized without defensible hours/year
+- structured source salary wins text
+- no invented period semantics
+
+v0.3.39 repaired detail salary acquisition and Greenhouse structured pay ingestion. Production backfill proved:
+- StepStone job 363: EUR 3700/month, no invented annualization
+- Willhaben job 365: EUR 19.98/hour
+- GROPYUS job 384: EUR 55k..60k/year structured
+- Willhaben job 385: EUR 17.50/hour
 
 ## Property sources and semantics
 
@@ -164,94 +107,76 @@ Property rules:
 - conservative dedupe only
 - never invent property coordinates or attributes
 
-At this checkpoint the admin source page reports `immmo.at` as warning/degraded. This is an explicit pending diagnostic task; do not paper over it by changing the UI status without understanding the latest run/coverage evidence.
+## House radius
 
-## House locality + radius release candidate (v0.3.38)
-
-The current branch adds an optional saved `radius_km` house filter so a user can enter e.g. `Salzburg` + `50` and receive properties geographically within 50 km, not only rows whose city text contains Salzburg.
-
-Design:
-- existing exact/substring `Ort oder PLZ` behavior remains when radius is empty
-- radius accepts 1..250 km and is meaningful only with a non-empty location
-- filter persists in the existing house-filter cookie
-- 4-digit PLZ uses the stored Austrian postal centroid
-- locality names use the existing conservative Austrian job-locality resolver/reference corpus
-- actual filtering uses PostGIS `ST_DWithin` on `Property.location`
-- no external geocoder and no invented coordinates
-- unresolved radius center fails closed to zero matches and displays a German explanation instead of silently reverting to textual city matching
-- saved house radius filters also remain in force when viewing houses around a job
-
-Before production rollout, v0.3.38 still requires final exact-head CI and standard production verification.
+v0.3.39 repaired the active `/houses` route after the v0.3.38 radius regression. Production proof: `/houses` 200 and Salzburg exact 1 -> Salzburg 50 km 37. Saved `radius_km` is 1..250 km, uses stored Austrian postal/locality centroids and PostGIS `ST_DWithin`; unresolved centers fail closed.
 
 ## Job geography
 
-Existing policy:
-- explicit source PLZ wins
-- otherwise conservative known-locality centroid
-- broad Bundesland/country labels stay unresolved instead of receiving fake point coordinates
-- approximate area anchors are allowed only where an explicit conservative policy exists
+v0.3.41 repaired 11 concrete unresolved location rows without inventing points. Father-visible unresolved fell from 18 to 7. Broad regions remain intentionally non-point.
 
-Pending unresolved-location audit from the current product UI:
-- Sankt Pölten
-- AT
-- Bezirk Wels-Land
-- Blaindorf
-- Ebenthal in Kärnten
-- Graz Umgebung-West
-- Kärnten
-- Premstätten
-- Puntigam
-- Ranshofen
-- Sankt Florian am Inn
-- Schaftenau
-- Traboch
-- Wels-Land
-- österreichweit
+Known remaining geo work includes broad/non-point labels such as `Kärnten`, `Wels-Land`, `Bezirk Wels-Land`, `Graz Umgebung-West`, plus later candidates `Schaftenau`, `Puntigam`, and source-parser case `AT` on jobs.at. Do not map broad areas to arbitrary centroids.
 
-Do not automatically point-resolve country/state/district-wide labels such as `AT`, `österreichweit`, `Kärnten` or `Bezirk Wels-Land`. Audit actual source rows and postal/locality evidence first. Real localities/spelling variants should be fixed from evidence, not guessed.
+## IMMMO warning diagnosis and v0.3.42 policy
+
+Production v0.3.41 currently reports IMMMO source coverage degraded because recent reconciliations are failing only the old synthetic-link-share gate.
+
+Evidence from reconciliation #654:
+- run success, 9/9 shards, 0 failed, traversal complete everywhere
+- cards parsed == cards seen everywhere
+- count delta = 0 within tolerance everywhere
+- six shards fail only `synthetic > synthetic_tolerance`
+- 1321 synthetic cards across 580 pages
+- only **3 synthetic identities were new in the run**
+- live audit of 24 high-synthetic pages found 182 current parser gaps; 179/182 had no current-card external link at all
+- no useful non-`<a>` data/onclick links were found
+- only 3/182 had a safe following title-prefix `<a>` parser miss
+
+Conclusion: IMMMO legitimately publishes many source-less cards. Total synthetic share is not a source-coverage invariant. The old static 5/8% link-quality threshold conflates source behavior with parser failure.
+
+v0.3.42 introduces coverage policy `immmo-identity-churn-2026-09-01-v1` in `app/crawling/immmo_quality.py`:
+- structural authority requires reconciliation + traversal complete + no cap + cards_seen==cards_parsed + count delta in tolerance
+- after ingest, each shard counts genuinely **new synthetic identities**
+- identity churn fails closed if new synthetic rows exceed `max(3, 1% of cards seen)`
+- legacy total-synthetic link-quality remains diagnostic only
+- a stable population of source-less cards can therefore be authoritative
+- a parser regression that suddenly converts many stable external URLs into new synthetic identities still degrades coverage
+
+`audit_immmo_run.py` now prints structural state, synthetic-new count/tolerance, identity churn and policy version.
+
+Do not manually change `Source.coverage_status`. After v0.3.42 deployment, prove the policy with a real reconciliation; only a resulting `coverage=ok` should clear the source warning and become disappearance-authoritative.
 
 ## Source health semantics
 
-Execution success and coverage authority are separate:
+Execution success and coverage authority are independent:
 - complete successful authoritative scan -> `success / ok`
-- successful bounded frontier -> successful execution with non-authoritative/unknown or degraded coverage as appropriate
+- successful bounded incremental -> successful execution, non-authoritative coverage
 - mixed actual failures -> `partial / degraded`
 - all failed -> `failed / failed`
 
 Only `coverage=ok` reconciliation may prove disappearance.
 
-`/admin/health` tracks source execution/coverage and source value. Use useful/exclusive coverage rather than raw item count when deciding maintenance value.
-
 ## Real-time UI synchronization TODO
 
-Preferred direction remains SSE:
-- server -> browser invalidation/update events
-- existing POSTs remain authoritative for writes
-- reconcile affected cards/counters without forcing a full reload where practical
-- event IDs, reconnect and keepalive
-- avoid aggressive polling
-- WebSockets only if a genuine bidirectional low-latency need appears
-
-This is an active near-term task after geo/source-health cleanup.
+Preferred direction remains SSE: server->browser invalidation/update events, current POSTs stay authoritative, reconnect/event IDs/keepalive, avoid aggressive polling. WebSockets only if a genuine bidirectional low-latency need appears.
 
 ## Current near-term roadmap
 
-1. Finish and production-gate v0.3.38 house locality + radius filter.
-2. Audit and repair real unresolved job localities; preserve broad scopes as intentionally non-point.
-3. Diagnose `immmo.at` warning/degraded from actual crawl/coverage evidence.
-4. Implement dynamic website data synchronization (SSE TODO).
-5. Diagnose why job #374 receives no fit score and fix the underlying concept/evidence issue conservatively.
-6. Continue remaining product/matching/property tasks; do not resume generic job-source expansion.
+1. Production-gate v0.3.42 IMMMO identity-churn coverage policy and prove with one real reconciliation.
+2. If reconciliation is `ok`, confirm admin warning clears and inspect disappeared/continuity effects before declaring IMMMO closed.
+3. Do not extend geo cleanup further unless product impact warrants it.
+4. Implement SSE dynamic website synchronization.
+5. Continue product/matching/property work; do not resume generic job-source expansion.
 
 ## Deployment discipline
 
 For every branch change:
 1. inspect final diff
-2. wait for GitHub CI on the exact branch HEAD
+2. wait for GitHub CI on exact branch HEAD
 3. require Install + Ruff + Compile + Tests success
-4. only then provide production deployment commands
-5. production reruns Ruff/compile/tests before restart
-6. verify `/health` plus targeted production data controls
-7. never deploy a red or intermediate SHA
-
-When a release changes code on disk before the long-lived web service restarts, keep the refresh release-mismatch guard in mind; it must defer mutating source work until runtime and disk report matching release/extractor markers.
+4. squash development commits into one atomic release commit over current production
+5. wait for exact-head CI on that atomic release SHA
+6. only then deploy
+7. production reruns Ruff/compile/tests before restart
+8. verify `/health` plus targeted production controls
+9. never deploy a red/intermediate SHA
