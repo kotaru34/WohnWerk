@@ -78,6 +78,40 @@ _LIVE_SYNC_SCRIPT = r"""
     return active.matches("input, select, textarea, [contenteditable='true']");
   };
 
+  const viewportSnapshot = () => {
+    const candidates = Array.from(
+      document.querySelectorAll("main [id^='house-'], main [id^='job-']")
+    );
+    let anchor = candidates.find((element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= 0 && rect.top < window.innerHeight;
+    });
+    if (!anchor) {
+      anchor = candidates.find((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+      });
+    }
+    return {
+      id: anchor ? anchor.id : null,
+      top: anchor ? anchor.getBoundingClientRect().top : null,
+      scrollY: window.scrollY
+    };
+  };
+
+  const restoreViewport = (snapshot) => {
+    if (snapshot.id && snapshot.top !== null) {
+      const anchor = document.getElementById(snapshot.id);
+      if (anchor) {
+        const delta = anchor.getBoundingClientRect().top - snapshot.top;
+        if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+        return;
+      }
+    }
+    const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    window.scrollTo(0, Math.min(snapshot.scrollY, maximum));
+  };
+
   const refreshMain = async () => {
     refreshTimer = null;
     if (editing()) {
@@ -91,6 +125,7 @@ _LIVE_SYNC_SCRIPT = r"""
 
     refreshing = true;
     dirtyDuringRefresh = false;
+    const snapshot = viewportSnapshot();
     try {
       const response = await fetch(window.location.href, {
         method: "GET",
@@ -108,6 +143,7 @@ _LIVE_SYNC_SCRIPT = r"""
       if (!nextMain || !currentMain) return;
       currentMain.replaceWith(nextMain);
       if (incoming.title) document.title = incoming.title;
+      restoreViewport(snapshot);
     } catch (_error) {
       // EventSource reconnect and the next invalidation will retry naturally.
     } finally {
@@ -137,6 +173,60 @@ _LIVE_SYNC_SCRIPT = r"""
         scheduleRefresh();
       }
     }, 80);
+  }, true);
+
+  const curationAction = (form) => {
+    if (!(form instanceof HTMLFormElement)) return null;
+    if (form.method.toLowerCase() !== "post") return null;
+    const action = new URL(form.action, window.location.href).pathname;
+    if (!/^\/(?:houses|jobs)\/\d+\/(?:favorite|hidden)$/.test(action)) return null;
+
+    // Hiding the house currently shown on /houses/{id} intentionally keeps the
+    // old navigation fallback because that detail URL becomes invalid once hidden.
+    if (/^\/houses\/\d+$/.test(window.location.pathname) && /\/hidden$/.test(action)) {
+      return null;
+    }
+    return action;
+  };
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target;
+    if (!curationAction(form)) return;
+
+    event.preventDefault();
+    if (form.dataset.wwPending === "1") return;
+    form.dataset.wwPending = "1";
+
+    const button = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        cache: "no-store",
+        redirect: "follow",
+        headers: {
+          "X-WohnWerk-Async": "1"
+        }
+      });
+      if (!response.ok) throw new Error(`curation failed: ${response.status}`);
+      scheduleRefresh();
+    } catch (_error) {
+      if (button) {
+        button.title = "Änderung konnte nicht gespeichert werden. Bitte erneut versuchen.";
+      }
+    } finally {
+      delete form.dataset.wwPending;
+      if (button && button.isConnected) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      }
+    }
   }, true);
 
   const stream = new EventSource(`/events?after=${initialCursor}`);
