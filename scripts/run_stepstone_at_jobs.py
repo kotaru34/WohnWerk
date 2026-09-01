@@ -18,8 +18,8 @@ ADAPTER_PATH = "app.sources.job.stepstone_salary.StepStoneAtJobSource"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Low-impact StepStone Austria discovery frontier: five search pages with "
-            "bounded salary-only detail enrichment for relevant vacancies."
+            "Low-impact StepStone Austria discovery frontier: five search pages with salary "
+            "detail enrichment for discovery-accepted vacancies that still lack salary."
         )
     )
     parser.add_argument(
@@ -31,8 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-details",
         type=int,
-        default=8,
-        help="Maximum relevant detail pages per search shard (default: 8).",
+        default=0,
+        help=(
+            "Optional cap on accepted salary detail pages per shard; 0 enriches every "
+            "accepted salary-missing first-page vacancy (default: 0)."
+        ),
     )
     return parser.parse_args()
 
@@ -42,10 +45,12 @@ def get_or_create_source() -> int:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
             "scope": "focused Austrian mechanical-engineering searches on StepStone Austria",
-            "acquisition": "first-page search cards plus bounded salary-only detail requests",
+            "acquisition": "first-page search cards plus accepted salary-missing detail pages",
             "coverage": "intentionally incomplete discovery frontier",
             "reconciliation_interval_hours": None,
-            "detail_policy": "up to 8 mechanically relevant detail pages per shard",
+            "detail_policy": (
+                "all discovery-accepted first-page vacancies without usable salary evidence"
+            ),
         }
         if source is None:
             source = Source(
@@ -74,7 +79,7 @@ async def async_main() -> int:
     source_id = get_or_create_source()
     adapter = StepStoneAtJobSource(
         request_delay_seconds=max(0.0, args.delay),
-        max_details_per_shard=max(0, args.max_details),
+        max_details_per_shard=(args.max_details if args.max_details > 0 else None),
     )
 
     with SessionLocal() as session:
@@ -101,7 +106,7 @@ async def async_main() -> int:
             f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
         )
         print(
-            "note=first-page frontier with bounded salary-only detail enrichment; "
+            "note=first-page frontier with accepted salary-missing detail enrichment; "
             "no disappearance authority"
         )
 

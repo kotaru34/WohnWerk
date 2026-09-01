@@ -30,6 +30,7 @@ from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
 from app.models import Job, Property
 from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
+from app.property_location_filter import resolve_property_radius_filter
 from app.templates_runtime import templates as product_templates
 
 router = APIRouter(tags=["site"])
@@ -192,6 +193,7 @@ def houses_page(
     _: AdminDependency,
     db: DbDependency,
     ort: Annotated[str, Query()] = "",
+    radius_km: Annotated[Decimal | None, Query(ge=1, le=250)] = None,
     preis_von: Annotated[Decimal | None, Query(ge=0)] = None,
     preis_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     wohn_von: Annotated[Decimal | None, Query(ge=0)] = None,
@@ -214,6 +216,7 @@ def houses_page(
     filters = resolve_house_filters(
         request,
         ort=ort,
+        radius_km=radius_km,
         preis_von=preis_von,
         preis_bis=preis_bis,
         wohn_von=wohn_von,
@@ -223,12 +226,13 @@ def houses_page(
         grund_von=grund_von,
         grund_bis=grund_bis,
     )
+    radius_filter = resolve_property_radius_filter(db, filters)
     baseline = novelty_baseline(db, profile)
     curation_view = "alle" if ansicht == "neu" else ansicht
     conditions = [
         *_product_property_conditions(),
         property_curation_condition(profile.id, curation_view),
-        *_property_filter_conditions(filters),
+        *_property_filter_conditions(filters, radius_filter=radius_filter),
     ]
     if ansicht == "neu":
         conditions.extend(_new_property_condition(profile.id, baseline))
@@ -292,6 +296,7 @@ def houses_page(
             "page": seite,
             "page_count": page_count,
             "filters": filters,
+            "location_filter_error": radius_filter.error if radius_filter is not None else None,
             "house_views": HOUSE_VIEWS,
             "selected_view": ansicht,
             "house_sorts": HOUSE_SORTS,
