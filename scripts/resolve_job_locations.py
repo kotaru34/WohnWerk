@@ -2,57 +2,93 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.database import SessionLocal
 from app.jobs.jobs_at_location_repair import repair_unresolved_jobs_at_locations
-from app.jobs.location_resolution import resolve_localities
+from app.jobs.location_resolution import canonicalize_locality, resolve_localities
 from app.jobs.location_resolution_fallback import resolve_localities_full_scan
 from app.models import JobLocation
+
+
+def _resolution_label(location: JobLocation) -> str | None:
+    if location.city and location.city.strip():
+        return location.city.strip()
+
+    # Some source adapters preserve a concrete locality only in the raw location text.
+    # Reuse it for geocoding without pretending that we received a structured city field.
+    text = (location.location_text or "").strip()
+    if not text or canonicalize_locality(text) is None:
+        return None
+    return text
 
 
 def main() -> None:
     with SessionLocal() as session:
         source_repair = repair_unresolved_jobs_at_locations(session)
 
-        # Remote-capable jobs can still have a real source-provided city. Preserve the
-        # remote flag, but resolve that physical city just like an on-site vacancy.
-        # Countrywide remote scopes without a concrete city are excluded naturally.
+        # Remote-capable jobs can still have a real source-provided locality. Preserve the
+        # remote flag, but resolve that physical place just like an on-site vacancy. For a
+        # few adapters the concrete locality exists only in location_text; countrywide and
+        # Bundesland-only labels remain excluded by canonicalize_locality()/the resolver.
         locations = list(
             session.scalars(
                 select(JobLocation)
                 .where(
                     JobLocation.location.is_(None),
-                    JobLocation.city.is_not(None),
+                    or_(
+                        JobLocation.city.is_not(None),
+                        JobLocation.location_text.is_not(None),
+                    ),
                 )
                 .order_by(JobLocation.id)
             )
         )
 
-        cities = {location.city for location in locations if location.city}
-        resolutions = resolve_localities(session, cities)
+        labels_by_location = {
+            location.id: _resolution_label(location)
+            for location in locations
+        }
+        labels = {
+            label
+            for label in labels_by_location.values()
+            if label is not None
+        }
+        resolutions = resolve_localities(session, labels)
 
         # The normal resolver deliberately uses a narrow SQL prefix prefilter. Punctuation
-        # such as `St. Valentin` can be normalized away before that prefilter and therefore
-        # miss an otherwise exact RTR locality. Only unresolved concrete cities fall back
-        # to one in-memory scan of the small Austrian postal table; matching remains exact
-        # after punctuation normalization and never becomes fuzzy.
-        missing_cities = {city for city in cities if city not in resolutions}
-        if missing_cities:
-            resolutions.update(resolve_localities_full_scan(session, missing_cities))
+        # such as `St. Valentin`, official-vs-source `Sankt` spelling, and a small set of
+        # Statistics-Austria-backed locality/postal exceptions therefore use one in-memory
+        # scan of the small Austrian postal table. Matching never becomes fuzzy.
+        missing_labels = {label for label in labels if label not in resolutions}
+        if missing_labels:
+            resolutions.update(resolve_localities_full_scan(session, missing_labels))
 
         updated = 0
         unresolved: Counter[str] = Counter()
         resolved: Counter[str] = Counter()
+        skipped_without_concrete_label = 0
+
         for location in locations:
-            city = location.city or ""
-            resolution = resolutions.get(city)
-            if resolution is None:
-                unresolved[city or "<missing>"] += 1
+            label = labels_by_location[location.id]
+            if label is None:
+                skipped_without_concrete_label += 1
+                unresolved[
+                    (location.city or location.location_text or "<missing>").strip()
+                    or "<missing>"
+                ] += 1
                 continue
+
+            resolution = resolutions.get(label)
+            if resolution is None:
+                unresolved[label] += 1
+                continue
+
             location.location = resolution.as_wkt()
             updated += 1
-            resolved[f"{city} -> {resolution.canonical_locality}"] += 1
+            resolved[
+                f"{label} -> {resolution.canonical_locality} [{resolution.method}]"
+            ] += 1
 
         session.commit()
 
@@ -64,8 +100,9 @@ def main() -> None:
             f"failed:{source_repair.failed}"
         )
         print(
-            f"city_only_candidates={len(locations)} resolved={updated} "
-            f"unresolved={len(locations) - updated}"
+            f"location_candidates={len(locations)} resolved={updated} "
+            f"unresolved={len(locations) - updated} "
+            f"without_concrete_label={skipped_without_concrete_label}"
         )
         if resolved:
             print("resolved_localities:")
