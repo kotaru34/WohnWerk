@@ -4,6 +4,7 @@ from urllib.parse import parse_qsl, urlencode
 
 HOUSE_OPTIONAL_NUMERIC_FILTERS = frozenset(
     {
+        "radius_km",
         "preis_von",
         "preis_bis",
         "wohn_von",

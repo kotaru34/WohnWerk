@@ -43,6 +43,7 @@ from app.models import JobLocation, ListingStatus, Property, PropertyListing, So
 from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
 from app.property_areas import usable_area_property_condition
 from app.property_images import cached_image_urls, local_image_path
+from app.property_location_filter import PropertyRadiusFilter, resolve_property_radius_filter
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
@@ -232,17 +233,26 @@ def _visible_fit_rows(db: Session) -> list[JobFitView]:
     ]
 
 
-def _property_filter_conditions(filters: HouseFilters) -> list:
+def _property_filter_conditions(
+    filters: HouseFilters,
+    *,
+    radius_filter: PropertyRadiusFilter | None = None,
+) -> list:
     conditions = []
     normalized_location = filters.ort.strip()
     if normalized_location:
-        like = f"%{normalized_location}%"
-        conditions.append(
-            or_(
-                Property.postal_code.ilike(like),
-                Property.city.ilike(like),
+        if filters.radius_km is not None:
+            if radius_filter is None:
+                raise ValueError("resolved radius filter is required for a radius query")
+            conditions.append(radius_filter.condition)
+        else:
+            like = f"%{normalized_location}%"
+            conditions.append(
+                or_(
+                    Property.postal_code.ilike(like),
+                    Property.city.ilike(like),
+                )
             )
-        )
     if filters.preis_von is not None:
         conditions.append(Property.price_eur >= filters.preis_von)
     if filters.preis_bis is not None:
@@ -273,10 +283,17 @@ def _properties_within_radius_for_job_stmt(
     radius_km: float,
     house_filters: HouseFilters | None = None,
     profile_id: int | None = None,
+    *,
+    db: Session | None = None,
 ):
     if job_id <= 0:
         raise ValueError("job_id must be greater than zero")
     filters = house_filters or HouseFilters()
+    radius_filter = None
+    if filters.ort and filters.radius_km is not None:
+        if db is None:
+            raise ValueError("db session is required for a saved house radius filter")
+        radius_filter = resolve_property_radius_filter(db, filters)
     curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
@@ -317,7 +334,7 @@ def _properties_within_radius_for_job_stmt(
             *_product_property_conditions(),
             *curation,
             Property.location.is_not(None),
-            *_property_filter_conditions(filters),
+            *_property_filter_conditions(filters, radius_filter=radius_filter),
         )
         .subquery("catalog_property_job_candidates")
     )
@@ -518,6 +535,7 @@ def houses_page(
     _: AdminDependency,
     db: DbDependency,
     ort: Annotated[str, Query()] = "",
+    radius_km: Annotated[Decimal | None, Query(ge=1, le=250)] = None,
     preis_von: Annotated[Decimal | None, Query(ge=0)] = None,
     preis_bis: Annotated[Decimal | None, Query(ge=0)] = None,
     wohn_von: Annotated[Decimal | None, Query(ge=0)] = None,
@@ -535,6 +553,7 @@ def houses_page(
     filters = resolve_house_filters(
         request,
         ort=ort,
+        radius_km=radius_km,
         preis_von=preis_von,
         preis_bis=preis_bis,
         wohn_von=wohn_von,
@@ -544,10 +563,11 @@ def houses_page(
         grund_von=grund_von,
         grund_bis=grund_bis,
     )
+    radius_filter = resolve_property_radius_filter(db, filters)
     conditions = [
         *_product_property_conditions(),
         property_curation_condition(profile.id, ansicht),
-        *_property_filter_conditions(filters),
+        *_property_filter_conditions(filters, radius_filter=radius_filter),
     ]
 
     total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
@@ -601,6 +621,7 @@ def houses_page(
             "page": seite,
             "page_count": page_count,
             "filters": filters,
+            "location_filter_error": radius_filter.error if radius_filter is not None else None,
             "house_views": HOUSE_VIEWS,
             "selected_view": ansicht,
             "stats": stats,
@@ -710,6 +731,7 @@ def job_detail(
         radius_km,
         filters,
         profile_id=profile.id,
+        db=db,
     )
     total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
     page_count = max(1, math.ceil(total / NEARBY_HOUSE_PAGE_SIZE))

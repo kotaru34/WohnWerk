@@ -1,22 +1,25 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-08-30 (Europe/Vienna)  
+**Checkpoint date:** 2026-09-01 (Europe/Vienna)  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
 **Active branch:** `bootstrap/austria-mvp`  
 **Draft PR:** #1 — `Bootstrap Austria-first WohnWerk MVP`
 
-This is the authoritative recovery point for a fresh context.
+This is the authoritative recovery point for a fresh context. Dynamic catalog counts are observations, not permanent invariants.
 
-## Current release state
+## Release state
 
-- Production is verified through **v0.3.27**.
-- Production exact HEAD: `822cac80d0f1bf6daed71f752690048c662be766`.
-- Current branch target is **v0.3.28**, adding a disabled-by-default PALFINGER direct-career source for live zero-write validation.
-- Current discovery gate: `profile-seed-2026-08-30-v22`.
-- Current salary text policy: `explicit-salary-text-2026-08-30-v6`.
-- Father-facing relevant job catalog was 221 jobs after TGW promotion; later salary-only repairs do not change corpus membership.
-- Exact-head GitHub CI success is a hard production deployment gate.
+- Production baseline before the current radius-filter rollout: **v0.3.37**.
+- Production baseline SHA: `e9e9883565ab97e9ad6c375b4fd1a39e057f8622`.
+- Current branch release candidate: **v0.3.38** — saved house locality + radius filtering.
+- Current concept extractor: `concept-seed-2026-08-31-v4`.
+- Current discovery gate: `profile-seed-2026-08-30-v25`.
+- Current salary policy: `explicit-salary-text-2026-08-30-v7`.
+- Candidate fit policy: `candidate-fit-2026-08-28-v3`.
+- Exact-head GitHub CI is a hard deployment gate. Never deploy one of the temporary development commits used while building a release.
+
+`/health` exposes both application version and `job_concept_extractor`. Since v0.3.37, mutating refresh work fails closed when the code on disk and the running web reader do not report the same release/extractor pair. This release-mismatch guard was proven on production in both negative and positive directions without database writes.
 
 ## Product invariants
 
@@ -32,6 +35,7 @@ WohnWerk is a private/self-hosted Austria-first property + job acquisition, pers
 - Never invent coordinates, images, prices, salary semantics or property attributes.
 - Geography/commute remains separate from intrinsic job fit.
 - No permanent Job×Property pair table unless future measurements justify it.
+- Only a complete authoritative `coverage=ok` reconciliation may prove disappearance.
 
 ## Runtime
 
@@ -40,195 +44,108 @@ Public URL: `https://wohnwerk.kotaru.lainlounge.org`
 - Caddy -> `127.0.0.1:8000`
 - FastAPI/Uvicorn service: `wohnwerk.service`
 - local OSRM: `127.0.0.1:5000`
-- refresh scheduler timer: 15-minute wake-up
-- image/detail and liveness maintenance timers enabled
+- refresh scheduler: `wohnwerk-refresh.timer`
+- image worker: `wohnwerk-images.timer`
+- liveness worker: `wohnwerk-liveness.timer`
 - `/health` is lightweight and unauthenticated
 - father-facing `/houses`, `/jobs`, `/houses/{id}`, `/jobs/{id}` use HTTP Basic through `AdminDependency`
-- do not use `/jobs/{id}` as automated smoke tests: the detail route calls `mark_job_viewed()`
+- do not use `/jobs/{id}` as an automated HTTP smoke test because the detail route marks the job viewed
 
-Server timezone is `Europe/Vienna`; NTP remains enabled.
+Server timezone: `Europe/Vienna`.
 
-## Candidate / father profile
+## Candidate profile and matching
 
 Profile slug: `mechanical-project-engineer`  
 UI label: `Maschinenbau / technische Projektleitung`
 
-Approx. 30 years in mechanical engineering and technical project leadership, including:
-- product development and mechanical design
-- machinery, automotive/special vehicles, rail vehicles, fixtures/special machinery
-- technical project management and team leadership
-- supplier coordination
-- Lasten-/Pflichtenhefte and schedule ownership
-- testing, assembly and commissioning context
-- FEM, FMEA
-- classic and agile project work
+Approx. 30 years in mechanical engineering and technical project leadership, including product development, mechanical design, machinery, vehicles/special vehicles, rail, special machinery/fixtures, technical project leadership, suppliers, requirements/specifications, schedules, testing/assembly/commissioning, FEM and FMEA.
 
-Strong target neighborhood: senior mechanical engineering, development engineering, technical project/program leadership and engineering leadership.
+Strong target neighborhood:
+- senior mechanical engineering
+- development engineering
+- technical project/program leadership
+- engineering leadership
 
-Structural/near-structural exclusions:
-- Sales / Vertrieb
-- software/IT development and coding
-- pure electrical engineering
-- construction / building services / TGA / HKLS
-- technician / trade / Facharbeiter / Monteur roles
-- junior / graduate / trainee roles
-- commercial / kaufmännisch project roles
-- procurement / Einkauf
-- HR
+Structural/near-structural exclusions include Sales/Vertrieb, software/IT development, pure electrical, construction/TGA/HKLS, technician/trade roles, junior/trainee roles, commercial PM, procurement and HR.
 
-Discovery is intentionally broader than final fit, but obvious structural non-targets must be rejected before persistence.
+Discovery remains deliberately broader than candidate fit. Fit is recomputed live from persisted current-extractor concept evidence and persisted profile preferences; `Job.job_fit_score` is not the source of truth.
 
-## Discovery and fit
+## Candidate preference state
 
-Current discovery gate: **v22** (`profile-seed-2026-08-30-v22`).
+Profile seed: `candidate-profile-2026-08-28-v2`.
 
-v22 includes TGW-driven corrections:
-- title-level Sales rejection
-- sales-oriented Application Engineer rejection
-- technician / Installation Specialist structural rejection
-- pure Controls/EPLAN structural rejection before generic engineering recall
-- `mechanics` and `mechatronics` as domain evidence
-- generic Project Manager accepted only with real mechanical/mechatronics product-development + PM evidence
-- `after-sales service` is not confused with Sales/Vertrieb
+Manual preferences override seed-managed preferences and survive future seed synchronization.
 
-Candidate fit policy remains independent (`candidate-fit-2026-08-28-v3`). Discovery decides whether a job belongs in the professional neighborhood; fit ranks accepted jobs.
+The two concepts introduced during PALFINGER calibration are manually rated by the father:
+- `role:industrial-engineer = cannot_not_want`
+- `role:quality-manager = cannot_not_want`
 
-## Enabled job sources
+These primary role states intentionally make matching Industrial Engineer / Quality Manager postings hard-incompatible under fit policy v3.
 
-Operational/enabled:
-- `karriere.at` — bounded discovery frontier
-- `jobs.at` — bounded discovery frontier
-- `stepstone.at` — bounded discovery frontier
-- `willhaben-jobs` — bounded discovery frontier
-- `lever-public-postings` — only TSMG retained after pruning
+## Job-source expansion phase: CLOSED
+
+Do **not** continue adding job sources merely to increase raw source count. The acquisition phase is considered sufficiently broad. From this checkpoint onward, job-source work is maintenance/repair only unless a concrete coverage gap justifies reopening expansion.
+
+Enabled job sources include:
+- `karriere.at`
+- `jobs.at`
+- `stepstone.at`
+- `willhaben-jobs`
+- `lever-public-postings` (useful retained tenant: TSMG)
 - `personio-public-xml`
 - `smartrecruiters-public-postings`
-- `workday-public-cxs` — KION + Magna discovery-frontier tenants
-- `greenhouse-public-job-board` — validated zero-current-value watcher
-- `successfactors-public-career-site` — ANDRITZ Professionals
-- `tgw-direct-careers` — TGW Logistics
+- `workday-public-cxs`
+- `greenhouse-public-job-board` (validated watcher)
+- `successfactors-public-career-site`
+- `tgw-direct-careers`
+- `palfinger-direct-careers`
 
-Disabled/candidate:
-- `palfinger-direct-careers` — v0.3.28 candidate; must remain disabled until clean live preflight + corpus review + controlled import
-- `immoads.at`
+`immoads.at` remains disabled.
 
-## Lever
+### PALFINGER final production promotion
 
-v0.3.19 pruning retained only `global:tsmg`; Blackshark, Westernacher, cargo-partner and Qualysoft were disabled after zero useful live yield. TSMG remains the only useful current Lever tenant.
+PALFINGER is fully promoted and enabled. Do not rerun its reconciliation merely to re-prove the promotion.
 
-## Greenhouse
+Promotion proof:
+- source id 15
+- 7 active discovery-accepted persisted listings
+- enable changed father-visible catalog by exactly +7, with no removals
+- enable itself did not change crawl count or concept evidence corpus
+- refresh timer restored afterward
 
-Enabled only as a validated zero-current-value watcher. gropyus, planetlabs, bitpanda and ketryx currently yield zero accepted under the current gate. Keep future postings only if they pass the current gate.
+Promoted jobs at enable time:
+- 355 Experienced Mechanical Engineer — score 65, compatible
+- 356 Industrial Engineer — score 25, hard incompatible via `role:industrial-engineer`
+- 357 Arbeitstechniker / Industrial Engineer — score 25, hard incompatible via `role:industrial-engineer`
+- 358 Plant Quality Manager — score 24, hard incompatible via `role:quality-manager`
+- 359 Projekt Manager - Special Lifting Solutions — score 92, compatible
+- 360 Entwicklungsingenieur Kransysteme oder Fahrzeugtechnik — score 79, compatible
+- 361 Development Engineer - Service & Diagnostic Tools — score 70, compatible
 
-## Workday
+Observed father-visible count immediately before/after promotion was 240 -> 247. This count may drift naturally as sources refresh; the exact +7 promotion delta is the invariant, not 247 forever.
 
-KION + Magna are enabled discovery-frontier tenants. Workday search-text shards have no disappearance authority. Multi-shard tenant verification and source-reported-count normalization were fixed in v0.3.16.
+## Job concept / salary policies
 
-## ANDRITZ / SuccessFactors
+Concept extractor: `concept-seed-2026-08-31-v4`.
 
-Generic public SuccessFactors adapter is production-enabled with ANDRITZ Professionals.
+v4 added/expanded industrial engineering vocabulary without silently assigning father preferences, including:
+- `role:industrial-engineer`
+- `role:quality-manager`
+- project manager alias coverage
+- automotive/special-machinery/mechanical aliases
+- product development, production/manufacturing, calculation/simulation, project management and technical documentation phrases
 
-First validated import:
-- source-reported global corpus ~487
-- Austrian candidates 56
-- accepted 19 at promotion, later current accepted count 18 after gate/lifecycle evolution
-- all 19 initial accepted jobs were exclusive at promotion
-- coverage `ok`
-- imported locations resolved
+Salary policy: `explicit-salary-text-2026-08-30-v7`.
 
-Gate calibration from ANDRITZ added:
-- industrial rotating-equipment/project variants
-- embedded-hardware exclusion
-- commercial-project-manager exclusion
-
-Production salary repairs:
-- NDT Quality Engineer: `4354.45 EUR/month`, minimum-only, no invented 14× annualization
-- Projekt Manager Turbo Generatoren Service: `3583.02 EUR/month`, minimum-only, no invented 14× annualization
-
-The Turbo Generator salary exposed SuccessFactors HTML text fragmentation (`M onat`); v0.3.27 salary policy v6 tolerates narrow whitespace fragmentation in explicit period tokens without globally concatenating arbitrary words.
-
-## TGW direct careers
-
-Production promotion succeeded in v0.3.25:
-- run #333 reconciliation
-- source reported 111 public jobs
-- 58 Austrian candidates
-- 8 accepted
-- all 8 exclusive at promotion
-- coverage `ok`
-- all 8 locations resolved (Wels / Marchtrenk)
-
-Accepted promotion corpus:
-1. Mechatronics Development Manager - Rovosphere (M/F/D)
-2. Project Manager (M/F/D)
-3. Development Engineer for Mechatronic Systems (M/F/D)
-4. Strategic (Senior) Project Manager – Mechatronics Product Development (M/F/D)
-5. Project Manager - Mechatronic Product Development (M/F/D)
-6. Mechatronics Development Engineer specialising in product maintenance (M/F/D)
-7. Onsite Manager (M/F/D)
-8. Overall Project Manager for New Installations (M/F/D)
-
-`Technical Support Engineer Mechanics` was deliberately rejected after live review because it is support/dispatch/ticket + technician coordination rather than engineering/project leadership.
-
-TGW salary repair:
-- Strategic (Senior) Project Manager page explicitly states `64830 EUR/year`
-- v0.3.26 extracts the salary separately because the normal TGW description intentionally stops before the benefits/salary block
-- persisted annual minimum is exactly 64830; no inferred semantics required
-
-## Salary parsing policy
-
-Current policy: `explicit-salary-text-2026-08-30-v6`.
-
-Invariants:
+Important salary invariants:
 - preserve source pay period
-- monthly Austrian salary is not automatically multiplied by 14
-- monthly values annualize only when source explicitly gives payment count
-- hourly values remain missing-last in annual salary sorting without defensible hours/week evidence
-- structured source salary wins over text-derived salary
-- generic text-derived salary needs explicit EUR currency, explicit pay period, plausible amount and salary cue
-- trusted adapter-provided salary text may skip the generic cue but still needs explicit currency/period/plausibility
-
-Supported live formats now include:
-- Austrian/German grouping: `4.673,74`, `53 241,02`
-- English grouping: `4,354.45`
-- currency spellings: `€`, `EUR`, `Euro`
-- narrow fragmented explicit period tokens such as `/ M onat`
-
-Do not normalize arbitrary whitespace globally; fragmentation tolerance is deliberately narrow to avoid false positives.
-
-## v0.3.28 PALFINGER candidate
-
-PALFINGER is the next direct-employer acquisition target because its Austrian public career site has strong immediate mechanical/project value, including live roles such as:
-- `Experienced Mechanical Engineer (f/m/d)` — cranes/system solutions, mechanical pre-development, FEM, prototypes/series, development-project leadership
-- `Advanced Mechanical Engineer (w/m/d)`
-- `Projekt Manager - Special Lifting Solutions (m/w/d)` — complex product/customer development projects, special lifting/robotics/rail applications
-- industrial/plant engineering roles
-
-PALFINGER Austrian business domain is highly relevant: hydraulic lifting/loading systems, cranes, railway systems, access platforms and related machinery.
-
-v0.3.28 code adds:
-- `app.sources.job.palfinger.PalfingerJobSource`
-- `scripts/run_palfinger_jobs.py`
-- disabled-by-default source seed `palfinger-direct-careers`
-- scheduler registration while disabled (disabled rows remain ignored)
-- public Austrian listing pagination parser
-- direct detail parser with stable ID from PALFINGER posting id
-- source-backed Austrian postal/city extraction from detail-page address
-- source-backed salary text reuse through existing salary policy
-- zero-write `--preflight`
-
-Safety requirements before enablement:
-1. live preflight must show real pagination evidence and full listing-page coverage
-2. no detail parser failures
-3. source remains disabled and DB unchanged during preflight
-4. review every accepted title and important rejected families under gate v22
-5. only then perform a hidden authoritative reconciliation, corpus/geo/salary audit, and enable source
-
-The adapter deliberately marks coverage incomplete if pagination cannot be proven or a listing page/detail parser fails. Never enable PALFINGER merely because page 1 works.
-
-## AVL follow-up candidate
-
-AVL uses a SuccessFactors-style public career site and is cheap to add later as another tenant. Current Austrian feed, however, is relatively low-value at this exact moment (many Sales/IT/Marketing/Junior roles), so PALFINGER has priority for immediate exclusive value.
+- no automatic Austrian monthly ×14 assumption
+- monthly annualization only with explicit payment count
+- hourly annualization remains missing-last without defensible hours/week evidence
+- structured source salary wins text-derived salary
+- text parsing requires explicit currency/period/plausibility and appropriate cue unless trusted source semantics provide the cue context
+- narrow fragmented period forms are supported; arbitrary whitespace gluing is not
+- explicit yearly wording is supported in v7
 
 ## Property sources and semantics
 
@@ -243,59 +160,88 @@ Property rules:
 - explicit Grundstück/Grundstücksfläche/Grundfläche -> plot area
 - explicit Nutzfläche -> usable area
 - generic source area -> neutral display-only area
-- images are exact source-backed only
-- conservative dedupe only; no invented semantics
+- source-backed images only
+- conservative dedupe only
+- never invent property coordinates or attributes
 
-IMMMO continuity v3 repair is complete/idempotent and should not be reopened without concrete evidence.
+At this checkpoint the admin source page reports `immmo.at` as warning/degraded. This is an explicit pending diagnostic task; do not paper over it by changing the UI status without understanding the latest run/coverage evidence.
+
+## House locality + radius release candidate (v0.3.38)
+
+The current branch adds an optional saved `radius_km` house filter so a user can enter e.g. `Salzburg` + `50` and receive properties geographically within 50 km, not only rows whose city text contains Salzburg.
+
+Design:
+- existing exact/substring `Ort oder PLZ` behavior remains when radius is empty
+- radius accepts 1..250 km and is meaningful only with a non-empty location
+- filter persists in the existing house-filter cookie
+- 4-digit PLZ uses the stored Austrian postal centroid
+- locality names use the existing conservative Austrian job-locality resolver/reference corpus
+- actual filtering uses PostGIS `ST_DWithin` on `Property.location`
+- no external geocoder and no invented coordinates
+- unresolved radius center fails closed to zero matches and displays a German explanation instead of silently reverting to textual city matching
+- saved house radius filters also remain in force when viewing houses around a job
+
+Before production rollout, v0.3.38 still requires final exact-head CI and standard production verification.
 
 ## Job geography
 
+Existing policy:
 - explicit source PLZ wins
 - otherwise conservative known-locality centroid
-- broad Bundesland/country labels stay unresolved rather than receiving fake coordinates
-- Salzburg-area, Oberösterreich Zentralraum, Niederranna, St. Valentin, Salzburg Stadt/Vienna district and conservative `X bei Y` repairs are implemented
+- broad Bundesland/country labels stay unresolved instead of receiving fake point coordinates
+- approximate area anchors are allowed only where an explicit conservative policy exists
 
-Known broad labels may remain unresolved when source evidence is insufficient.
+Pending unresolved-location audit from the current product UI:
+- Sankt Pölten
+- AT
+- Bezirk Wels-Land
+- Blaindorf
+- Ebenthal in Kärnten
+- Graz Umgebung-West
+- Kärnten
+- Premstätten
+- Puntigam
+- Ranshofen
+- Sankt Florian am Inn
+- Schaftenau
+- Traboch
+- Wels-Land
+- österreichweit
+
+Do not automatically point-resolve country/state/district-wide labels such as `AT`, `österreichweit`, `Kärnten` or `Bezirk Wels-Land`. Audit actual source rows and postal/locality evidence first. Real localities/spelling variants should be fixed from evidence, not guessed.
 
 ## Source health semantics
 
 Execution success and coverage authority are separate:
 - complete successful authoritative scan -> `success / ok`
-- successful bounded frontier -> `success / degraded`
+- successful bounded frontier -> successful execution with non-authoritative/unknown or degraded coverage as appropriate
 - mixed actual failures -> `partial / degraded`
 - all failed -> `failed / failed`
 
 Only `coverage=ok` reconciliation may prove disappearance.
 
-## Operations / source value
-
-`/admin/health` tracks execution/coverage plus source value:
-- active accepted listings
-- catalog jobs
-- exclusive/shared jobs
-- latest candidate/accepted/rejected counts
-- gate yield
-
-Use exclusive useful coverage to decide whether a source deserves ongoing maintenance.
+`/admin/health` tracks source execution/coverage and source value. Use useful/exclusive coverage rather than raw item count when deciding maintenance value.
 
 ## Real-time UI synchronization TODO
 
-Preferred approach remains SSE:
-- server -> browser invalidation/update
+Preferred direction remains SSE:
+- server -> browser invalidation/update events
 - existing POSTs remain authoritative for writes
-- reconcile affected cards/counters without full reload
+- reconcile affected cards/counters without forcing a full reload where practical
 - event IDs, reconnect and keepalive
-- no aggressive polling
-- WebSockets only if genuine bidirectional low-latency needs arise
+- avoid aggressive polling
+- WebSockets only if a genuine bidirectional low-latency need appears
 
-## Near-term roadmap
+This is an active near-term task after geo/source-health cleanup.
 
-1. Live zero-write PALFINGER preflight and full accepted/rejected review.
-2. If PALFINGER is clean, controlled authoritative import + geo/salary/source-value audit + enablement.
-3. Add AVL cheaply through the SuccessFactors framework if live value justifies it.
-4. Continue selected Austrian direct employers based on exclusive value, not raw count.
-5. Conservative geo cleanup only from real evidence.
-6. Implement SSE real-time UI synchronization.
+## Current near-term roadmap
+
+1. Finish and production-gate v0.3.38 house locality + radius filter.
+2. Audit and repair real unresolved job localities; preserve broad scopes as intentionally non-point.
+3. Diagnose `immmo.at` warning/degraded from actual crawl/coverage evidence.
+4. Implement dynamic website data synchronization (SSE TODO).
+5. Diagnose why job #374 receives no fit score and fix the underlying concept/evidence issue conservatively.
+6. Continue remaining product/matching/property tasks; do not resume generic job-source expansion.
 
 ## Deployment discipline
 
@@ -304,7 +250,8 @@ For every branch change:
 2. wait for GitHub CI on the exact branch HEAD
 3. require Install + Ruff + Compile + Tests success
 4. only then provide production deployment commands
-5. production still runs Ruff/compile/tests before restart
-6. verify `/health` and targeted production data controls
+5. production reruns Ruff/compile/tests before restart
+6. verify `/health` plus targeted production data controls
+7. never deploy a red or intermediate SHA
 
-Never deploy a red or intermediate SHA.
+When a release changes code on disk before the long-lived web service restarts, keep the refresh release-mismatch guard in mind; it must defer mutating source work until runtime and disk report matching release/extractor markers.

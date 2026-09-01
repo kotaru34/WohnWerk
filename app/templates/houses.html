@@ -18,6 +18,7 @@
     .topnav a.active, .viewnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
     .filters { margin: 14px 0 20px; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
     .filter-note { margin-bottom: 12px; font-size: .82rem; opacity: .7; }
+    .filter-error { margin: 12px 0 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, #b18a42 55%, transparent); border-radius: 8px; background: color-mix(in srgb, #b18a42 8%, Canvas); font-size: .84rem; }
     .filter-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 10px; }
     label { display: grid; gap: 4px; font-size: .8rem; opacity: .82; }
     input { min-width: 0; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
@@ -94,7 +95,10 @@
     </div>
     <div class="filter-grid">
       <label>Ort oder PLZ
-        <input name="ort" value="{{ filters.ort }}" placeholder="z. B. Graz oder 8010">
+        <input name="ort" value="{{ filters.ort }}" placeholder="z. B. Salzburg oder 5020">
+      </label>
+      <label>Umkreis (km)
+        <input type="number" min="1" max="250" step="1" name="radius_km" value="{{ filters.radius_km if filters.radius_km is not none else '' }}" placeholder="z. B. 50">
       </label>
       <label>Preis von (€)
         <input type="number" min="0" step="1000" name="preis_von" value="{{ filters.preis_von if filters.preis_von is not none else '' }}">
@@ -121,6 +125,7 @@
         <input type="number" min="0" step="1" name="grund_bis" value="{{ filters.grund_bis if filters.grund_bis is not none else '' }}">
       </label>
     </div>
+    {% if location_filter_error %}<div class="filter-error">{{ location_filter_error }}</div>{% endif %}
     <div class="filter-actions">
       <button type="submit">Filtern & speichern</button>
       <a class="button" href="/houses?filter_reset=1&ansicht={{ selected_view }}&sortierung={{ selected_sort }}&richtung={{ sort_direction }}">Filter löschen</a>
@@ -134,6 +139,7 @@
       <form class="sort-controls" method="get" action="/houses">
         <input type="hidden" name="ansicht" value="{{ selected_view }}">
         {% if filters.ort %}<input type="hidden" name="ort" value="{{ filters.ort }}">{% endif %}
+        {% if filters.radius_km is not none %}<input type="hidden" name="radius_km" value="{{ filters.radius_km }}">{% endif %}
         {% if filters.preis_von is not none %}<input type="hidden" name="preis_von" value="{{ filters.preis_von }}">{% endif %}
         {% if filters.preis_bis is not none %}<input type="hidden" name="preis_bis" value="{{ filters.preis_bis }}">{% endif %}
         {% if filters.wohn_von is not none %}<input type="hidden" name="wohn_von" value="{{ filters.wohn_von }}">{% endif %}

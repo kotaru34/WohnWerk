@@ -6,12 +6,14 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import Request, Response
 
-# v3 adds explicit Nutzfläche filters while keeping every filter empty by default.
+# v3 is kept for backwards compatibility; the optional radius field is additive.
 COOKIE_NAME = "wohnwerk_house_filters_v3"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+MAX_RADIUS_KM = Decimal(250)
 FILTER_QUERY_KEYS = frozenset(
     {
         "ort",
+        "radius_km",
         "preis_von",
         "preis_bis",
         "wohn_von",
@@ -27,6 +29,7 @@ FILTER_QUERY_KEYS = frozenset(
 @dataclass(frozen=True, slots=True)
 class HouseFilters:
     ort: str = ""
+    radius_km: Decimal | None = None
     preis_von: Decimal | None = None
     preis_bis: Decimal | None = None
     wohn_von: Decimal | None = None
@@ -39,6 +42,7 @@ class HouseFilters:
     def as_cookie_payload(self) -> dict[str, str | None]:
         return {
             "ort": self.ort,
+            "radius_km": _decimal_text(self.radius_km),
             "preis_von": _decimal_text(self.preis_von),
             "preis_bis": _decimal_text(self.preis_bis),
             "wohn_von": _decimal_text(self.wohn_von),
@@ -72,11 +76,21 @@ def _safe_decimal(value: object) -> Decimal | None:
     return parsed if parsed >= 0 else None
 
 
+def _safe_radius(value: object, *, has_location: bool) -> Decimal | None:
+    if not has_location:
+        return None
+    parsed = _safe_decimal(value)
+    if parsed is None or parsed < 1 or parsed > MAX_RADIUS_KM:
+        return None
+    return parsed
+
+
 def _from_mapping(payload: dict[str, object]) -> HouseFilters:
     raw_ort = payload.get("ort")
     ort = raw_ort.strip()[:120] if isinstance(raw_ort, str) else ""
     return HouseFilters(
         ort=ort,
+        radius_km=_safe_radius(payload.get("radius_km"), has_location=bool(ort)),
         preis_von=_safe_decimal(payload.get("preis_von")),
         preis_bis=_safe_decimal(payload.get("preis_bis")),
         wohn_von=_safe_decimal(payload.get("wohn_von")),
@@ -105,6 +119,7 @@ def resolve_house_filters(
     request: Request,
     *,
     ort: str,
+    radius_km: Decimal | None,
     preis_von: Decimal | None,
     preis_bis: Decimal | None,
     wohn_von: Decimal | None,
@@ -121,8 +136,10 @@ def resolve_house_filters(
     if not explicitly_submitted:
         return load_house_filters(request)
 
+    normalized_ort = ort.strip()[:120]
     return HouseFilters(
-        ort=ort.strip()[:120],
+        ort=normalized_ort,
+        radius_km=_safe_radius(radius_km, has_location=bool(normalized_ort)),
         preis_von=preis_von,
         preis_bis=preis_bis,
         wohn_von=wohn_von,
@@ -145,10 +162,19 @@ def save_house_filters(response: Response, filters: HouseFilters) -> None:
     )
 
 
+def _distance_label(value: Decimal) -> str:
+    if value == value.to_integral_value():
+        return f"{value:,.0f}".replace(",", ".")
+    return format(value, "f")
+
+
 def house_filter_summary(filters: HouseFilters) -> str:
     parts: list[str] = []
     if filters.ort:
-        parts.append(filters.ort)
+        location = filters.ort
+        if filters.radius_km is not None:
+            location += f" · Umkreis {_distance_label(filters.radius_km)} km"
+        parts.append(location)
     if filters.preis_von is not None or filters.preis_bis is not None:
         if filters.preis_von is not None and filters.preis_bis is not None:
             parts.append(
