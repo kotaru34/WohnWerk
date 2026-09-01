@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
 from app.jobs.candidate_fit import CandidateProfile
+from app.live_events import queue_live_event
 from app.models import Job, Property
 
 
@@ -87,7 +88,6 @@ def novelty_baseline(session: Session, profile: CandidateProfile) -> datetime:
     if row is not None:
         return row.started_at
 
-    # Future profiles created after migration get their own baseline at first use.
     now = datetime.now(UTC)
     session.add(CandidateNoveltyBaseline(profile_id=profile.id, started_at=now))
     session.commit()
@@ -127,6 +127,13 @@ def mark_job_viewed(session: Session, profile: CandidateProfile, job_id: int) ->
                 job_id=job_id,
                 viewed_at=datetime.now(UTC),
             )
+        )
+        queue_live_event(
+            session,
+            topic="jobs",
+            kind="viewed",
+            entity_id=job_id,
+            profile_id=profile.id,
         )
         session.commit()
 
@@ -223,6 +230,11 @@ def _save_property_state(
     next_favorite = current_favorite if favorite is None else favorite
     next_hidden = current_hidden if hidden is None else hidden
     next_viewed = now if mark_viewed and current_viewed is None else current_viewed
+    changed = (current_favorite, current_hidden, current_viewed) != (
+        next_favorite,
+        next_hidden,
+        next_viewed,
+    )
 
     if row is None:
         row = CandidatePropertyPreference(
@@ -240,6 +252,20 @@ def _save_property_state(
         row.hidden = next_hidden
         row.viewed_at = next_viewed
         row.updated_at = now
+
+    if changed:
+        queue_live_event(
+            session,
+            topic="houses",
+            kind="viewed" if mark_viewed and current_viewed is None else "curation",
+            entity_id=property_id,
+            profile_id=profile.id,
+            payload={
+                "favorite": next_favorite,
+                "hidden": next_hidden,
+                "viewed": next_viewed is not None,
+            },
+        )
     session.commit()
 
 

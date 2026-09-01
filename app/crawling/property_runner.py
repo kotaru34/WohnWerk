@@ -20,6 +20,7 @@ from app.crawling.immmo_quality import (
 from app.crawling.shards import sync_source_shards
 from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
+from app.live_events import queue_live_event
 from app.models import CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
 from app.property_acquisition import annotate_property_items_by_budget
 from app.property_liveness import prepare_immmo_item_liveness
@@ -143,10 +144,6 @@ async def run_property_source(
             if reconciliation and coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
         except Exception as exc:
-            # A failed flush/commit leaves SQLAlchemy in a failed transaction state. Roll it
-            # back before touching ORM attributes. Source adapters may still provide all
-            # successfully materialized items from pages completed before the failure; persist
-            # those as non-authoritative discovery while keeping the shard itself FAILED.
             session.rollback()
             partial_new = 0
             partial_updated = 0
@@ -198,9 +195,19 @@ async def run_property_source(
 
     summary = finalize_run(session, run)
     if reconciliation:
-        # Full-coverage meta-search scans are the only safe moment to compact IMMMO
-        # downstream-provider URL rotations. Do this before absence reconciliation so a
-        # rotated URL refreshes the existing lifecycle row instead of looking disappeared.
         reconcile_immmo_continuity(session, run)
         reconcile_missing_listings(session, run)
+    queue_live_event(
+        session,
+        topic="houses",
+        kind="catalog_refresh",
+        payload={
+            "source": source.name,
+            "run_id": run.id,
+            "mode": str(run.mode),
+            "status": str(summary.run_status),
+            "coverage": str(summary.coverage_status),
+        },
+    )
+    session.commit()
     return run, summary

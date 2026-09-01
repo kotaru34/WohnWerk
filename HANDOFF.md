@@ -10,9 +10,9 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Release state
 
-- Current production: **v0.3.41**.
-- Production SHA: `49db7ac20102f34ea6045668fa3deebc14e67bd6`.
-- Current branch release candidate: **v0.3.42** — repair IMMMO reconciliation authority by separating structural coverage from synthetic-identity churn.
+- Current production: **v0.3.42**.
+- Production SHA: `dc7aa0b81f6e7e00bf0dab7cfd5d0502c970159a`.
+- Current branch release candidate: **v0.3.43** — durable SSE-based live synchronization for Häuser/Stellen pages.
 - Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
@@ -117,24 +117,11 @@ v0.3.41 repaired 11 concrete unresolved location rows without inventing points. 
 
 Known remaining geo work includes broad/non-point labels such as `Kärnten`, `Wels-Land`, `Bezirk Wels-Land`, `Graz Umgebung-West`, plus later candidates `Schaftenau`, `Puntigam`, and source-parser case `AT` on jobs.at. Do not map broad areas to arbitrary centroids.
 
-## IMMMO warning diagnosis and v0.3.42 policy
+## IMMMO coverage authority
 
-Production v0.3.41 currently reports IMMMO source coverage degraded because recent reconciliations are failing only the old synthetic-link-share gate.
+v0.3.42 is deployed in production. It repaired IMMMO reconciliation authority by separating structural source coverage from stable synthetic/source-less identity share.
 
-Evidence from reconciliation #654:
-- run success, 9/9 shards, 0 failed, traversal complete everywhere
-- cards parsed == cards seen everywhere
-- count delta = 0 within tolerance everywhere
-- six shards fail only `synthetic > synthetic_tolerance`
-- 1321 synthetic cards across 580 pages
-- only **3 synthetic identities were new in the run**
-- live audit of 24 high-synthetic pages found 182 current parser gaps; 179/182 had no current-card external link at all
-- no useful non-`<a>` data/onclick links were found
-- only 3/182 had a safe following title-prefix `<a>` parser miss
-
-Conclusion: IMMMO legitimately publishes many source-less cards. Total synthetic share is not a source-coverage invariant. The old static 5/8% link-quality threshold conflates source behavior with parser failure.
-
-v0.3.42 introduces coverage policy `immmo-identity-churn-2026-09-01-v1` in `app/crawling/immmo_quality.py`:
+Coverage policy: `immmo-identity-churn-2026-09-01-v1` in `app/crawling/immmo_quality.py`:
 - structural authority requires reconciliation + traversal complete + no cap + cards_seen==cards_parsed + count delta in tolerance
 - after ingest, each shard counts genuinely **new synthetic identities**
 - identity churn fails closed if new synthetic rows exceed `max(3, 1% of cards seen)`
@@ -142,9 +129,9 @@ v0.3.42 introduces coverage policy `immmo-identity-churn-2026-09-01-v1` in `app/
 - a stable population of source-less cards can therefore be authoritative
 - a parser regression that suddenly converts many stable external URLs into new synthetic identities still degrades coverage
 
-`audit_immmo_run.py` now prints structural state, synthetic-new count/tolerance, identity churn and policy version.
+Evidence that motivated the policy: reconciliation #654 completed 9/9 shards with cards parsed == cards seen and source-count deltas in tolerance; 1321 source-less/synthetic cards existed across 580 pages but only 3 synthetic identities were genuinely new in the run. A live audit found most apparent link gaps were source cards with no current external link rather than parser misses.
 
-Do not manually change `Source.coverage_status`. After v0.3.42 deployment, prove the policy with a real reconciliation; only a resulting `coverage=ok` should clear the source warning and become disappearance-authoritative.
+Do not manually change `Source.coverage_status`. Only the result of a real complete reconciliation controls disappearance authority.
 
 ## Source health semantics
 
@@ -156,17 +143,44 @@ Execution success and coverage authority are independent:
 
 Only `coverage=ok` reconciliation may prove disappearance.
 
-## Real-time UI synchronization TODO
+## v0.3.43 live UI synchronization
 
-Preferred direction remains SSE: server->browser invalidation/update events, current POSTs stay authoritative, reconnect/event IDs/keepalive, avoid aggressive polling. WebSockets only if a genuine bidirectional low-latency need appears.
+Current release candidate replaces manual refresh dependency with server-sent invalidation events while keeping existing server-rendered pages and POST write paths authoritative.
+
+Architecture:
+- durable `live_ui_events` journal in Postgres via Alembic revision `0011_live_ui_events`
+- authenticated `GET /events` SSE endpoint
+- monotonic event IDs and `Last-Event-ID`/query-cursor replay across reconnects and web-process restarts
+- 15-second keepalive; DB polling is bounded and uses short sessions
+- no Redis and no in-memory-only broker, because crawler and web processes are separate
+- events have `houses`, `jobs` or `all` topic plus kind/entity/profile/payload metadata
+- favorite/hidden/viewed events are queued in the same DB transaction as their authoritative state change
+- property crawler emits one `houses/catalog_refresh` after the completed run
+- job source runners deliberately do **not** emit intermediate catalog events
+- `scripts/refresh_sources.py` emits one `jobs/catalog_refresh` only after all successful job-source runs have completed location resolution, location propagation and concept normalization
+- if any job postprocess fails, no job invalidation is published
+
+Browser behavior:
+- one shared client is injected into authenticated `/houses*` and `/jobs*` HTML
+- SSE invalidation fetches the same current URL with `cache: no-store`
+- only `<main>` is replaced; there is no page navigation/F5
+- the live client itself remains outside `<main>` and survives DOM replacement
+- multiple rapid invalidations are coalesced
+- refresh is deferred while an input/select/textarea/contenteditable inside `<main>` has focus, then applied after editing ends
+- current POST forms remain unchanged and authoritative
+- unauthenticated product requests do not perform a live-event DB cursor read before Basic Auth
+
+Development CI has already exercised the live event journal, SSE framing/cursor semantics, shared-client injection, job curation events, property favorite/hidden/viewed events, job viewed events, migration head and the job postprocess invalidation boundary. Development commits remain non-deployable until squashed into one atomic release commit over production SHA.
 
 ## Current near-term roadmap
 
-1. Production-gate v0.3.42 IMMMO identity-churn coverage policy and prove with one real reconciliation.
-2. If reconciliation is `ok`, confirm admin warning clears and inspect disappeared/continuity effects before declaring IMMMO closed.
-3. Do not extend geo cleanup further unless product impact warrants it.
-4. Implement SSE dynamic website synchronization.
-5. Continue product/matching/property work; do not resume generic job-source expansion.
+1. Finish v0.3.43 development checks and inspect the complete diff against production `dc7aa0b...`.
+2. Squash all v0.3.43 development commits into one atomic commit whose parent is exact production SHA.
+3. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
+4. Deploy with timers quiesced; run Alembic `0010_property_activity -> 0011_live_ui_events`; rerun server checks before restart.
+5. Production-verify authenticated SSE ready/replay behavior and cross-tab invalidation without opening `/jobs/{id}` as a smoke target.
+6. Restore exactly the timers that were active before deployment.
+7. Continue product/matching/property work; do not resume generic job-source expansion.
 
 ## Deployment discipline
 

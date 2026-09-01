@@ -6,6 +6,7 @@ from app.catalog import router as catalog_router
 from app.config import get_settings
 from app.http_normalization import NormalizeHouseQueryMiddleware
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
+from app.live_ui import router as live_ui_router
 from app.matches import router as matches_router
 from app.ops import router as ops_router
 from app.product_ui import router as product_ui_router
@@ -27,6 +28,7 @@ app.add_middleware(NormalizeHouseQueryMiddleware)
 app.include_router(product_ui_router)
 app.include_router(catalog_router)
 app.include_router(site_router)
+app.include_router(live_ui_router)
 app.include_router(admin_router)
 app.include_router(ops_router)
 app.include_router(matches_router)

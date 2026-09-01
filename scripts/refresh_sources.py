@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
+from app.live_events import queue_live_event
 from app.models import Source, SourceCategory
 from app.refresh import DueSourceRun, due_source_runs
 from app.version import __version__
@@ -139,6 +140,17 @@ def _source_category(source_name: str) -> str | None:
         return session.scalar(select(Source.category).where(Source.name == source_name))
 
 
+def _publish_job_catalog_refresh(source_names: list[str]) -> None:
+    with SessionLocal() as session:
+        queue_live_event(
+            session,
+            topic="jobs",
+            kind="catalog_refresh",
+            payload={"sources": source_names},
+        )
+        session.commit()
+
+
 def main() -> None:
     args = parse_args()
     lock = _acquire_lock(args.lock_path)
@@ -170,7 +182,7 @@ def main() -> None:
             return
 
         failures: list[CommandResult] = []
-        job_source_succeeded = False
+        successful_job_sources: list[str] = []
         for run in due:
             result = _run_command(
                 f"source:{run.plan.source_name}:{run.mode}",
@@ -180,9 +192,9 @@ def main() -> None:
                 failures.append(result)
                 continue
             if _source_category(run.plan.source_name) == SourceCategory.JOB:
-                job_source_succeeded = True
+                successful_job_sources.append(run.plan.source_name)
 
-        if job_source_succeeded:
+        if successful_job_sources:
             for label, command in (
                 (
                     "postprocess:job-locations",
@@ -213,6 +225,10 @@ def main() -> None:
             for failure in failures:
                 print(f"failure={failure.label} rc={failure.returncode}")
             raise SystemExit(1)
+
+        if successful_job_sources:
+            _publish_job_catalog_refresh(successful_job_sources)
+            print("live_invalidation=jobs")
 
         print("refresh_status=ok")
     finally:

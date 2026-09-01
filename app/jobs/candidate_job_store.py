@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.jobs.candidate_fit import CandidateJobPreference, CandidateProfile
+from app.live_events import queue_live_event
 from app.models import Job
 
 
@@ -66,10 +67,20 @@ def _save_sparse_state(
     current_hidden = row.hidden if row is not None else False
     next_favorite = current_favorite if favorite is None else favorite
     next_hidden = current_hidden if hidden is None else hidden
+    changed = (current_favorite, current_hidden) != (next_favorite, next_hidden)
 
     if not next_favorite and not next_hidden:
         if row is not None:
             session.delete(row)
+        if changed:
+            queue_live_event(
+                session,
+                topic="jobs",
+                kind="curation",
+                entity_id=job_id,
+                profile_id=profile.id,
+                payload={"favorite": False, "hidden": False},
+            )
         session.commit()
         return
 
@@ -84,6 +95,16 @@ def _save_sparse_state(
     else:
         row.favorite = next_favorite
         row.hidden = next_hidden
+
+    if changed:
+        queue_live_event(
+            session,
+            topic="jobs",
+            kind="curation",
+            entity_id=job_id,
+            profile_id=profile.id,
+            payload={"favorite": next_favorite, "hidden": next_hidden},
+        )
     session.commit()
 
 

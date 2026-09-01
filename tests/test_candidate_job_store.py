@@ -11,6 +11,7 @@ from app.jobs.candidate_job_store import (
     set_job_hidden,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
+from app.live_events import LiveUiEvent
 from app.models import Job
 
 
@@ -23,6 +24,7 @@ def _database():
     Job.__table__.create(engine)
     CandidateProfile.__table__.create(engine)
     CandidateJobPreference.__table__.create(engine)
+    LiveUiEvent.__table__.create(engine)
     return engine
 
 
@@ -53,6 +55,10 @@ def test_candidate_job_state_is_sparse_and_reversible() -> None:
         set_job_hidden(session, profile, job.id, hidden=False)
         assert load_candidate_job_states(session, profile.id, {job.id}) == {}
         assert session.scalar(select(CandidateJobPreference)) is None
+
+        events = list(session.scalars(select(LiveUiEvent).order_by(LiveUiEvent.id)))
+        assert [event.topic for event in events] == ["jobs"] * 4
+        assert [event.kind for event in events] == ["curation"] * 4
 
         with pytest.raises(LookupError):
             set_job_favorite(session, profile, 999999, favorite=True)

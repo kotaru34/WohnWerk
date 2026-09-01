@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.live_events import latest_live_event_id
 from app.models import JobLocation
 from app.version import __version__
 
@@ -48,6 +49,109 @@ _BRAND_STYLE = """
   }
   .ww-geo-warning strong { display: block; margin-bottom: 3px; }
 </style>
+""".strip()
+
+_LIVE_SYNC_SCRIPT = r"""
+<script id="wohnwerk-live-sync">
+(() => {
+  if (!("EventSource" in window)) return;
+  const initialCursor = __CURSOR__;
+  const path = window.location.pathname;
+  const isDetail = /^\/(?:houses|jobs)\/\d+$/.test(path);
+  const topics = isDetail
+    ? new Set(["houses", "jobs", "all"])
+    : path.startsWith("/houses")
+      ? new Set(["houses", "all"])
+      : path.startsWith("/jobs")
+        ? new Set(["jobs", "all"])
+        : new Set();
+  if (!topics.size) return;
+
+  let refreshTimer = null;
+  let refreshing = false;
+  let dirtyDuringRefresh = false;
+  let deferredForEditing = false;
+
+  const editing = () => {
+    const active = document.activeElement;
+    if (!active || !active.closest("main")) return false;
+    return active.matches("input, select, textarea, [contenteditable='true']");
+  };
+
+  const refreshMain = async () => {
+    refreshTimer = null;
+    if (editing()) {
+      deferredForEditing = true;
+      return;
+    }
+    if (refreshing) {
+      dirtyDuringRefresh = true;
+      return;
+    }
+
+    refreshing = true;
+    dirtyDuringRefresh = false;
+    try {
+      const response = await fetch(window.location.href, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Accept": "text/html",
+          "X-WohnWerk-Live-Refresh": "1"
+        }
+      });
+      if (!response.ok) return;
+      const incoming = new DOMParser().parseFromString(await response.text(), "text/html");
+      const nextMain = incoming.querySelector("main");
+      const currentMain = document.querySelector("main");
+      if (!nextMain || !currentMain) return;
+      currentMain.replaceWith(nextMain);
+      if (incoming.title) document.title = incoming.title;
+    } catch (_error) {
+      // EventSource reconnect and the next invalidation will retry naturally.
+    } finally {
+      refreshing = false;
+      if (dirtyDuringRefresh) scheduleRefresh();
+    }
+  };
+
+  const scheduleRefresh = () => {
+    if (refreshing) {
+      dirtyDuringRefresh = true;
+      return;
+    }
+    if (editing()) {
+      deferredForEditing = true;
+      return;
+    }
+    if (refreshTimer !== null) return;
+    refreshTimer = window.setTimeout(refreshMain, 180);
+  };
+
+  document.addEventListener("focusout", () => {
+    if (!deferredForEditing) return;
+    window.setTimeout(() => {
+      if (!editing()) {
+        deferredForEditing = false;
+        scheduleRefresh();
+      }
+    }, 80);
+  }, true);
+
+  const stream = new EventSource(`/events?after=${initialCursor}`);
+  stream.addEventListener("invalidate", (event) => {
+    try {
+      const message = JSON.parse(event.data);
+      if (topics.has(message.topic)) scheduleRefresh();
+    } catch (_error) {
+      // Ignore malformed invalidations; a later valid event can still refresh the page.
+    }
+  });
+
+  window.addEventListener("beforeunload", () => stream.close(), {once: true});
+})();
+</script>
 """.strip()
 
 
@@ -133,7 +237,12 @@ def _job_geo_notice(job_id: int) -> str | None:
     return None
 
 
-def _inject_product_chrome(body: bytes, *, notice: str | None) -> bytes:
+def _inject_product_chrome(
+    body: bytes,
+    *,
+    notice: str | None,
+    live_cursor: int | None = None,
+) -> bytes:
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError:
@@ -152,11 +261,29 @@ def _inject_product_chrome(body: bytes, *, notice: str | None) -> bytes:
         marker = "</section>"
         if '<section class="job-head">' in text and marker in text:
             text = text.replace(marker, marker + "\n" + warning, 1)
+
+    if (
+        live_cursor is not None
+        and "</body>" in text
+        and 'id="wohnwerk-live-sync"' not in text
+    ):
+        script = _LIVE_SYNC_SCRIPT.replace("__CURSOR__", str(max(0, live_cursor)))
+        text = text.replace("</body>", script + "\n</body>", 1)
     return text.encode("utf-8")
 
 
+def _live_product_path(path: str, method: str) -> bool:
+    if method.upper() != "GET":
+        return False
+    return path in {"/houses", "/jobs"} or path.startswith(("/houses/", "/jobs/"))
+
+
+def _has_authorization(scope) -> bool:
+    return any(key.lower() == b"authorization" for key, _value in scope.get("headers") or [])
+
+
 class ProductUiMiddleware:
-    """Inject product identity and explicit geo-precision warnings into HTML pages."""
+    """Inject product identity, geo warnings and live synchronization into product HTML."""
 
     def __init__(self, app: Callable[..., Awaitable[Any]]) -> None:
         self.app = app
@@ -167,8 +294,14 @@ class ProductUiMiddleware:
             return
 
         path = str(scope.get("path") or "")
+        method = str(scope.get("method") or "GET")
         match = _JOB_DETAIL_PATH_RE.match(path)
         job_id = int(match.group("job_id")) if match else None
+        live_cursor: int | None = None
+        if _live_product_path(path, method) and _has_authorization(scope):
+            with SessionLocal() as session:
+                live_cursor = latest_live_event_id(session)
+
         is_html = False
         response_status = 0
 
@@ -195,7 +328,11 @@ class ProductUiMiddleware:
                         else None
                     )
                     message = dict(message)
-                    message["body"] = _inject_product_chrome(body, notice=notice)
+                    message["body"] = _inject_product_chrome(
+                        body,
+                        notice=notice,
+                        live_cursor=live_cursor,
+                    )
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
