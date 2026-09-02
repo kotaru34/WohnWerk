@@ -32,7 +32,7 @@ class GermanPostalCodeRecord:
 def parse_geonames_de_postal_zip(payload: bytes) -> list[GermanPostalCodeRecord]:
     """Parse GeoNames' DE postal export into one approximate centroid per PLZ.
 
-    GeoNames may contain multiple place rows for a postal code.  WohnWerk keeps
+    GeoNames may contain multiple place rows for a postal code. WohnWerk keeps
     the most common place label and averages all valid supplied WGS84 points.
     These are postal-area approximations, not street-accurate coordinates.
     """
@@ -42,7 +42,9 @@ def parse_geonames_de_postal_zip(payload: bytes) -> list[GermanPostalCodeRecord]
         raise ValueError("Invalid GeoNames DE postal ZIP") from exc
 
     with archive:
-        candidates = [name for name in archive.namelist() if name.casefold().endswith("de.txt")]
+        candidates = [
+            name for name in archive.namelist() if name.casefold().endswith("de.txt")
+        ]
         if not candidates:
             raise ValueError("GeoNames DE postal ZIP contains no DE.txt")
         member = min(candidates, key=len)
@@ -82,7 +84,10 @@ def parse_geonames_de_postal_zip(payload: bytes) -> list[GermanPostalCodeRecord]
         latitude = sum(point[1] for point in samples) / len(samples)
         label_counts = names.get(postal_code)
         name = (
-            sorted(label_counts.items(), key=lambda item: (-item[1], item[0].casefold()))[0][0]
+            min(
+                label_counts.items(),
+                key=lambda item: (-item[1], item[0].casefold()),
+            )[0]
             if label_counts
             else postal_code
         )
@@ -98,13 +103,22 @@ def parse_geonames_de_postal_zip(payload: bytes) -> list[GermanPostalCodeRecord]
     return records
 
 
-def fetch_geonames_de_postal_codes(timeout_seconds: float = 60.0) -> list[GermanPostalCodeRecord]:
-    response = httpx.get(GEONAMES_DE_POSTAL_URL, timeout=timeout_seconds, follow_redirects=True)
+def fetch_geonames_de_postal_codes(
+    timeout_seconds: float = 60.0,
+) -> list[GermanPostalCodeRecord]:
+    response = httpx.get(
+        GEONAMES_DE_POSTAL_URL,
+        timeout=timeout_seconds,
+        follow_redirects=True,
+    )
     response.raise_for_status()
     return parse_geonames_de_postal_zip(response.content)
 
 
-def upsert_german_postal_codes(session: Session, records: list[GermanPostalCodeRecord]) -> int:
+def upsert_german_postal_codes(
+    session: Session,
+    records: list[GermanPostalCodeRecord],
+) -> int:
     if not records:
         return 0
 
