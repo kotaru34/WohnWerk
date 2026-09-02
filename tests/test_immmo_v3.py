@@ -1,0 +1,240 @@
+from decimal import Decimal
+
+from app.sources.property.immmo_v3 import parse_immmo_search_page
+
+WRAPPED_CARD_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 4396</p>
+<a href="https://portal.example/wrapped-object">
+  <h3>Einfamilienhaus kaufen in 3100 St. Pölten</h3>
+  <span>Haus mit Garten in ruhiger Lage</span>
+  <span>€ 449.000,-</span>
+  <span>3100 St. Pölten / 145m² / 5 Zimmer</span>
+</a>
+<div>Wohnfläche: 145 m²</div>
+<h3>Haus kaufen in 2700 Wiener Neustadt</h3>
+<a href="https://other.example/normal-object">Kleines Stadthaus</a>
+<div>€ 279.000,-</div>
+<div>2700 Wiener Neustadt / 92m² / 4 Zimmer</div>
+<div>Mit einer Wohnfläche von 92 m² ideal für eine kleine Familie.</div>
+<h3>Haus kaufen in 7000 Eisenstadt</h3>
+<div>Linkloses Haus mit Innenhof</div>
+<div>€ 319.000,-</div>
+<div>7000 Eisenstadt / 110m² / 4 Zimmer</div>
+<div>Rund 110 m² Wohnfläche mit Innenhof.</div>
+<nav>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/2">2</a>
+  <a href="/immo/Haus-kaufen/Niederoesterreich/10">10</a>
+  <span>...</span><span>367</span>
+</nav>
+</body></html>
+"""
+
+AREA_SEMANTICS_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 2</p>
+<h3>Haus kaufen in 8052 Graz</h3>
+<a href="https://www.findmyhome.at/5728144">Kleines Gartenparadies mit Gartenhaus, Terrasse &amp; Teich</a>
+<div>€ 41.000,-</div>
+<div>8052 Graz / 7.246,04m²</div>
+<div>Grundstücksfläche ca. 7.246,04 m². Gartenhaus mit 20 m² Nutzfläche.</div>
+<h3>Bauernhaus kaufen in 6391 Fieberbrunn</h3>
+<a href="https://www.findmyhome.at/5655601">Historisches Bauernhaus mit Freizeitwohnsitz</a>
+<div>€ 790.000,-</div>
+<div>6391 Fieberbrunn / 748m² / 5 Zimmer</div>
+<div>Insgesamt bietet die Liegenschaft auf knapp 130 m² Wohn-Nutzfläche vielseitige Möglichkeiten. Grundstücksfläche ca. 748 m².</div>
+</body></html>
+"""
+
+AMBIGUOUS_AREA_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 3</p>
+<h3>Haus kaufen in 2620 Neunkirchen</h3>
+<a href="https://www.immobilienscout24.at/expose/example-1">WOHNEN, wo RUHE zu Hause ist | ca. 386m² Grund | ca. 126m² gew. NFL</a>
+<div>€ 399.000,-</div>
+<div>2620 Neunkirchen / 126,53m² / 4 Zimmer</div>
+<div>Grundstücksfläche: 386 m²</div>
+<h3>Bauernhaus kaufen in 7433 Mariasdorf</h3>
+<a href="https://www.immobilienscout24.at/expose/example-2">EIN ZUHAUSE mit GESCHICHTE | 472 m² Grundstücksfläche | ca. 240 m² NFL</a>
+<div>€ 249.000,-</div>
+<div>7433 Mariasdorf / 240m² / 5 Zimmer</div>
+<h3>Landhaus kaufen in 6370 Reith bei Kitzbühel</h3>
+<a href="https://www.immobilienscout24.at/expose/example-3">Privates Landhaus mit Kaiserblick / 793 m² Grundstück / 257 m² Wohn-/Nutzfläche</a>
+<div>€ 3.900.000,-</div>
+<div>6370 Reith bei Kitzbühel / 793m² / 8 Zimmer</div>
+</body></html>
+"""
+
+FLATTENED_METADATA_FIXTURE = """
+<html><body>
+<p>1 bis 12 von 3</p>
+<h3>Haus kaufen in 2490 Haschendorf</h3>
+<a href="https://www.immobilienscout24.at/expose/haschendorf">Neubau-Bungalow in Haschendorf – Erstbezug nach Fertigstellung</a>
+<div>€ 299.999,-</div>
+<div>2490 Haschendorf / 87,75m² / 3 Zimmer</div>
+<div>Wohnnutzfläche: ca. 87,75 m² Grundstücksfläche: ca. 410 m² Terrasse: ca. 21 m²</div>
+<h3>Haus kaufen in 5302 Henndorf</h3>
+<a href="https://www.immobilienscout24.at/expose/wallersee">Rarität am Wallersee mit Seezugang</a>
+<div>€ 1.990.000,-</div>
+<div>5302 Henndorf am Wallersee / 120m² / 6 Zimmer</div>
+<div>Nutzfläche: ca. 120 m² Grundstücksfläche: 784 m² Seegrundstück: 264 m²</div>
+<h3>Villa kaufen in 4694 Ohlsdorf</h3>
+<a href="https://www.immobilienscout24.at/expose/ohlsdorf">Einzigartige Luxus-Villa in Ohlsdorf</a>
+<div>€ 1.500.000,-</div>
+<div>4694 Ohlsdorf / 278,91m² / 7 Zimmer</div>
+<div>Nutzfläche: ca. 278,91 m² Grundstücksfläche: 831 m²</div>
+</body></html>
+"""
+
+
+def _parse_fixture():
+    return parse_immmo_search_page(
+        WRAPPED_CARD_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
+    )
+
+
+def test_parser_accepts_wrapped_links_and_preserves_linkless_cards() -> None:
+    page = _parse_fixture()
+
+    assert page.reported_count == 4396
+    assert page.cards_seen == 3
+    assert page.cards_parsed == 3
+    assert len(page.items) == 3
+
+    wrapped = next(item for item in page.items if item.url.endswith("/wrapped-object"))
+    assert wrapped.postal_code == "3100"
+    assert wrapped.city == "St. Pölten"
+    assert wrapped.living_area_m2 == Decimal(145)
+    assert wrapped.price_eur == Decimal(449000)
+    assert wrapped.raw_payload["display_area_m2"] == "145"
+    assert wrapped.raw_payload["display_area_semantics"] == "living_explicit_primary"
+    assert wrapped.raw_payload["original_url_missing"] is False
+    assert wrapped.raw_payload["identity_stable"] is True
+
+    synthetic = next(item for item in page.items if item.postal_code == "7000")
+    assert "/wohnwerk-fallback/" in synthetic.url
+    assert synthetic.title == "Linkloses Haus mit Innenhof"
+    assert synthetic.living_area_m2 == Decimal(110)
+    assert synthetic.raw_payload["display_area_m2"] == "110"
+    assert synthetic.raw_payload["original_url_missing"] is True
+    assert synthetic.raw_payload["identity_stable"] is False
+
+
+def test_linkless_card_identity_is_repeatable_but_not_authoritative() -> None:
+    first = next(item for item in _parse_fixture().items if item.postal_code == "7000")
+    second = next(item for item in _parse_fixture().items if item.postal_code == "7000")
+
+    assert first.source_listing_id == second.source_listing_id
+    assert first.url == second.url
+    assert first.raw_payload["identity_stable"] is False
+
+
+def test_full_target_comes_from_reported_count_not_visible_pagination_window() -> None:
+    page = _parse_fixture()
+
+    assert page.pagination_max_page == 10
+    assert page.reported_count == 4396
+    assert (page.reported_count + 11) // 12 == 367
+
+
+def test_plot_primary_display_area_is_not_promoted_to_living_area() -> None:
+    page = parse_immmo_search_page(
+        AREA_SEMANTICS_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Steiermark",
+    )
+    garden = next(item for item in page.items if item.postal_code == "8052")
+
+    assert garden.living_area_m2 is None
+    assert garden.plot_area_m2 == Decimal("7246.04")
+    assert garden.raw_payload["display_area_m2"] == "7246.04"
+    assert garden.raw_payload["display_area_semantics"] == "plot_explicit_primary"
+    assert garden.raw_payload["explicit_living_area_m2"] is None
+    assert garden.raw_payload["explicit_usable_area_m2"] == "20"
+    assert garden.raw_payload["explicit_plot_area_m2"] == "7246.04"
+
+
+def test_explicit_living_area_wins_when_primary_display_is_plot_area() -> None:
+    page = parse_immmo_search_page(
+        AREA_SEMANTICS_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Tirol",
+    )
+    farmhouse = next(item for item in page.items if item.postal_code == "6391")
+
+    assert farmhouse.living_area_m2 == Decimal(130)
+    assert farmhouse.plot_area_m2 == Decimal(748)
+    assert farmhouse.raw_payload["display_area_m2"] == "748"
+    assert farmhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
+    assert farmhouse.raw_payload["explicit_living_area_m2"] == "130"
+    assert farmhouse.raw_payload["explicit_usable_area_m2"] is None
+    assert farmhouse.raw_payload["explicit_plot_area_m2"] == "748"
+
+
+def test_explicit_plot_label_and_value_are_kept_together() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
+    )
+    house = next(item for item in page.items if item.postal_code == "2620")
+
+    assert house.living_area_m2 is None
+    assert house.plot_area_m2 == Decimal(386)
+    assert house.raw_payload["display_area_m2"] == "126.53"
+    assert house.raw_payload["display_area_semantics"] == "unknown"
+    assert house.raw_payload["explicit_plot_area_m2"] == "386"
+
+
+def test_generic_nutzflaeche_is_not_claimed_as_living_area() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Burgenland",
+    )
+    farmhouse = next(item for item in page.items if item.postal_code == "7433")
+
+    assert farmhouse.living_area_m2 is None
+    assert farmhouse.plot_area_m2 == Decimal(472)
+    assert farmhouse.raw_payload["display_area_m2"] == "240"
+    assert farmhouse.raw_payload["display_area_semantics"] == "unknown"
+
+
+def test_wohn_slash_nutzflaeche_is_explicit_living_area() -> None:
+    page = parse_immmo_search_page(
+        AMBIGUOUS_AREA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Tirol",
+    )
+    landhouse = next(item for item in page.items if item.postal_code == "6370")
+
+    assert landhouse.living_area_m2 == Decimal(257)
+    assert landhouse.plot_area_m2 == Decimal(793)
+    assert landhouse.raw_payload["display_area_m2"] == "793"
+    assert landhouse.raw_payload["display_area_semantics"] == "living_explicit_display_plot"
+    assert landhouse.raw_payload["explicit_living_area_m2"] == "257"
+    assert landhouse.raw_payload["explicit_usable_area_m2"] is None
+    assert landhouse.raw_payload["explicit_plot_area_m2"] == "793"
+
+
+def test_flattened_metadata_does_not_bind_previous_area_to_next_plot_label() -> None:
+    page = parse_immmo_search_page(
+        FLATTENED_METADATA_FIXTURE,
+        page_url="https://www.immmo.at/immo/Haus-kaufen/Niederoesterreich",
+    )
+
+    haschendorf = next(item for item in page.items if item.postal_code == "2490")
+    assert haschendorf.living_area_m2 == Decimal("87.75")
+    assert haschendorf.plot_area_m2 == Decimal(410)
+    assert haschendorf.raw_payload["display_area_semantics"] == "living_explicit_primary"
+    assert haschendorf.raw_payload["explicit_usable_area_m2"] is None
+
+    wallersee = next(item for item in page.items if item.postal_code == "5302")
+    assert wallersee.living_area_m2 is None
+    assert wallersee.plot_area_m2 == Decimal(784)
+    assert wallersee.raw_payload["display_area_m2"] == "120"
+    assert wallersee.raw_payload["display_area_semantics"] == "unknown"
+    assert wallersee.raw_payload["explicit_usable_area_m2"] == "120"
+
+    ohlsdorf = next(item for item in page.items if item.postal_code == "4694")
+    assert ohlsdorf.living_area_m2 is None
+    assert ohlsdorf.plot_area_m2 == Decimal(831)
+    assert ohlsdorf.raw_payload["display_area_m2"] == "278.91"
+    assert ohlsdorf.raw_payload["display_area_semantics"] == "unknown"
+    assert ohlsdorf.raw_payload["explicit_usable_area_m2"] == "278.91"

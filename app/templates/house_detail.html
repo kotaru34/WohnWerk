@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – {{ house.property.title }}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1350px; margin: 0 auto; padding: 28px 22px 70px; }
+    a { color: inherit; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .back { display: inline-block; margin-bottom: 14px; opacity: .75; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 20px; }
+    .media { aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; background: color-mix(in srgb, CanvasText 7%, Canvas); display: grid; place-items: center; }
+    .media img { width: 100%; height: 100%; object-fit: cover; }
+    .placeholder { opacity: .42; }
+    h1 { margin: 0 0 8px; line-height: 1.18; }
+    .location { opacity: .7; margin-bottom: 3px; }
+    .listed-date { opacity: .55; font-size: .82rem; margin-bottom: 12px; }
+    .price { font-size: 1.7rem; font-weight: 760; margin: 12px 0; }
+    .facts, .statuses { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
+    .fact, .status { border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 5px 9px; }
+    .status { font-size: .8rem; opacity: .75; }
+    .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .actions form { margin: 0; }
+    .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
+    .sources { font-size: .9rem; line-height: 1.6; margin-top: 18px; }
+    .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+    .nearby-head h2 { margin: 0; }
+    .radius { display: flex; gap: 8px; align-items: end; }
+    .radius label { display: grid; gap: 4px; font-size: .8rem; opacity: .8; }
+    input { width: 90px; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 9px; background: Field; color: FieldText; }
+    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    .semantics { margin: 10px 0 16px; font-size: .82rem; opacity: .65; }
+    .jobs { display: grid; gap: 10px; }
+    .job { display: grid; grid-template-columns: 92px minmax(0, 1fr) minmax(180px, .4fr); gap: 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-left-width: 4px; border-radius: 12px; padding: 14px; transition: background .15s ease, border-color .15s ease, opacity .15s ease; }
+    .job.unviewed { box-shadow: inset 0 0 0 1px color-mix(in srgb, AccentColor 12%, transparent); }
+    .job.viewed h3, .job.viewed .company { opacity: .86; }
+    .job.fit-excellent { border-left-color: #649474; background: color-mix(in srgb, #649474 5%, Canvas); }
+    .job.fit-good { border-left-color: #738ba3; background: color-mix(in srgb, #738ba3 4%, Canvas); }
+    .job.fit-medium { border-left-color: #9b8d69; background: color-mix(in srgb, #9b8d69 3%, Canvas); }
+    .job.fit-low { border-left-color: #8a7770; background: color-mix(in srgb, #8a7770 2%, Canvas); }
+    .job.fit-hard { border-left-color: #a35f5f; background: color-mix(in srgb, #a35f5f 7%, Canvas); opacity: .62; }
+    .job.fit-unrated { border-left-color: color-mix(in srgb, CanvasText 24%, transparent); }
+    .score { font-size: 1.8rem; font-weight: 760; }
+    .score small { font-size: .7rem; opacity: .55; }
+    .company { font-size: .85rem; opacity: .7; }
+    .job h3 { margin: 3px 0 7px; font-size: 1rem; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; font-size: .8rem; }
+    .badge { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 7px; }
+    .badge.new { font-weight: 750; border-color: color-mix(in srgb, AccentColor 55%, CanvasText 20%); background: color-mix(in srgb, AccentColor 10%, Canvas); }
+    .hard { border-color: color-mix(in srgb, #d33 60%, transparent); background: color-mix(in srgb, #d33 10%, Canvas); }
+    .distance { text-align: right; }
+    .distance strong { display: block; font-size: 1.1rem; }
+    .distance .air { font-size: .78rem; opacity: .65; margin-top: 4px; }
+    .empty { padding: 24px 0; opacity: .7; }
+    @media (max-width: 850px) { .hero { grid-template-columns: 1fr; } .job { grid-template-columns: 76px 1fr; } .distance { grid-column: 2; text-align: left; } .nearby-head { align-items: start; flex-direction: column; } }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/houses" class="active">Häuser</a>
+    <a href="/jobs">Stellen</a>
+  </nav>
+
+  <a class="back" href="/houses">← Zurück zu den Häusern</a>
+
+  <section class="hero">
+    <div class="media">
+      {% if image_url %}
+        <img src="{{ image_url }}" alt="">
+      {% else %}
+        <span class="placeholder">Vorschaubild wird im Hintergrund geladen</span>
+      {% endif %}
+    </div>
+    <div>
+      <div class="statuses">
+        <span class="status">Gesehen</span>
+        {% if house_state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
+      </div>
+      <div class="location">{{ house.property.postal_code or '' }} {{ house.property.city or 'Ort unbekannt' }}</div>
+      <div class="listed-date">Bei WohnWerk seit {{ house.property.first_seen_at.strftime('%d.%m.%Y') }}</div>
+      <h1>{{ house.property.title }}</h1>
+      <div class="price">{{ eur_label(house.property.price_eur) }}</div>
+      <div class="facts">
+        {% if area_label(house.property.living_area_m2) %}
+          <span class="fact">Wohnfläche {{ area_label(house.property.living_area_m2) }}</span>
+        {% elif area_label(house.neutral_area_m2) %}
+          <span class="fact">Fläche {{ area_label(house.neutral_area_m2) }} · Typ nicht eindeutig</span>
+        {% endif %}
+        {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
+        {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
+      </div>
+      <div class="actions">
+        <form method="post" action="/houses/{{ house.property.id }}/favorite">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="favorite" value="{{ '0' if house_state.favorite else '1' }}">
+          <input type="hidden" name="return_to" value="/houses/{{ house.property.id }}?radius_km={{ radius_km|round|int }}">
+          <button class="favorite {% if house_state.favorite %}active{% endif %}" type="submit">{{ 'Favorit entfernen' if house_state.favorite else 'Als Favorit merken' }}</button>
+        </form>
+        <form method="post" action="/houses/{{ house.property.id }}/hidden">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="hidden" value="1">
+          <input type="hidden" name="return_to" value="/houses">
+          <button type="submit">Ausblenden</button>
+        </form>
+      </div>
+      {% if house.sources %}
+        <div class="sources">
+          <strong>Originalanzeigen</strong><br>
+          {% for source in house.sources %}
+            {% if '/wohnwerk-fallback/' not in source.url %}
+              <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a><br>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="nearby-head">
+    <div>
+      <h2>Stellen im Umkreis</h2>
+      <div class="semantics">Alle aktuellen, nicht ausgeblendeten Stellen mit auflösbarer Position innerhalb des gewählten Luftlinien-Radius. Passung und Unvereinbarkeit bleiben sichtbar; Straßenzeit wird zusätzlich berechnet, wenn Routing verfügbar ist.</div>
+    </div>
+    <form class="radius" method="get" action="/houses/{{ house.property.id }}">
+      <label>Umkreis (km)
+        <input name="radius_km" type="number" min="5" max="100" step="5" value="{{ radius_km|round|int }}">
+      </label>
+      <button type="submit">Anzeigen</button>
+    </form>
+  </div>
+
+  <div class="jobs">
+    {% for item in jobs %}
+      {% set row = item.fit %}
+      {% set salary = annual_salary_label(row.job) %}
+      {% if row.result.hard_constraints %}
+        {% set fit_class = 'fit-hard' %}
+      {% elif row.result.score is none %}
+        {% set fit_class = 'fit-unrated' %}
+      {% elif row.result.score >= 85 %}
+        {% set fit_class = 'fit-excellent' %}
+      {% elif row.result.score >= 70 %}
+        {% set fit_class = 'fit-good' %}
+      {% elif row.result.score >= 50 %}
+        {% set fit_class = 'fit-medium' %}
+      {% else %}
+        {% set fit_class = 'fit-low' %}
+      {% endif %}
+      <article class="job {{ fit_class }} {{ 'viewed' if row.viewed else 'unviewed' }}">
+        <div>
+          {% if row.result.score is not none %}
+            <div class="score">{{ row.result.score }} <small>/100</small></div>
+            <div class="company">Passung</div>
+          {% else %}
+            <div class="score">–</div>
+            <div class="company">Unbewertet</div>
+          {% endif %}
+        </div>
+        <div>
+          <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
+          <h3><a href="/jobs/{{ row.job.id }}?radius_km={{ radius_km|round|int }}">{{ row.job.title }}</a></h3>
+          <div class="badges">
+            {% if row.is_new %}<span class="badge new">Neu</span>{% endif %}
+            <span class="badge">{{ 'Gesehen' if row.viewed else 'Noch nicht angesehen' }}</span>
+            <span class="badge">Bei WohnWerk seit {{ row.job.first_seen_at.strftime('%d.%m.%Y') }}</span>
+            {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
+            {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
+            {% if row.favorite %}<span class="badge">Favorit</span>{% endif %}
+            {% if row.result.hard_constraints %}<span class="badge hard">Unvereinbar: {{ row.hard_labels|join(', ') }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="distance">
+          {% if item.road_duration_minutes is not none %}
+            <strong>{{ item.road_duration_minutes|round|int }} min Fahrt</strong>
+            <span>{{ '%.1f'|format(item.road_distance_km) }} km Straße</span>
+          {% else %}
+            <strong>{{ '%.1f'|format(item.distance_km) }} km</strong>
+            <span>Luftlinie</span>
+          {% endif %}
+          <div class="air">Luftlinie {{ '%.1f'|format(item.distance_km) }} km</div>
+        </div>
+      </article>
+    {% else %}
+      <div class="empty">Keine aktuelle geolokalisierte Stelle innerhalb von {{ radius_km|round|int }} km gefunden.</div>
+    {% endfor %}
+  </div>
+</main>
+</body>
+</html>

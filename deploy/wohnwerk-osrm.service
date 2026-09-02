@@ -1,0 +1,31 @@
+[Unit]
+Description=WohnWerk OSRM Austria Routing Backend
+After=network.target
+Before=wohnwerk.service
+
+[Service]
+Type=simple
+User=osrm
+Group=osrm
+ExecStart=/usr/local/bin/osrm-routed /var/lib/osrm/austria-latest.osrm --algorithm MLD --mmap --ip 127.0.0.1 --port 5000 --threads 4 --max-table-size 100
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitNOFILE=65536
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

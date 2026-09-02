@@ -1,0 +1,27 @@
+[Unit]
+Description=WohnWerk property liveness, facts and thumbnail background work
+Wants=network-online.target
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wohnwerk
+EnvironmentFile=/opt/wohnwerk/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/wohnwerk/.venv/bin/python scripts/check_property_liveness.py
+ExecStart=/opt/wohnwerk/.venv/bin/python scripts/enrich_immoscout_property_facts.py --limit 60
+ExecStart=/opt/wohnwerk/.venv/bin/python scripts/cache_property_images.py
+StateDirectory=wohnwerk
+StateDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=8min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

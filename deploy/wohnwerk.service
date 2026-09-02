@@ -1,0 +1,26 @@
+[Unit]
+Description=WohnWerk web application
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wohnwerk
+EnvironmentFile=/opt/wohnwerk/.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/wohnwerk/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+KillSignal=SIGINT
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

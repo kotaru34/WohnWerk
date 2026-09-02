@@ -1,0 +1,580 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.jobs.identity import stable_identity_from_payload
+from app.jobs.location_resolution import LocalityResolution, resolve_localities
+from app.models import CrawlRun, Job, JobListing, JobLocation, ListingStatus, PostalCode, Source
+from app.sources.base import RawJob, RawJobLocation
+
+
+def _listing_payload(
+    item: RawJob,
+    *,
+    known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
+) -> dict:
+    payload = dict(item.raw_payload)
+    resolution_rows: list[dict] = []
+    for location in item.locations:
+        postal = known_postal.get(location.postal_code or "")
+        locality = locality_resolutions.get(location.city or "")
+        row = {
+            "source_postal_code": location.postal_code,
+            "postal_code_resolved": postal is not None,
+            "city": location.city,
+            "location_text": location.location_text,
+            "remote": location.remote,
+            "location_resolved": postal is not None or locality is not None,
+        }
+        if locality is not None and postal is None:
+            row.update(
+                {
+                    "resolution_method": locality.method,
+                    "resolution_source": locality.source,
+                    "canonical_locality": locality.canonical_locality,
+                    "matched_postal_codes": list(locality.postal_codes),
+                    "address_sample_count": locality.address_sample_count,
+                }
+            )
+        resolution_rows.append(row)
+
+    payload["wohnwerk_location_resolution"] = resolution_rows
+    return payload
+
+
+def _merge_listing_payload(existing_payload: dict | None, incoming_payload: dict) -> dict:
+    """Merge sparse job discovery without discarding prior enrichment."""
+    existing = dict(existing_payload or {})
+    merged = dict(existing)
+    merged.update(incoming_payload)
+
+    previous_enriched = existing.get("detail_enriched") is True
+    incoming_enriched = incoming_payload.get("detail_enriched")
+
+    if previous_enriched and incoming_enriched is not True:
+        merged["detail_enriched"] = True
+        transient_error = incoming_payload.get("detail_enrichment_error")
+        if transient_error:
+            merged["detail_enrichment_last_error"] = transient_error
+        merged.pop("detail_enrichment_error", None)
+    elif incoming_enriched is True:
+        merged.pop("detail_enrichment_error", None)
+        merged.pop("detail_enrichment_last_error", None)
+
+    return merged
+
+
+def _annual_eur_value(
+    value: Decimal | None,
+    *,
+    currency: str | None,
+    period: str | None,
+    payment_count: int | None,
+) -> Decimal | None:
+    """Annualize only when the source gives enough explicit semantics.
+
+    In particular, monthly Austrian salary is not blindly multiplied by 14. A monthly
+    value is annualized only when the source explicitly supplies the payment count.
+    """
+    if value is None or not currency or not period:
+        return None
+    if currency.upper() != "EUR":
+        return None
+
+    normalized_period = period.lower()
+    if normalized_period == "year":
+        return value
+    if normalized_period == "month" and payment_count is not None and payment_count > 0:
+        return value * payment_count
+    return None
+
+
+def _enrich_salary(job_row: Job, item: RawJob) -> None:
+    if item.salary_text is not None:
+        job_row.salary_text = item.salary_text
+    if item.salary_min is not None:
+        job_row.salary_min = item.salary_min
+    if item.salary_max is not None:
+        job_row.salary_max = item.salary_max
+    if item.salary_currency is not None:
+        job_row.salary_currency = item.salary_currency.upper()
+    if item.salary_period is not None:
+        job_row.salary_period = item.salary_period.lower()
+    if item.salary_payment_count is not None:
+        job_row.salary_payment_count = item.salary_payment_count
+    if item.salary_provenance is not None:
+        job_row.salary_provenance = item.salary_provenance
+    if item.salary_confidence is not None:
+        job_row.salary_confidence = item.salary_confidence
+    if item.salary_is_minimum_only is not None:
+        job_row.salary_is_minimum_only = item.salary_is_minimum_only
+
+    annual_min = _annual_eur_value(
+        item.salary_min,
+        currency=item.salary_currency,
+        period=item.salary_period,
+        payment_count=item.salary_payment_count,
+    )
+    annual_max = _annual_eur_value(
+        item.salary_max,
+        currency=item.salary_currency,
+        period=item.salary_period,
+        payment_count=item.salary_payment_count,
+    )
+    if annual_min is not None:
+        job_row.salary_min_eur_year = annual_min
+    if annual_max is not None:
+        job_row.salary_max_eur_year = annual_max
+
+
+def _normalized_location_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = " ".join(value.split()).casefold()
+    return normalized or None
+
+
+def _location_key(
+    *,
+    postal_code: str | None,
+    city: str | None,
+    location_text: str | None,
+    remote: bool,
+) -> tuple[str | None, str | None, str | None, bool]:
+    return (
+        postal_code,
+        _normalized_location_text(city),
+        _normalized_location_text(location_text),
+        remote,
+    )
+
+
+def _source_location_key(
+    *,
+    location_text: str | None,
+    remote: bool,
+) -> tuple[str, bool] | None:
+    """Identify a source location label independently of our parsed city guess."""
+    normalized = _normalized_location_text(location_text)
+    if normalized is None:
+        return None
+    return normalized, remote
+
+
+def _enrich_locations(
+    job_row: Job,
+    *,
+    locations: list[RawJobLocation],
+    known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
+) -> None:
+    """Add/enrich locations without erasing richer locations from another source.
+
+    A remote/hybrid flag does not erase a source-provided physical city. If a vacancy
+    says it is remote-capable *and* anchored in Vienna, keep both the city centroid and
+    `remote=True`. Countrywide remote scopes without a concrete city still remain
+    ungeocoded rather than receiving an invented point.
+
+    If parsing improves over time for the *same source location text*, replace an old
+    unresolved city guess with the newly resolved interpretation instead of accumulating
+    duplicate JobLocation rows. This is deliberately keyed by the unchanged human-readable
+    source label, never by fuzzy city similarity.
+    """
+    existing_by_key = {
+        _location_key(
+            postal_code=location.postal_code,
+            city=location.city,
+            location_text=location.location_text,
+            remote=location.remote,
+        ): location
+        for location in job_row.locations
+    }
+    existing_by_source_key: dict[tuple[str, bool], list[JobLocation]] = {}
+    for location in job_row.locations:
+        source_key = _source_location_key(
+            location_text=location.location_text,
+            remote=location.remote,
+        )
+        if source_key is not None:
+            existing_by_source_key.setdefault(source_key, []).append(location)
+
+    for item in locations:
+        postal = known_postal.get(item.postal_code or "")
+        postal_code = postal.postal_code if postal is not None else None
+        locality = locality_resolutions.get(item.city or "")
+        resolved_location = (
+            postal.location
+            if postal is not None
+            else locality.as_wkt()
+            if locality is not None
+            else None
+        )
+        key = _location_key(
+            postal_code=postal_code,
+            city=item.city,
+            location_text=item.location_text,
+            remote=item.remote,
+        )
+        source_key = _source_location_key(
+            location_text=item.location_text,
+            remote=item.remote,
+        )
+        source_rows = existing_by_source_key.get(source_key, []) if source_key else []
+
+        existing = existing_by_key.get(key)
+        if existing is not None:
+            if existing.location is None and resolved_location is not None:
+                existing.location = resolved_location
+
+            # A previous parser version may have stored the same source label with a
+            # weaker unresolved city guess. Once the exact resolved row exists, delete
+            # only those stale unresolved duplicates with the identical source label.
+            stale_rows = [
+                row
+                for row in list(source_rows)
+                if row is not existing and row.location is None and row.postal_code is None
+            ]
+            for stale in stale_rows:
+                stale_key = _location_key(
+                    postal_code=stale.postal_code,
+                    city=stale.city,
+                    location_text=stale.location_text,
+                    remote=stale.remote,
+                )
+                if stale in job_row.locations:
+                    job_row.locations.remove(stale)
+                existing_by_key.pop(stale_key, None)
+                source_rows.remove(stale)
+            continue
+
+        # If the source label is unchanged and we can now resolve it more precisely,
+        # upgrade the old unresolved row in place even when our parsed city changed.
+        if resolved_location is not None:
+            stale = next(
+                (
+                    row
+                    for row in source_rows
+                    if row.location is None and row.postal_code is None
+                ),
+                None,
+            )
+            if stale is not None:
+                stale_key = _location_key(
+                    postal_code=stale.postal_code,
+                    city=stale.city,
+                    location_text=stale.location_text,
+                    remote=stale.remote,
+                )
+                stale.postal_code = postal_code
+                stale.city = item.city
+                stale.location_text = item.location_text
+                stale.location = resolved_location
+                existing_by_key.pop(stale_key, None)
+                existing_by_key[key] = stale
+                continue
+
+        # If an earlier sparse source could only preserve the human-readable location,
+        # enrich that row with the PLZ centroid rather than creating a duplicate.
+        unresolved_key = _location_key(
+            postal_code=None,
+            city=item.city,
+            location_text=item.location_text,
+            remote=item.remote,
+        )
+        unresolved = existing_by_key.get(unresolved_key)
+        if unresolved is not None and postal is not None:
+            unresolved.postal_code = postal.postal_code
+            unresolved.location = postal.location
+            existing_by_key.pop(unresolved_key, None)
+            existing_by_key[key] = unresolved
+            continue
+
+        location_row = JobLocation(
+            postal_code=postal_code,
+            city=item.city,
+            location_text=item.location_text,
+            location=resolved_location,
+            remote=item.remote,
+        )
+        job_row.locations.append(location_row)
+        existing_by_key[key] = location_row
+        if source_key is not None:
+            existing_by_source_key.setdefault(source_key, []).append(location_row)
+
+
+def _enrich_job(
+    job_row: Job,
+    *,
+    item: RawJob,
+    known_postal: dict[str, PostalCode],
+    locality_resolutions: dict[str, LocalityResolution],
+    now: datetime,
+) -> None:
+    if item.title:
+        job_row.title = item.title
+    if item.company is not None:
+        job_row.company = item.company
+    if item.description is not None:
+        job_row.description = item.description
+
+    _enrich_salary(job_row, item)
+    if item.locations:
+        _enrich_locations(
+            job_row,
+            locations=item.locations,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+        )
+
+    job_row.status = ListingStatus.ACTIVE
+    job_row.last_seen_at = now
+    job_row.inactive_at = None
+
+
+def _stable_identity_jobs(
+    session: Session,
+    *,
+    source: Source,
+    identities: set[str],
+) -> dict[str, Job]:
+    """Map source-backed stable identities to canonical jobs.
+
+    Legacy SmartRecruiters rows may not yet have the explicit identity field, so this
+    intentionally reads the source's existing listings and lets the identity helper
+    derive tenant + jobAdId when necessary. Sources without stable identities skip the
+    scan entirely.
+    """
+    if not identities:
+        return {}
+
+    result: dict[str, Job] = {}
+    listings = session.scalars(
+        select(JobListing)
+        .where(JobListing.source_id == source.id)
+        .order_by(JobListing.id)
+    )
+    for listing in listings:
+        identity = stable_identity_from_payload(listing.raw_payload)
+        if identity in identities:
+            result.setdefault(identity, listing.job)
+    return result
+
+
+def record_rejected_job_sightings(
+    session: Session,
+    *,
+    source: Source,
+    run: CrawlRun,
+    items: list[RawJob],
+) -> tuple[int, int]:
+    """Refresh source lifecycle for previously persisted jobs rejected by today's gate.
+
+    New rejected candidates remain unpersisted. Existing listings, however, must be
+    recorded as seen so a taxonomy change cannot masquerade as a source disappearance.
+    Their latest `wohnwerk_discovery_gate` payload stores `accepted=false`, which is the
+    separate local relevance state used by corpus/UI queries.
+
+    Returns `(existing_seen, reactivated)`.
+    """
+    if not items:
+        return 0, 0
+
+    source_ids = [item.source_listing_id for item in items]
+    existing = {
+        listing.source_listing_id: listing
+        for listing in session.scalars(
+            select(JobListing).where(
+                JobListing.source_id == source.id,
+                JobListing.source_listing_id.in_(source_ids),
+            )
+        )
+    }
+    if not existing:
+        return 0, 0
+
+    now = datetime.now(UTC)
+    seen = 0
+    reactivated = 0
+
+    for item in items:
+        listing = existing.get(item.source_listing_id)
+        if listing is None:
+            continue
+
+        if listing.status != ListingStatus.ACTIVE:
+            reactivated += 1
+
+        listing.url = item.url
+        listing.status = ListingStatus.ACTIVE
+        listing.raw_payload = _merge_listing_payload(listing.raw_payload, dict(item.raw_payload))
+        listing.last_seen_crawl_run_id = run.id
+        listing.last_seen_at = now
+        listing.inactive_at = None
+
+        # Canonical lifecycle describes whether at least one source listing exists,
+        # not whether WohnWerk currently considers the job professionally relevant.
+        listing.job.status = ListingStatus.ACTIVE
+        listing.job.last_seen_at = now
+        listing.job.inactive_at = None
+        seen += 1
+
+    session.commit()
+    return seen, reactivated
+
+
+def ingest_jobs(
+    session: Session,
+    *,
+    source: Source,
+    run: CrawlRun,
+    items: list[RawJob],
+) -> tuple[int, int]:
+    """Persist relevant discovery with source identity first, exact URL second."""
+    if not items:
+        return 0, 0
+
+    now = datetime.now(UTC)
+    postal_codes = {
+        location.postal_code
+        for item in items
+        for location in item.locations
+        if location.postal_code
+    }
+    known_postal = {
+        row.postal_code: row
+        for row in session.scalars(
+            select(PostalCode).where(PostalCode.postal_code.in_(postal_codes))
+        )
+    }
+    city_labels = {
+        location.city
+        for item in items
+        for location in item.locations
+        if location.city
+    }
+    locality_resolutions = resolve_localities(session, city_labels)
+
+    source_ids = [item.source_listing_id for item in items]
+    existing = {
+        listing.source_listing_id: listing
+        for listing in session.scalars(
+            select(JobListing).where(
+                JobListing.source_id == source.id,
+                JobListing.source_listing_id.in_(source_ids),
+            )
+        )
+    }
+
+    identities = {
+        identity
+        for item in items
+        if (identity := stable_identity_from_payload(item.raw_payload)) is not None
+    }
+    stable_identity_jobs = _stable_identity_jobs(
+        session,
+        source=source,
+        identities=identities,
+    )
+
+    urls = {item.url for item in items}
+    exact_url_jobs: dict[str, Job] = {}
+    if urls:
+        for listing in session.scalars(
+            select(JobListing).where(JobListing.url.in_(urls)).order_by(JobListing.id)
+        ):
+            exact_url_jobs.setdefault(listing.url, listing.job)
+
+    new_count = 0
+    updated_count = 0
+
+    for item in items:
+        listing = existing.get(item.source_listing_id)
+        payload = _listing_payload(
+            item,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+        )
+        stable_identity = stable_identity_from_payload(payload)
+
+        if listing is None:
+            job_row = (
+                stable_identity_jobs.get(stable_identity)
+                if stable_identity is not None
+                else None
+            )
+            if job_row is None:
+                job_row = exact_url_jobs.get(item.url)
+
+            if job_row is None:
+                job_row = Job(
+                    title=item.title,
+                    company=item.company,
+                    description=item.description,
+                    salary_text=item.salary_text,
+                    status=ListingStatus.ACTIVE,
+                    first_seen_at=now,
+                    last_seen_at=now,
+                )
+                session.add(job_row)
+                _enrich_salary(job_row, item)
+                _enrich_locations(
+                    job_row,
+                    locations=item.locations,
+                    known_postal=known_postal,
+                    locality_resolutions=locality_resolutions,
+                )
+                session.flush()
+            else:
+                _enrich_job(
+                    job_row,
+                    item=item,
+                    known_postal=known_postal,
+                    locality_resolutions=locality_resolutions,
+                    now=now,
+                )
+
+            exact_url_jobs[item.url] = job_row
+            if stable_identity is not None:
+                stable_identity_jobs.setdefault(stable_identity, job_row)
+            listing = JobListing(
+                job_id=job_row.id,
+                source_id=source.id,
+                source_listing_id=item.source_listing_id,
+                url=item.url,
+                status=ListingStatus.ACTIVE,
+                raw_payload=payload,
+                last_seen_crawl_run_id=run.id,
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            session.add(listing)
+            existing[item.source_listing_id] = listing
+            new_count += 1
+            continue
+
+        job_row = listing.job
+        _enrich_job(
+            job_row,
+            item=item,
+            known_postal=known_postal,
+            locality_resolutions=locality_resolutions,
+            now=now,
+        )
+        listing.url = item.url
+        listing.status = ListingStatus.ACTIVE
+        listing.raw_payload = _merge_listing_payload(listing.raw_payload, payload)
+        listing.last_seen_crawl_run_id = run.id
+        listing.last_seen_at = now
+        listing.inactive_at = None
+        exact_url_jobs[item.url] = job_row
+        if stable_identity is not None:
+            stable_identity_jobs.setdefault(stable_identity, job_row)
+        updated_count += 1
+
+    session.commit()
+    return new_count, updated_count

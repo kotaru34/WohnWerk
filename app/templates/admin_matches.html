@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Stellen & Häuser</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1540px; margin: 0 auto; padding: 28px 22px 70px; }
+    h1 { margin: 0 0 4px; }
+    h2, h3 { margin: 0; }
+    a { color: inherit; }
+    .subtle { opacity: .7; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .topnav a { text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .notice, .controls, .summary, .job { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .notice { margin: 16px 0; padding: 11px 13px; background: color-mix(in srgb, #b18a42 8%, Canvas); }
+    .live { margin: 14px 0 18px; padding: 11px 13px; border-left: 4px solid #649474; background: color-mix(in srgb, #649474 6%, Canvas); border-radius: 8px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; padding: 14px; margin: 18px 0; }
+    .controls label { display: grid; gap: 4px; font-size: .82rem; opacity: .82; }
+    input { width: 90px; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 9px; background: Field; color: FieldText; }
+    button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    .summary { display: grid; grid-template-columns: repeat(3, minmax(130px, 1fr)); gap: 1px; overflow: hidden; margin-bottom: 20px; background: color-mix(in srgb, CanvasText 13%, transparent); }
+    .summary div { padding: 12px 14px; background: Canvas; }
+    .summary strong { display: block; font-size: 1.35rem; }
+    .job { margin: 14px 0 22px; overflow: hidden; }
+    .job-head { display: grid; grid-template-columns: 110px minmax(0, 1fr) minmax(220px, .5fr); gap: 18px; padding: 17px; border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent); }
+    .score-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; opacity: .62; }
+    .score { font-size: 2.2rem; line-height: 1; font-weight: 760; margin-top: 4px; }
+    .coverage { font-size: .78rem; margin-top: 9px; opacity: .7; }
+    .company { opacity: .7; margin-bottom: 3px; font-size: .9rem; }
+    .job-title { font-size: 1.12rem; line-height: 1.3; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .badge { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; font-size: .83rem; }
+    .job-links { font-size: .86rem; line-height: 1.55; }
+    .houses { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1px; background: color-mix(in srgb, CanvasText 12%, transparent); }
+    .house { background: Canvas; padding: 15px; min-width: 0; }
+    .house h3 { font-size: .98rem; line-height: 1.35; margin-bottom: 7px; }
+    .house-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; font-size: .84rem; margin: 7px 0; }
+    .commute { display: flex; gap: 8px; align-items: baseline; margin: 10px 0; }
+    .commute strong { font-size: 1.35rem; }
+    .road { color: color-mix(in srgb, #649474 80%, CanvasText); }
+    .air { opacity: .76; }
+    .source-links { margin-top: 10px; font-size: .83rem; }
+    .empty { padding: 18px; opacity: .7; }
+    @media (max-width: 850px) {
+      .job-head { grid-template-columns: 90px 1fr; }
+      .job-links { grid-column: 2; }
+      .summary { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/matches" class="active">Kombinationen</a>
+    <a href="/jobs">Stellen</a>
+  </nav>
+
+  <h1>Stellen & passende Häuser</h1>
+  <div class="subtle">{{ profile.label_de }} · live aus der aktuellen WohnWerk-Datenbank</div>
+
+  <div class="live">
+    Angezeigt werden nur derzeit aktive Stellen und Immobilien. Neue Anzeigen fließen automatisch ein; nicht mehr verfügbare Anzeigen verschwinden aus den Empfehlungen.
+  </div>
+
+  {% if routing_notice %}<div class="notice">{{ routing_notice }}</div>{% endif %}
+
+  <form class="controls" method="get" action="/matches">
+    <label>Max. Entfernung
+      <input name="radius_km" type="number" min="5" max="100" step="5" value="{{ radius_km|round|int }}">
+    </label>
+    <label>Stellen
+      <input name="stellen" type="number" min="1" max="100" value="{{ job_limit }}">
+    </label>
+    <label>Häuser je Stelle
+      <input name="haeuser" type="number" min="1" max="10" value="{{ properties_per_job }}">
+    </label>
+    <button type="submit">Neu berechnen</button>
+  </form>
+
+  <div class="summary">
+    <div><strong>{{ groups|length }}</strong>passende aktive Stellen</div>
+    <div><strong>{{ property_count }}</strong>angezeigte Haus-Kombinationen</div>
+    <div><strong>{{ 'Straße' if routing_mode == 'road' else 'Luftlinie' }}</strong>Entfernungsmodus</div>
+  </div>
+
+  {% for group in groups %}
+    {% set row = group.fit %}
+    {% set salary = annual_salary_label(row.job) %}
+    <article class="job" id="job-{{ row.job.id }}">
+      <div class="job-head">
+        <div>
+          <div class="score-label">Passung</div>
+          <div class="score">{{ row.result.score if row.result.score is not none else '–' }}</div>
+          <div class="coverage">Profilbasis {{ (row.result.preference_coverage * 100)|round|int }} %</div>
+        </div>
+        <div>
+          <div class="company">{{ row.job.company or 'Firma unbekannt' }}</div>
+          <h2 class="job-title">{{ row.job.title }}</h2>
+          <div class="badges">
+            {% if salary %}<span class="badge">{{ salary }}</span>{% endif %}
+            {% for location in row.locations %}<span class="badge">{{ location }}</span>{% endfor %}
+            {% if row.favorite %}<span class="badge">Favorit</span>{% endif %}
+          </div>
+        </div>
+        <div class="job-links">
+          {% if row.links %}
+            <strong>Stellenanzeige</strong><br>
+            {% for link in row.links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %}<br>{% endif %}
+            {% endfor %}
+          {% else %}
+            <span class="subtle">Keine aktive Quell-URL verfügbar</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if group.properties %}
+        <div class="houses">
+          {% for item in group.properties %}
+            {% set house = item.spatial %}
+            <section class="house">
+              <h3>{{ house.title }}</h3>
+              <div class="house-meta">
+                <strong>{{ eur_label(house.price_eur) }}</strong>
+                <span>{{ house.property_location_label }}</span>
+                {% if area_label(house.living_area_m2) %}
+                  <span>Wohnfläche {{ area_label(house.living_area_m2) }}</span>
+                {% elif area_label(item.neutral_area_m2) %}
+                  <span>Fläche {{ area_label(item.neutral_area_m2) }} <span class="subtle">(Typ nicht eindeutig)</span></span>
+                {% endif %}
+                {% if area_label(item.visible_plot_area_m2) %}<span>Grund {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+              </div>
+
+              {% if routing_mode == 'road' and item.road_duration_minutes is not none %}
+                <div class="commute road">
+                  <strong>{{ item.road_duration_minutes|round|int }} min</strong>
+                  <span>{{ '%.1f'|format(item.road_distance_km) }} km Straße</span>
+                </div>
+                <div class="air">Luftlinie {{ '%.1f'|format(house.distance_km) }} km · Zentroid-Näherung</div>
+              {% else %}
+                <div class="commute air">
+                  <strong>{{ '%.1f'|format(house.distance_km) }} km</strong>
+                  <span>Luftlinie · Zentroid-Näherung</span>
+                </div>
+              {% endif %}
+
+              {% if item.links %}
+                <div class="source-links">
+                  {% for link in item.links %}
+                    <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% if not loop.last %} · {% endif %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </section>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">Keine aktive Immobilie innerhalb des gewählten Radius gefunden.</div>
+      {% endif %}
+    </article>
+  {% else %}
+    <div class="empty">Derzeit keine passenden aktiven Kombinationen.</div>
+  {% endfor %}
+</main>
+</body>
+</html>

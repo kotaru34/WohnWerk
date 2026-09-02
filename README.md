@@ -1,52 +1,38 @@
 # WohnWerk
 
-WohnWerk is a private, self-hosted home-and-job matching system for Austria.
+Austria-first, self-hosted property + job acquisition and recommendation system.
 
-Its purpose is to reduce a large manual search problem to one local interface:
+Current architecture keeps source lifecycle, canonical identity, normalized professional concepts, candidate preference/fit and geography as separate layers.
 
-- collect houses for sale from multiple Austrian sources;
-- collect and normalize relevant job vacancies from multiple Austrian sources;
-- keep source records and historical state locally;
-- score jobs against a manually curated professional profile;
-- match homes and jobs dynamically by configurable geographic radius;
-- provide an intuitive web UI for browsing in both directions: **home -> nearby jobs** and **job -> nearby homes**.
+## Current production state
 
-## Project status
+- Properties: IMMMO + s REAL.
+- Jobs: supplementary ATS feeds plus low-impact Austrian broad-board frontiers.
+- Canonical job corpus: 156 relevant jobs after reviewed fail-closed dedupe.
+- Normalized job concepts: migration `0007_job_concepts` applied; 747 deterministic evidence rows across 156 jobs.
+- Evidence distinguishes title `primary` identity from description `context`.
 
-Early bootstrap / architecture phase.
+## Current development stage
 
-The initial target is an Austria-first MVP that can:
+Candidate concept preferences use four states:
 
-1. ingest at least one real-estate source;
-2. ingest at least one job source;
-3. normalize both into PostgreSQL;
-4. resolve Austrian postal codes to approximate locations;
-5. perform radius matching with PostGIS;
-6. expose filtered results through a local web UI.
+- `can_want`
+- `can_not_want`
+- `cannot_want`
+- `cannot_not_want`
 
-## Design principles
+The current fit engine is versioned and read-only. Do not apply migration `0008_candidate_preferences` until the production ranking audit has been reviewed.
 
-- Austria-first, multi-source by design.
-- Source adapters may use an official API, public feed, static HTTP parsing, or browser automation depending on the source.
-- Conservative, source-specific polling rather than aggressive crawling.
-- Raw source data is retained so parsers and enrichment can be rerun locally.
-- Canonical entities are separated from source listings to support deduplication.
-- Houses and jobs are stored independently; geographic pairing is computed dynamically.
-- `job_fit_score` is separate from any home/job pair score.
-- AI enrichment is optional and isolated behind an internal API; the core application must continue working without the AI VM.
-- Approximate postal-code geography is sufficient for the intended 25/50/100/custom km matching workflow.
+Run:
 
-## Planned stack
+```bash
+python scripts/candidate_fit_audit.py --limit 25
+```
 
-- Python
-- FastAPI
-- PostgreSQL + PostGIS
-- SQLAlchemy / GeoAlchemy
-- Alembic
-- HTMX + server-rendered templates for the first UI
-- Playwright where browser automation is appropriate
-- Optional embedding / LLM enrichment through a separate GPU VM
+For detailed contribution inspection:
 
-## Repository
+```bash
+python scripts/candidate_fit_audit.py --job-id <JOB_ID>
+```
 
-Detailed architecture, requirements, source research, database schema, and deployment notes will live under `docs/` as implementation progresses.
+`HANDOFF.md` is the authoritative detailed checkpoint and work order.

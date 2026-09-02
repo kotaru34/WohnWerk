@@ -1,0 +1,1 @@
+"""WohnWerk application package."""

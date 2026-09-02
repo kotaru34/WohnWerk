@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Konzepte</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1500px; margin: 0 auto; padding: 28px 22px 70px; }
+    h1 { margin: 0 0 4px; }
+    .subtle { opacity: .7; }
+    .topnav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .topnav a, .toolbar a { color: inherit; text-decoration: none; padding: 7px 10px; border-radius: 8px; }
+    .topnav a.active, .toolbar a.active { background: color-mix(in srgb, AccentColor 24%, Canvas); font-weight: 700; }
+    .toolbar, .notice, .concept { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px; margin: 16px 0; }
+    .toolbar .separator { width: 1px; align-self: stretch; background: color-mix(in srgb, CanvasText 15%, transparent); margin: 0 3px; }
+    .progress { margin: 12px 0 18px; font-size: .9rem; opacity: .74; }
+    .notice { padding: 12px 14px; margin-bottom: 18px; background: color-mix(in srgb, #d89b00 16%, Canvas); }
+    .concept { padding: 16px; margin: 12px 0; transition: opacity .14s ease, border-color .14s ease, background .14s ease; }
+    .concept.rated { opacity: .72; }
+    .concept.rated:hover, .concept.rated:focus-within { opacity: 1; }
+    .concept.unrated { border-color: color-mix(in srgb, AccentColor 55%, CanvasText 18%); background: color-mix(in srgb, AccentColor 5%, Canvas); }
+    .concept-head { display: grid; grid-template-columns: minmax(240px, 1fr) auto; gap: 16px; align-items: start; }
+    .kind { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; opacity: .65; }
+    h2 { margin: 3px 0 4px; font-size: 1.08rem; }
+    code { font-size: .82em; opacity: .75; }
+    .metrics { text-align: right; font-size: .88rem; line-height: 1.5; }
+    .preference { margin-top: 14px; display: grid; grid-template-columns: repeat(4, minmax(145px, 1fr)) auto; gap: 7px; align-items: stretch; }
+    button, input { font: inherit; }
+    button { border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 10px; background: ButtonFace; color: ButtonText; cursor: pointer; }
+    button.active { outline: 2px solid AccentColor; outline-offset: 1px; font-weight: 700; }
+    button.danger { border-color: color-mix(in srgb, #b40000 50%, transparent); }
+    .provenance { margin-top: 7px; font-size: .82rem; opacity: .72; }
+    .aliases { margin-top: 16px; padding-top: 12px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+    .alias-list { display: flex; gap: 7px; flex-wrap: wrap; margin: 8px 0 12px; }
+    .alias { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 7px 4px 10px; }
+    .alias.off { opacity: .45; text-decoration: line-through; }
+    .alias form { display: inline; }
+    .alias button { border: 0; padding: 2px 5px; background: transparent; }
+    .alias-add { display: grid; grid-template-columns: minmax(220px, 420px) 90px auto; gap: 7px; }
+    input { border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
+    @media (max-width: 900px) {
+      .preference { grid-template-columns: 1fr 1fr; }
+      .concept-head { grid-template-columns: 1fr; }
+      .metrics { text-align: left; }
+      .alias-add { grid-template-columns: 1fr; }
+      .toolbar .separator { display: none; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <nav class="topnav" aria-label="Administration">
+    <a href="/houses">Häuser</a>
+    <a href="/jobs">Stellen</a>
+    <a href="/admin/concepts" class="active">Konzepte</a>
+    <a href="/admin/health">Betrieb</a>
+  </nav>
+
+  <h1>Kandidatenprofil</h1>
+  <div class="subtle">{{ profile.label_de }} · Kanonische Konzepte und Synonyme</div>
+
+  <nav class="toolbar" aria-label="Konzeptfilter">
+    <strong>Typ:</strong>
+    <a href="/admin/concepts?bewertung={{ selected_rating }}" class="{% if selected_kind is none %}active{% endif %}">Alle</a>
+    {% for kind in kinds %}
+      <a href="/admin/concepts?kind={{ kind.value }}&bewertung={{ selected_rating }}" class="{% if selected_kind == kind %}active{% endif %}">{{ kind_labels[kind] }}</a>
+    {% endfor %}
+    <span class="separator"></span>
+    <strong>Status:</strong>
+    {% for value, label in concept_rating_filters.items() %}
+      <a href="/admin/concepts?bewertung={{ value }}{% if selected_kind %}&kind={{ selected_kind.value }}{% endif %}" class="{% if selected_rating == value %}active{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+
+  <div class="progress">
+    {{ concept_stats.bewertet }} vom Kandidaten bestätigt · {{ concept_stats.unbewertet }} noch offen · {{ concept_stats.gesamt }} insgesamt in dieser Typauswahl
+  </div>
+
+  {% if normalization_notice %}
+    <div class="notice">
+      Ein Synonym wurde geändert. Die persistierte Konzept-Evidenz bleibt absichtlich unverändert, bis die Job-Normalisierung erneut ausgeführt wird.
+    </div>
+  {% endif %}
+
+  {% for row in rows %}
+    {% set pref = row.preference %}
+    {% set manually_rated = pref and pref.source == 'manual' %}
+    <section class="concept {{ 'rated' if manually_rated else 'unrated' }}" id="concept-{{ row.concept.id }}">
+      <div class="concept-head">
+        <div>
+          <div class="kind">{{ kind_labels_by_value[row.concept.kind] }}</div>
+          <h2>{{ row.concept.label_de }}</h2>
+          <code>{{ row.concept.kind }}:{{ row.concept.slug }}</code>
+          {% if not row.concept.enabled %}<span class="subtle"> · deaktiviert</span>{% endif %}
+        </div>
+        <div class="metrics">
+          <strong>{{ row.evidence_jobs }}</strong> Stellen<br>
+          {{ row.evidence_primary }} primär · {{ row.evidence_context }} Kontext
+        </div>
+      </div>
+
+      <div class="preference" aria-label="Bewertung für {{ row.concept.label_de }}">
+        {% for state in preference_states %}
+          <form method="post" action="/admin/concepts/{{ row.concept.id }}/preference">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="state" value="{{ state.value }}">
+            <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+            <input type="hidden" name="return_rating" value="{{ selected_rating }}">
+            <button type="submit" class="{% if pref and pref.state == state.value %}active{% endif %}">{{ state_labels[state] }}</button>
+          </form>
+        {% endfor %}
+        <form method="post" action="/admin/concepts/{{ row.concept.id }}/preference/reset">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+          <input type="hidden" name="return_rating" value="{{ selected_rating }}">
+          <button type="submit">Auf Standard zurücksetzen</button>
+        </form>
+      </div>
+      <div class="provenance">
+        {% if manually_rated %}
+          Bewertung: <strong>Vom Kandidaten bestätigt</strong>
+        {% elif pref %}
+          Bewertung: <strong>Standard · noch nicht bestätigt</strong>
+          {% if pref.seed_version %} · {{ pref.seed_version }}{% endif %}
+        {% else %}
+          Bewertung: <strong>Noch unbewertet</strong>
+        {% endif %}
+      </div>
+
+      <div class="aliases">
+        <strong>Synonyme</strong>
+        <div class="alias-list">
+          {% for alias in row.concept.aliases|sort(attribute='alias') %}
+            <span class="alias {% if not alias.enabled %}off{% endif %}">
+              {{ alias.alias }}{% if alias.language %} <small>({{ alias.language }})</small>{% endif %}
+              <form method="post" action="/admin/aliases/{{ alias.id }}/toggle">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
+                <input type="hidden" name="enabled" value="{{ '0' if alias.enabled else '1' }}">
+                <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+                <input type="hidden" name="return_rating" value="{{ selected_rating }}">
+                <button type="submit" title="{{ 'Deaktivieren' if alias.enabled else 'Aktivieren' }}">{{ '−' if alias.enabled else '+' }}</button>
+              </form>
+              {% if alias.source == 'manual' %}
+                <form method="post" action="/admin/aliases/{{ alias.id }}/delete">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="concept_id" value="{{ row.concept.id }}">
+                  <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+                  <input type="hidden" name="return_rating" value="{{ selected_rating }}">
+                  <button class="danger" type="submit" title="Löschen">×</button>
+                </form>
+              {% endif %}
+            </span>
+          {% else %}
+            <span class="subtle">Keine Synonyme</span>
+          {% endfor %}
+        </div>
+        <form class="alias-add" method="post" action="/admin/concepts/{{ row.concept.id }}/aliases">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_kind" value="{{ selected_kind.value if selected_kind else '' }}">
+          <input type="hidden" name="return_rating" value="{{ selected_rating }}">
+          <input name="alias" required maxlength="240" placeholder="Neues Synonym">
+          <input name="language" maxlength="8" placeholder="de / en">
+          <button type="submit">Hinzufügen</button>
+        </form>
+      </div>
+    </section>
+  {% else %}
+    <p>Keine Konzepte entsprechen diesem Filter.</p>
+  {% endfor %}
+</main>
+</body>
+</html>

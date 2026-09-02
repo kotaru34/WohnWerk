@@ -1,0 +1,57 @@
+[
+  {
+    "tenant": "blackshark",
+    "company": "Blackshark.ai",
+    "namespace": "eu",
+    "config": {
+      "discovery_method": "bootstrap_registry",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.eu.lever.co/blackshark",
+      "evidence_note": "Existing calibrated Lever bootstrap tenant; retained here so the verifier can backfill source capability evidence without changing operator state."
+    }
+  },
+  {
+    "tenant": "westernacher",
+    "company": "Westernacher Consulting",
+    "namespace": "eu",
+    "config": {
+      "discovery_method": "bootstrap_registry",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.eu.lever.co/westernacher",
+      "evidence_note": "Existing calibrated Lever bootstrap tenant; verifier baseline."
+    }
+  },
+  {
+    "tenant": "cargo-partner",
+    "company": "cargo-partner",
+    "namespace": "global",
+    "config": {
+      "discovery_method": "bootstrap_registry",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.lever.co/cargo-partner",
+      "evidence_note": "Existing calibrated Lever bootstrap tenant with current Austrian locations including Fischamend, Linz, Graz and Vienna Airport."
+    }
+  },
+  {
+    "tenant": "qualysoft",
+    "company": "Qualysoft",
+    "namespace": "global",
+    "config": {
+      "discovery_method": "bootstrap_registry",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.lever.co/qualysoft",
+      "evidence_note": "Existing calibrated Lever bootstrap tenant with current Vienna postings; verifier baseline."
+    }
+  },
+  {
+    "tenant": "tsmg",
+    "company": "TSMG",
+    "namespace": "global",
+    "config": {
+      "discovery_method": "bootstrap_registry",
+      "discovered_on": "2026-08-27",
+      "evidence_url": "https://jobs.lever.co/tsmg",
+      "evidence_note": "Existing calibrated Lever bootstrap tenant with current Vienna autonomous-vehicle operations and technical postings; verifier baseline."
+    }
+  }
+]
