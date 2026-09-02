@@ -308,7 +308,7 @@ class ImmoScout24GermanyPropertySource(PropertySource):
             )
         query = urlencode(
             {
-                "price": f"{band.minimum_eur}-{band.maximum_eur}.0",
+                "price": f"{band.minimum_eur}.0-{band.maximum_eur}.0",
                 "sorting": "2",
                 "pagenumber": page,
             }
