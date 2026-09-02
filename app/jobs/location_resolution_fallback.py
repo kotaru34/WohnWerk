@@ -7,6 +7,7 @@ from sqlalchemy import cast, func, select
 from sqlalchemy.orm import Session
 
 from app.jobs.location_resolution import (
+    AUSTRIAN_POSTAL_SOURCE,
     LOCALITY_LOCATION_SOURCE,
     LocalityResolution,
     PostalCentroidCandidate,
@@ -228,7 +229,8 @@ def resolve_localities_full_scan(
 
     The regular resolver keeps its indexed SQL prefix path. Only unresolved localities
     reach this function. No fuzzy matching or invented Bundesland/country centres are
-    introduced.
+    introduced. German GeoNames rows are explicitly excluded so shared reference data
+    cannot alter Austria locality semantics.
     """
     if not cities:
         return {}
@@ -241,7 +243,10 @@ def resolve_localities_full_scan(
             func.ST_X(geometry),
             func.ST_Y(geometry),
             PostalCode.location_sample_count,
-        ).where(PostalCode.location.is_not(None))
+        ).where(
+            PostalCode.location.is_not(None),
+            PostalCode.source == AUSTRIAN_POSTAL_SOURCE,
+        )
     )
 
     candidates: list[PostalCentroidCandidate] = []
