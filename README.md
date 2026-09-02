@@ -1,35 +1,32 @@
 # WohnWerk
 
-Self-hosted Austrian and German property + job acquisition and recommendation system.
+Private/self-hosted Austrian and German house + job acquisition, personalization and matching application.
 
-The stable Austria-only release is frozen on `release/v1-austria`. Development on
-`feature/germany` preserves the same matching, lifecycle and fail-closed coverage logic while
-adding a `DE / AT` country scope.
+## Active development
 
-## Market sources
+- Frozen Austria baseline: `release/v1-austria`
+- Germany-oriented MVP: `feature/germany`
+- Authoritative operational checkpoint: `HANDOFF.md`
+- Germany product/UI/acquisition contract: `docs/germany_mvp.md`
 
-- AT properties: `immmo.at`, `sreal.at`, plus configured OpenImmo feeds.
-- DE properties: `immoscout24-de`, `immowelt-de`, plus configured OpenImmo feeds.
-- DE jobs: Adzuna's documented Germany API and the public Bundesagentur Jobsuche interface.
-- Existing Austrian job and employer-ATS sources remain unchanged.
+Fresh contexts should read `HANDOFF.md` first and then `docs/germany_mvp.md` before making changes.
 
-The German portal adapters retain only title, price, living/plot area, PLZ, city and the original
-listing URL. They do not copy descriptions, contact data or photos. Incremental scans request the
-newest pages; disappearance is accepted only after every state/price shard completes a full scan
-below its safety cap.
+## Documentation
 
-## German data bootstrap
+- `docs/germany_mvp.md` — Germany MVP goal, DE/AT UX, acquisition/legal guardrails and rollout gate
+- `docs/acquisition.md` — coverage, sharding, incremental and reconciliation model
+- `docs/sources.md` — source inventory and source-specific acquisition policies
+- `docs/requirements.md` — broader product requirements; older sections remain Austria-first where Germany-specific rules are not yet folded in
+- `docs/architecture.md` — architecture notes
+- `docs/job_matching_model.md` — job scoring/matching model
+- `docs/professional_seed.md` — candidate professional seed
 
-```bash
-alembic upgrade head
-python scripts/import_german_postal_codes.py
-playwright install chromium
-python scripts/run_immoscout24_de.py
-python scripts/run_immowelt_de.py
-```
+## Core runtime
 
-Run either property source with `--reconcile` only after its incremental smoke run is healthy.
-Immowelt uses ordinary browser rendering and stops on an access challenge; there is no login,
-stealth or CAPTCHA-solving path.
+- FastAPI / Uvicorn
+- PostgreSQL + PostGIS
+- server-rendered German UI
+- country-scoped `Häuser`, `Jobs`, and `Matching`
+- deterministic core operation without requiring AI
 
-`HANDOFF.md` is the authoritative detailed checkpoint and rollout order.
+Germany commercial property portal acquisition is deliberately minimal-retention and public-only; see `docs/germany_mvp.md` before changing those adapters.
