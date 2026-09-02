@@ -7,9 +7,16 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
-from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Playwright,
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
+)
 
 from app.sources.base import (
     PropertySource,
@@ -27,7 +34,7 @@ from app.sources.property.germany import (
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
 
 BASE_URL = "https://www.immowelt.de"
-SEARCH_ROOT = f"{BASE_URL}/suche/kaufen/haus"
+SEARCH_URL = f"{BASE_URL}/classified-search"
 PAGE_SIZE = 40
 PROVIDER_PAGE_CAP = 250
 CARD_TEST_ID = "serp-core-classified-card-testid"
@@ -46,6 +53,14 @@ _TOTAL_RE = re.compile(
     re.IGNORECASE,
 )
 _PRICE_ON_REQUEST_RE = re.compile(r"^Preis\s+auf\s+Anfrage$", re.IGNORECASE)
+_SEARCH_STATE_KEYS = (
+    "distributionTypes",
+    "estateTypes",
+    "locations",
+    "priceMin",
+    "priceMax",
+    "order",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +262,31 @@ def _validate_page(page: ImmoweltPage, *, page_number: int, expected_minimum: in
         )
 
 
+def _validate_search_state(requested_url: str, final_url: str) -> None:
+    requested = urlparse(requested_url)
+    final = urlparse(final_url)
+
+    if final.path != "/classified-search":
+        raise RuntimeError(f"Immowelt search state redirected unexpectedly: {final_url!r}")
+
+    expected = parse_qs(requested.query)
+    actual = parse_qs(final.query)
+
+    for key in _SEARCH_STATE_KEYS:
+        if actual.get(key) != expected.get(key):
+            raise RuntimeError(
+                f"Immowelt search state lost {key}: "
+                f"expected {expected.get(key)!r}, got {actual.get(key)!r}"
+            )
+
+    expected_page = (expected.get("page") or ["1"])[0]
+    actual_page = (actual.get("page") or ["1"])[0]
+    if actual_page != expected_page:
+        raise RuntimeError(
+            f"Immowelt search state lost page: expected {expected_page!r}, got {actual_page!r}"
+        )
+
+
 class ImmoweltGermanyPropertySource(PropertySource):
     """Public-browser Immowelt adapter with no login, challenge solving or detail scraping."""
 
@@ -329,13 +369,18 @@ class ImmoweltGermanyPropertySource(PropertySource):
             raise ValueError(
                 f"Invalid Immowelt shard: region={region_key!r} band={price_band_key!r}"
             )
-        price_segment = f"preis-{band.minimum_eur}-{band.maximum_eur}"
-        path = (
-            f"{SEARCH_ROOT}/{price_segment}/{region.key}/"
-            f"{region.immowelt_location_id.casefold()}"
+        query = urlencode(
+            {
+                "distributionTypes": "Buy,Buy_Auction,Compulsory_Auction",
+                "estateTypes": "House",
+                "locations": region.immowelt_location_id,
+                "priceMax": band.maximum_eur,
+                "priceMin": band.minimum_eur,
+                "order": "DateDesc",
+                "page": page,
+            }
         )
-        query = urlencode({"order": "DateDesc", "page": page})
-        return f"{path}?{query}"
+        return f"{SEARCH_URL}?{query}"
 
     async def _load_html(self, url: str) -> tuple[str, str]:
         if self._requests_made:
@@ -354,8 +399,22 @@ class ImmoweltGermanyPropertySource(PropertySource):
         host = (urlparse(page.url).hostname or "").casefold()
         if host not in {"immowelt.de", "www.immowelt.de"}:
             raise RuntimeError(f"Immowelt redirected off-site: {page.url!r}")
+
         await page.wait_for_selector("h1", timeout=int(self.timeout_seconds * 1000))
-        await page.wait_for_timeout(750)
+        try:
+            await page.wait_for_selector(
+                f'[data-testid="{CARD_TEST_ID}"]',
+                timeout=min(8000, int(self.timeout_seconds * 1000)),
+            )
+        except PlaywrightTimeoutError:
+            # A genuinely empty result set has no cards. The parser/validator below
+            # remains authoritative; this wait only prevents reading a partially
+            # hydrated non-empty SERP immediately after client-side navigation.
+            pass
+        await page.wait_for_timeout(500)
+
+        _validate_search_state(url, page.url)
+
         html = await page.content()
         lowered = html.casefold()
         if (
