@@ -18,6 +18,7 @@ GEONAMES_DE_POSTAL_URL = "https://download.geonames.org/export/zip/DE.zip"
 GEONAMES_SOURCE = "GeoNames"
 GEONAMES_LOCATION_SOURCE = "GeoNames DE postal code dump"
 GEONAMES_LOCATION_METHOD = "postal_place_mean"
+GEONAMES_UPSERT_BATCH_SIZE = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,18 +138,26 @@ def upsert_german_postal_codes(
         }
         for record in records
     ]
-    statement = insert(PostalCode).values(values)
-    statement = statement.on_conflict_do_update(
-        index_elements=[PostalCode.postal_code],
-        set_={
-            "name": statement.excluded.name,
-            "location": statement.excluded.location,
-            "source": statement.excluded.source,
-            "location_source": statement.excluded.location_source,
-            "location_method": statement.excluded.location_method,
-            "location_sample_count": statement.excluded.location_sample_count,
-        },
-    )
-    session.execute(statement)
+
+    # PostgreSQL/DBAPI protocols have finite bind-parameter limits.  Building one
+    # multi-VALUES ON CONFLICT statement for the full German PLZ dump creates tens
+    # of thousands of binds, so keep each statement deliberately bounded while
+    # retaining one transaction and one commit for all-or-nothing import semantics.
+    for start in range(0, len(values), GEONAMES_UPSERT_BATCH_SIZE):
+        batch = values[start : start + GEONAMES_UPSERT_BATCH_SIZE]
+        statement = insert(PostalCode).values(batch)
+        statement = statement.on_conflict_do_update(
+            index_elements=[PostalCode.postal_code],
+            set_={
+                "name": statement.excluded.name,
+                "location": statement.excluded.location,
+                "source": statement.excluded.source,
+                "location_source": statement.excluded.location_source,
+                "location_method": statement.excluded.location_method,
+                "location_sample_count": statement.excluded.location_sample_count,
+            },
+        )
+        session.execute(statement)
+
     session.commit()
     return len(records)
