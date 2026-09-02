@@ -27,19 +27,25 @@ from app.sources.property.germany import (
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
 
 BASE_URL = "https://www.immowelt.de"
-SEARCH_URL = f"{BASE_URL}/classified-search"
-PAGE_SIZE = 25
+SEARCH_ROOT = f"{BASE_URL}/suche/kaufen/haus"
+PAGE_SIZE = 40
 PROVIDER_PAGE_CAP = 250
 CARD_TEST_ID = "serp-core-classified-card-testid"
 COVERING_LINK_TEST_ID = "card-mfe-covering-link-testid"
+ADDRESS_TEST_ID = "cardmfe-description-box-address"
 _EXPOSE_RE = re.compile(r"^/expose/(?P<listing_id>[0-9a-f-]{20,})/?$", re.IGNORECASE)
-_POSTAL_RE = re.compile(r"\b(?P<postal_code>\d{5})\s*$")
+_PROJECT_EXPOSE_RE = re.compile(
+    r"^/projekte/expose/(?P<project_id>[a-z0-9-]{4,})/?$",
+    re.IGNORECASE,
+)
+_POSTAL_RE = re.compile(r"\b(?P<postal_code>\d{5})\b")
 _PLOT_RE = re.compile(r"(?P<area>[\d.]+(?:,\d+)?)\s*m(?:²|2)\s*Grundstück", re.IGNORECASE)
 _AREA_RE = re.compile(r"(?P<area>[\d.]+(?:,\d+)?)\s*m(?:²|2)\b", re.IGNORECASE)
 _TOTAL_RE = re.compile(
     r"(?P<count>[\d.]+)\s+(?:Günstige\s+)?(?:Haus|Häuser)\b",
     re.IGNORECASE,
 )
+_PRICE_ON_REQUEST_RE = re.compile(r"^Preis\s+auf\s+Anfrage$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +55,8 @@ class ImmoweltPage:
     max_page: int
     cards_seen: int
     cards_parsed: int
+    cards_total: int
+    project_cards_skipped: int
 
 
 def _node_by_test_id(card: _Node, test_id: str) -> _Node | None:
@@ -70,12 +78,34 @@ def _canonical_expose_url(raw_url: str) -> tuple[str, str] | None:
     return f"{BASE_URL}/expose/{listing_id}", listing_id
 
 
+def _is_project_expose_url(raw_url: str) -> bool:
+    parsed = urlparse(raw_url)
+    host = (parsed.hostname or "").casefold()
+    return bool(
+        parsed.scheme in {"http", "https"}
+        and host in {"immowelt.de", "www.immowelt.de"}
+        and _PROJECT_EXPOSE_RE.match(parsed.path)
+    )
+
+
 def _title_facts(raw_title: str) -> tuple[str, str | None, str | None]:
-    title = _clean_text(raw_title)
-    parts = [_clean_text(part) for part in title.split(" - ")]
-    if len(parts) >= 3:
-        return parts[0][:500], parts[1] or None, parts[2] or None
-    return title[:500], None, None
+    cleaned = _clean_text(raw_title)
+    parts = [_clean_text(part) for part in cleaned.split(" - ") if _clean_text(part)]
+    if len(parts) < 3:
+        return cleaned[:500], None, None
+
+    price_index: int | None = None
+    for index, part in enumerate(parts):
+        if "€" in part or _PRICE_ON_REQUEST_RE.fullmatch(part):
+            price_index = index
+            break
+
+    if price_index is None or price_index < 2:
+        return cleaned[:500], None, None
+
+    city = parts[price_index - 1] or None
+    title = " - ".join(parts[: price_index - 1]) or parts[0]
+    return title[:500], city, parts[price_index]
 
 
 def _areas(raw_title: str) -> tuple[Decimal | None, Decimal | None]:
@@ -92,6 +122,12 @@ def _areas(raw_title: str) -> tuple[Decimal | None, Decimal | None]:
 
 
 def _postal_from_card(card: _Node) -> str | None:
+    address = _node_by_test_id(card, ADDRESS_TEST_ID)
+    if address is not None:
+        match = _POSTAL_RE.search(_clean_text(address.text()))
+        if match is not None:
+            return match.group("postal_code")
+
     for node in card.walk():
         if node.tag != "img":
             continue
@@ -136,11 +172,24 @@ def parse_immowelt_search_page(
     cards = [node for node in parser.root.walk() if node.attrs.get("data-testid") == CARD_TEST_ID]
 
     items: list[RawProperty] = []
+    identity_cards_seen = 0
+    project_cards_skipped = 0
     for card in cards:
         anchor = _node_by_test_id(card, COVERING_LINK_TEST_ID)
         if anchor is None:
+            identity_cards_seen += 1
             continue
-        detail = _canonical_expose_url(anchor.attrs.get("href", ""))
+
+        raw_href = anchor.attrs.get("href", "")
+        if _is_project_expose_url(raw_href):
+            # The SERP can show multiple product variants that point at the same
+            # project URL. No stable variant identity is exposed, so do not merge
+            # those variants into one false listing identity.
+            project_cards_skipped += 1
+            continue
+
+        identity_cards_seen += 1
+        detail = _canonical_expose_url(raw_href)
         if detail is None:
             continue
         url, listing_id = detail
@@ -161,7 +210,7 @@ def parse_immowelt_search_page(
                 postal_code=postal_code,
                 city=city,
                 raw_payload={
-                    "format": "immowelt-public-search-v1",
+                    "format": "immowelt-public-search-v2",
                     "country_code": "DE",
                     "discovery_url": page_url,
                     "region_key": region_key,
@@ -176,23 +225,25 @@ def parse_immowelt_search_page(
         items=items,
         source_reported_count=source_reported_count,
         max_page=max_page,
-        cards_seen=len(cards),
+        cards_seen=identity_cards_seen,
         cards_parsed=len(items),
+        cards_total=len(cards),
+        project_cards_skipped=project_cards_skipped,
     )
 
 
 def _validate_page(page: ImmoweltPage, *, page_number: int, expected_minimum: int) -> None:
-    if page.source_reported_count and page.cards_seen == 0:
+    if page.source_reported_count and page.cards_total == 0:
         raise RuntimeError(f"Immowelt returned no cards on non-empty page {page_number}")
     if page.cards_seen != page.cards_parsed:
         raise RuntimeError(
             f"Immowelt card parsing incomplete on page {page_number}: "
-            f"parsed {page.cards_parsed}/{page.cards_seen} cards"
+            f"parsed {page.cards_parsed}/{page.cards_seen} identity-bearing cards"
         )
-    if expected_minimum and page.cards_seen < expected_minimum:
+    if expected_minimum and page.cards_total < expected_minimum:
         raise RuntimeError(
             f"Immowelt page {page_number} unexpectedly short: "
-            f"saw {page.cards_seen}, expected at least {expected_minimum}"
+            f"saw {page.cards_total}, expected at least {expected_minimum}"
         )
 
 
@@ -235,9 +286,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             return self._page
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(headless=True)
-        self._context = await self._browser.new_context(
-            locale="de-DE",
-        )
+        self._context = await self._browser.new_context(locale="de-DE")
 
         async def block_heavy_assets(route: Any) -> None:
             if route.request.resource_type in {"font", "image", "media"}:
@@ -280,18 +329,13 @@ class ImmoweltGermanyPropertySource(PropertySource):
             raise ValueError(
                 f"Invalid Immowelt shard: region={region_key!r} band={price_band_key!r}"
             )
-        query = urlencode(
-            {
-                "distributionTypes": "Buy,Buy_Auction,Compulsory_Auction",
-                "estateTypes": "House",
-                "locations": region.immowelt_location_id,
-                "priceMin": band.minimum_eur,
-                "priceMax": band.maximum_eur,
-                "order": "DateDesc",
-                "page": page,
-            }
+        price_segment = f"preis-{band.minimum_eur}-{band.maximum_eur}"
+        path = (
+            f"{SEARCH_ROOT}/{price_segment}/{region.key}/"
+            f"{region.immowelt_location_id.casefold()}"
         )
-        return f"{SEARCH_URL}?{query}"
+        query = urlencode({"order": "DateDesc", "page": page})
+        return f"{path}?{query}"
 
     async def _load_html(self, url: str) -> tuple[str, str]:
         if self._requests_made:
@@ -314,7 +358,11 @@ class ImmoweltGermanyPropertySource(PropertySource):
         await page.wait_for_timeout(750)
         html = await page.content()
         lowered = html.casefold()
-        if "captcha" in lowered or "access denied" in lowered:
+        if (
+            "captcha" in lowered
+            or "access denied" in lowered
+            or "ich bin kein roboter" in lowered
+        ):
             raise RuntimeError("Immowelt presented an access challenge; crawler stopped")
         return html, page.url
 
@@ -334,6 +382,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
         pages_fetched = 0
         cards_seen = 0
         cards_parsed = 0
+        cards_total = 0
+        project_cards_skipped = 0
         source_reported_count: int | None = None
         latest_reported_count: int | None = None
         max_reported_count = 0
@@ -366,6 +416,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
             pages_fetched = 1
             cards_seen = first.cards_seen
             cards_parsed = first.cards_parsed
+            cards_total = first.cards_total
+            project_cards_skipped = first.project_cards_skipped
 
             page_number = 2
             while page_number <= target_pages:
@@ -395,6 +447,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 pages_fetched += 1
                 cards_seen += page.cards_seen
                 cards_parsed += page.cards_parsed
+                cards_total += page.cards_total
+                project_cards_skipped += page.project_cards_skipped
                 page_number += 1
         except Exception as exc:
             if isinstance(exc, SourceFetchError):
@@ -407,6 +461,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 next_cursor={
                     "discovery_cards_seen": cards_seen,
                     "discovery_cards_parsed": cards_parsed,
+                    "discovery_cards_total": cards_total,
+                    "discovery_project_cards_skipped": project_cards_skipped,
                     "discovery_max_page": max_page,
                     "discovery_latest_reported_count": latest_reported_count,
                     "discovery_max_reported_count": max_reported_count,
@@ -423,6 +479,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
         coverage_complete = bool(
             reconciliation
             and not result_cap_hit
+            and project_cards_skipped == 0
             and pages_fetched == max_page
             and cards_seen == cards_parsed
             and count_plausible
@@ -433,6 +490,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 "newest_ids": list(items_by_id)[:100],
                 "discovery_cards_seen": cards_seen,
                 "discovery_cards_parsed": cards_parsed,
+                "discovery_cards_total": cards_total,
+                "discovery_project_cards_skipped": project_cards_skipped,
                 "discovery_max_page": max_page,
                 "discovery_initial_reported_count": source_reported_count,
                 "discovery_latest_reported_count": latest_reported_count,
