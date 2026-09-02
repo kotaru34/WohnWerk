@@ -1,149 +1,131 @@
 # Germany MVP contract
 
 **Status:** active development contract for `feature/germany`  
-**Baseline:** frozen Austria v1 behavior remains the compatibility baseline  
-**Scope:** Germany-oriented MVP implemented alongside Austria, not a replacement for the Austria release
+**Baseline:** frozen Austria behavior remains the compatibility baseline  
+**Scope:** Germany-oriented MVP implemented alongside Austria
 
-This document records the product intent that must survive chat/context changes. It complements `HANDOFF.md`, `docs/requirements.md`, `docs/acquisition.md`, and `docs/sources.md`. Where older Austria-first documentation conflicts with the Germany-specific rules below, this document governs the Germany MVP.
+This document is the authoritative Germany product/acquisition contract. Read it immediately after `HANDOFF.md` in a fresh context.
 
 ## Goal
 
-WohnWerk is a private/self-hosted application for finding suitable houses and suitable jobs and then matching the two geographically for the candidate/father.
+WohnWerk is a private/self-hosted application for finding suitable houses and jobs and matching them geographically for the candidate/father.
 
-The Germany MVP must make Germany a first-class country without changing the frozen Austria behavior. It is not a generic portal mirror and it must not republish third-party property portals.
+Germany must be a first-class market without changing frozen Austria behavior. The product is a private discovery/index layer that links back to original sources, not a portal mirror.
 
-The immediate Germany goal is:
+Immediate goals:
 
-1. acquire a high-recall but conservative index of German houses for sale inside the configured WohnWerk budget from acquisition paths whose terms/access model permit WohnWerk's automated use;
-2. acquire relevant German jobs through legitimate public/supported sources;
-3. keep German and Austrian acquisition/lifecycle state separated by source country;
-4. expose the existing Häuser / Jobs / Matches product for either country through one simple country switch;
-5. retain enough source facts for filtering, ranking, lifecycle checks and linking back to the original source without copying unnecessary content.
+1. acquire a high-recall index of German houses for sale inside the configured budget;
+2. acquire relevant German jobs;
+3. keep DE/AT acquisition and lifecycle state isolated by source country;
+4. expose Häuser / Jobs / Matching for either market with one country switch;
+5. retain only source-backed facts needed for filtering, ranking, lifecycle and linking.
 
-## Country model
-
-Country scope is an acquisition/source property, not a duplicate geography flag on canonical `Property` or `Job` rows.
+## Country/UI model
 
 - source country comes from `Source.config["country_code"]`;
 - legacy sources without country metadata are treated as `AT`;
 - supported UI countries are `DE` and `AT`;
-- country selection scopes father-facing `/houses`, `/jobs`, and `/admin/matches` reads;
-- one canonical entity may still have source listings from more than one source where identity logic supports it;
-- Germany-specific logic must never cause the Austria-only locality resolver or other Austria-specific assumptions to mutate German records.
+- country selection scopes `/houses`, `/jobs`, and `/admin/matches`;
+- father-facing UI remains German-only;
+- DE logic must never route German records through Austria-specific locality assumptions;
+- favorites/hidden/viewed and matching semantics remain compatible across countries.
 
-## UI / UX intent
+## Germany property scope
 
-The father-facing UI remains German-only.
-
-The Germany MVP uses the existing product rather than creating a second Germany site. The primary interaction is a compact persistent country selector for Germany and Austria. The current implementation is a small `DE / AT` switch that persists the choice in a cookie and preserves the current page/query context.
-
-The switch applies to the three country-scoped product surfaces:
-
-- `Häuser`;
-- `Jobs`;
-- `Matching`.
-
-The UX goal is that changing country feels like changing the active market, not navigating to a separate application. Existing filtering, curation, favorites/hidden/viewed state, job-fit semantics and matching presentation should remain familiar across both countries unless a country-specific data rule requires otherwise.
-
-Do not expose crawler/legal implementation details to the father-facing UI. Source links must remain visible so the original listing can be opened on the publisher's site.
-
-## Germany property product scope
-
-The configured house-acquisition budget remains:
+Configured product budget:
 
 ```text
 EUR 30,000 .. 300,000
 ```
 
-The existing Germany portal prototypes partition this range into deterministic, non-overlapping engineering shards:
+Current portal adapters use 48 deterministic shards:
 
 ```text
-EUR 30,000..149,999
-EUR 150,000..224,999
-EUR 225,000..300,000
+16 states / city-states
+  x EUR 30,000..149,999
+  x EUR 150,000..224,999
+  x EUR 225,000..300,000
 ```
 
-These internal boundaries are not product preferences or ranking weights. They exist only to bound result sets. They may be rebalanced for a future authorized source if observed result distributions justify it.
+The internal price boundaries are engineering shards only. They are **not** product preferences or ranking weights and may be rebalanced if observed result distributions justify it.
 
-### Commercial-portal status as of 2026-09-02
+Primary broad property sources under development:
 
-`immoscout24-de` and `immowelt-de` adapters exist in the branch as acquisition prototypes, but **they are not approved/enabled production acquisition paths**.
+- `immoscout24-de`;
+- `immowelt-de`;
+- provider-authorized OpenImmo feeds where available.
 
-- A target-host ImmoScout24 public-search probe returned HTTP `401 Unauthorized` on 2026-09-02.
-- Current ImmoScout24 website AGB, section 8.2, prohibit automated queries by scripts/bots/crawlers and data extraction; section 8.3 also prohibits using queried data to build a separate database.
-- Do not respond to the `401` by spoofing browser headers, adding cookies, automating login, switching to Playwright, solving challenges, proxying, or otherwise trying to make the crawler look like a normal human browser.
-- Current ImmoScout24 Search API documentation says Search APIs are available only to content partners and not for data-delivery use cases. Any future ImmoScout integration therefore requires an explicit authorized use case/permission whose terms fit WohnWerk.
-- AVIV/Immowelt published a text/data-mining reservation dated 2026-02-27 that expressly rejects automated collection/extraction. Do not run the existing Immowelt Playwright discovery prototype under the current assumptions.
-- Immowelt does publish an official API, but its standard published usage terms are tied to provider/partner use (principally the provider's own objects, or explicitly approved marketplaces). Do not assume it authorizes a third-party whole-market mirror.
+## Public-frontend acquisition policy
 
-Official references to re-check before any future portal activation:
+Do **not** treat a portal ToS as an automatic technical veto. For this private/self-hosted project, ToS is considered an operational/civil risk signal and source-specific constraint, while the crawler design remains governed by the concrete technical/legal red lines below.
 
-- ImmoScout24 website AGB: `https://www.immobilienscout24.de/agb/nutzungsagb.html`
-- ImmoScout24 Search API introduction: `https://api.immobilienscout24.de/api-docs/search/introduction/`
-- Immowelt DSA / data-mining notice: `https://www.immowelt.de/immoweltag/agb/dsa`
-- Immowelt API terms: `https://www.immowelt.de/meineimmowelt/apinutzungsbedingungen.aspx`
+Publicly reachable frontend pages may be acquired carefully when doing so does not require bypassing a technical access barrier. A plain HTTP client returning `401/403` does not by itself mean the public frontend is forbidden: an ordinary browser renderer may be used if the same page is normally available to an unauthenticated user.
 
-## Acquisition and legal/operational guardrails
+Allowed engineering progression:
 
-A page being publicly visible to a normal browser is not by itself authorization for WohnWerk to automate collection or build a persistent index from it.
+```text
+normal public HTTP
+    -> ordinary Chromium rendering when the public site requires browser execution
+```
 
-For German property acquisition:
+Red lines:
 
-- use only an authorized API/feed/export or a public data source whose access/reuse model supports the intended automation;
-- no user account/login automation unless the source explicitly authorizes the integration and credentials are supplied for that purpose;
-- no bypass of access controls;
+- no login/account automation for portal crawling;
 - no CAPTCHA solving;
-- no stealth/anti-bot evasion;
-- no browser-header or cookie spoofing intended to defeat protection;
-- no proxy rotation or similar mechanism intended to defeat protection;
-- no reverse-engineered private API merely as a shortcut around an interface or access policy;
-- stop/fail closed when the source presents a challenge, access protection, or a policy mismatch;
-- re-review source terms/access conditions before activation and when they change materially.
+- no paywall/access-control bypass;
+- no deliberate IP-ban bypass;
+- no stealth/anti-bot frameworks intended to evade detection;
+- no residential/proxy rotation intended to defeat blocking;
+- no reverse-engineered private API solely to bypass the normal interface;
+- no credential theft or reuse of private session material;
+- no aggressive request rates;
+- stop/fail closed on an explicit challenge or technical block rather than trying to defeat it.
 
-Prefer acquisition paths in this order where available:
+Normal browser execution is **not** considered stealth by itself. Use stock Playwright/Chromium behavior without fingerprint-masking plugins or challenge bypasses.
 
-```text
-explicitly authorized official API / complete feed
-        -> provider-authorized OpenImmo or comparable syndication feed
-        -> other public/open dataset whose terms permit automated reuse
-```
+Use conservative delays, caching where useful, and standard backoff for transient `429/5xx` responses.
 
-An OpenImmo URL is usable only when the feed owner provides or authorizes that feed. OpenImmo is a data format, not a blanket authorization to retrieve arbitrary private feeds.
+## Minimal-retention rule for commercial portals
 
-The OpenImmo 1.x format itself remains usable and is widely intended for real-estate data exchange, so provider-authorized OpenImmo feeds are a strong candidate for Germany source expansion.
-
-## Retention rules
-
-Retention follows the source's authorization/terms and WohnWerk's minimum-necessary product needs.
-
-For commercial source data where an authorized integration is eventually obtained, prefer retaining only:
+For ImmoScout24/Immowelt discovery retain only what WohnWerk needs:
 
 - source name;
 - source listing ID;
-- original/source URL;
+- source URL;
 - title;
 - asking price;
 - explicit living area when exposed;
 - explicit plot area when exposed;
 - PLZ;
 - city/locality;
-- first/last-seen and lifecycle/provenance metadata needed internally.
+- first/last-seen and internal provenance/lifecycle metadata.
 
-Do not retain descriptions, contacts, photos or page snapshots unless the specific source/feed authorization permits them and the product actually needs them.
+Do not retain from normal commercial-portal discovery:
 
-Never infer missing property facts without source evidence.
+- full descriptions/body text;
+- broker/seller contact details;
+- portal-hosted photos or local photo mirrors;
+- arbitrary page snapshots;
+- invented/inferred attributes without source evidence.
 
-## Dormant portal prototype behavior
+This is a private matching index, not republication of the source database.
 
-### ImmoScout24 Germany
+## ImmoScout24 Germany
 
-Prototype code currently implements low-rate public HTML/context acquisition and deterministic 48-shard partitioning. It is retained for reference/testing but must not be activated against the live portal without a future authorized basis that permits the intended use.
+Current adapter partitions Germany into the 48 shards above and parses public house-sale search results.
 
-The 2026-09-02 `401` is an access-policy stop signal, not a bug to bypass.
+Target-host observation on 2026-09-02:
 
-### Immowelt Germany
+- plain `httpx` request to `Sachsen / EUR 30k..149,999` returned HTTP `401`;
+- this is treated as a transport/interface result, not as an automatic project veto;
+- next implementation step is ordinary stock Chromium rendering of the same unauthenticated public search page;
+- do not add stealth plugins, login, CAPTCHA handling, private cookies or proxy evasion.
 
-Prototype code currently implements ordinary Chromium-rendered search acquisition. Because the current published AVIV/Immowelt policy explicitly rejects automated data collection/extraction, this path is dormant and must not be activated merely because Chromium can render the page.
+Search/list-result acquisition is preferred over unnecessary detail-page crawling. Incrementals are newest-first where supported.
+
+## Immowelt Germany
+
+The adapter uses ordinary Playwright Chromium public-search rendering. Do not open listing detail pages during normal discovery. Heavy image/media/font resources may be suppressed to avoid needless transfer. Page 250 remains a hard safety cap. CAPTCHA/challenge/access protection stops that crawl path rather than being solved.
 
 ## Coverage and disappearance authority
 
@@ -151,92 +133,80 @@ Discovery success and disappearance authority are separate.
 
 Incremental scans:
 
-- request newest-first where supported;
-- are optimized for discovering new/updated listings;
-- may stop at a known/old frontier;
-- never prove that an unseen listing disappeared.
+- discover new/updated listings;
+- may scan only a bounded newest-first frontier;
+- never prove disappearance.
 
-A Germany property reconciliation may prove disappearance only for a source whose acquisition is authorized and when all required conditions hold:
+A reconciliation may prove disappearance only when:
 
 1. every enabled shard ran;
 2. every shard completed successfully;
-3. every shard is fully traversed / `coverage_complete=true`;
-4. no shard hit a result/page cap;
-5. parsed identities are complete enough for the source policy;
-6. observed unique IDs are plausible against source-reported counts/tolerances where such counts exist.
+3. every shard was fully traversed / `coverage_complete=true`;
+4. no shard hit a cap;
+5. parser identity coverage is complete enough;
+6. observed unique IDs are plausible against source-reported counts/tolerances where available.
 
-Anything partial, capped, challenged, parser-incomplete or otherwise degraded is non-authoritative and must not mass-deactivate listings.
-
-Never manually promote `Source.coverage_status` to manufacture authority.
+Partial, capped, challenged, parser-incomplete or degraded runs are non-authoritative. Never manually promote `Source.coverage_status`.
 
 ## Germany postal geography
 
-Germany requires five-digit postal codes and uses migration `0012_de_postal_codes`.
+Germany uses migration `0012_de_postal_codes` and five-digit PLZ.
 
-GeoNames German postal-code data supplies Germany postal centroids for matching/location support. Germany data must not be pushed through Austria-specific PLZ/locality assumptions.
+GeoNames supplies approximate DE postal centroids. Target production bootstrap on 2026-09-02 imported 10,813 DE centroids; the existing 2,234-row Austria postal reference hash remained unchanged. These counts are observations, not permanent invariants.
 
-Target production bootstrap completed on 2026-09-02 with 10,813 GeoNames DE postal-code centroids; the Austria 2,234-row postal reference hash remained unchanged across the import. Treat those counts as observations rather than permanent invariants because upstream datasets may change.
+Austria name/PLZ resolution is explicitly source-scoped so GeoNames DE rows cannot contaminate AT locality resolution.
 
 ## Germany jobs
 
-Initial Germany job acquisition paths include:
+Initial Germany paths include:
 
-- Bundesagentur Jobsuche public source, without requiring a user account;
-- Adzuna Germany API when credentials are configured;
-- authorized German OpenImmo is property-only and must not be conflated with job acquisition;
-- existing supported public employer/ATS mechanisms may be expanded to German employers when the interface and source semantics justify it.
+- `arbeitsagentur-jobsuche-de` via the public Bundesagentur Jobsuche frontend interface;
+- `adzuna-api-de` when credentials are configured;
+- existing employer/ATS mechanisms where appropriate.
 
-Generic source expansion is not the immediate goal. Preserve the existing separation between broad discovery relevance, candidate fit, salary provenance, lifecycle and geography.
-
-The intrinsic `job_fit_score` remains geography-independent. Country filtering and house/job distance are separate dimensions.
+The Bundesagentur interface is not treated as reconciliation-authoritative merely because discovery works. Intrinsic candidate fit remains geography-independent; country and commute are separate dimensions.
 
 ## Data truth rules
 
-Across the Germany MVP:
-
 - never invent coordinates;
-- never invent price or salary semantics;
+- never invent prices or salary semantics;
 - never invent property attributes;
 - only explicit living-area evidence maps to living area;
 - only explicit plot/land-area evidence maps to plot area;
-- generic/ambiguous area values must not be promoted to a more specific semantic field;
-- source-backed provenance must remain inspectable;
-- cross-source deduplication stays conservative;
-- failed acquisition must not destroy previously valid user curation state.
+- ambiguous area values stay ambiguous;
+- preserve source provenance;
+- dedupe conservatively;
+- acquisition failure must not destroy user curation state.
 
-## Rollout gate
+## Current rollout checkpoint
 
-The Germany runtime/geography foundation may be production-ready independently of any Germany property acquisition source.
+Completed on the target system:
 
-Completed foundation gates on the target system include:
+1. `v0.4.0` Germany-capable runtime deployed;
+2. DB at `0012_de_postal_codes`;
+3. 10,813 GeoNames DE postal centroids imported;
+4. AT postal integrity preserved;
+5. DE 5-digit and city radius resolution smoke passed;
+6. stock Playwright Chromium installed and launches as `www-data`;
+7. DE/AT country switch works on Houses, Jobs and `/admin/matches`;
+8. refresh/images/liveness timers intentionally remain stopped while Germany acquisition is validated.
 
-1. exact-head CI green;
-2. runtime v0.4.0 with DE/AT country scope;
-3. DB migration `0012_de_postal_codes`;
-4. GeoNames DE postal import and AT-integrity verification;
-5. DE five-digit/city radius resolution smoke;
-6. Playwright Chromium runtime installation (available for sources that are actually authorized to require a browser).
+Current property acquisition checkpoint:
 
-Before any Germany property source becomes enabled/authoritative:
-
-1. document an acquisition/reuse basis appropriate to that source;
-2. exact-head CI must be green for the adapter actually being enabled;
-3. run a bounded non-authoritative smoke;
-4. inspect parser/field/provenance behavior;
-5. run an incremental ingestion only after the smoke is healthy;
-6. only then consider reconciliation;
-7. a partial/degraded reconciliation remains non-authoritative.
-
-`immoscout24-de` and `immowelt-de` do not currently pass gate 1 and therefore must remain dormant.
+- ImmoScout plain-HTTP single-shard probe returned `401` before any DB mutation;
+- no ImmoScout source/listings/runs were created by that read-only probe;
+- next step is a read-only single-shard stock-Chromium ImmoScout smoke;
+- if healthy, proceed to bounded incremental ingestion;
+- validate Immowelt similarly after ImmoScout.
 
 ## Recovery rule
 
-When a fresh context starts, read in this order:
+Fresh context order:
 
-1. `HANDOFF.md` for the exact operational checkpoint;
-2. this file for Germany product/UI/acquisition intent;
-3. `docs/acquisition.md` for coverage mechanics;
-4. `docs/sources.md` for source-specific planning/evidence;
-5. frozen Austria release behavior as the compatibility baseline.
+1. `HANDOFF.md`;
+2. this document;
+3. `docs/acquisition.md`;
+4. `docs/sources.md`;
+5. frozen Austria compatibility baseline.
 
-Do not infer that an implemented adapter is authorized to run merely because its code/tests exist. Active development is the Germany-oriented MVP on `feature/germany` until `HANDOFF.md` says otherwise.
+Do not reopen the generic debate "ToS means we cannot crawl". Follow the explicit public-frontend policy and red lines in this document, then continue implementation evidence-first.
