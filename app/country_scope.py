@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from html import escape
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from urllib.parse import parse_qsl, urlencode
 
 from sqlalchemy import event, exists, func, select
@@ -85,7 +85,7 @@ def _cookie_country(scope) -> str | None:
         cookie = SimpleCookie()
         try:
             cookie.load(value.decode("latin-1"))
-        except Exception:
+        except CookieError:
             return None
         morsel = cookie.get(COOKIE_NAME)
         return normalize_country(morsel.value if morsel else None)
@@ -94,7 +94,11 @@ def _cookie_country(scope) -> str | None:
 
 def _country_href(scope, country_code: str) -> str:
     raw_query = scope.get("query_string", b"").decode("latin-1")
-    pairs = [(key, value) for key, value in parse_qsl(raw_query, keep_blank_values=True) if key != "country"]
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(raw_query, keep_blank_values=True)
+        if key != "country"
+    ]
     pairs.append(("country", country_code))
     path = scope.get("path", "/") or "/"
     return f"{path}?{urlencode(pairs)}"
@@ -105,9 +109,10 @@ def _switch_markup(scope, country_code: str) -> bytes:
     for code, flag in (("DE", "🇩🇪"), ("AT", "🇦🇹")):
         active = " ww-country-active" if code == country_code else ""
         href = escape(_country_href(scope, code), quote=True)
+        aria_current = "page" if code == country_code else "false"
         links.append(
             f'<a class="ww-country-option{active}" href="{href}" '
-            f'aria-current="{"page" if code == country_code else "false"}">{flag} {code}</a>'
+            f'aria-current="{aria_current}">{flag} {code}</a>'
         )
     markup = f"""
 <style id="ww-country-style">
@@ -134,11 +139,15 @@ class CountryScopeMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope.get("type") != "http" or not str(scope.get("path", "")).startswith(_SCOPED_PREFIXES):
+        if scope.get("type") != "http" or not str(scope.get("path", "")).startswith(
+            _SCOPED_PREFIXES
+        ):
             await self.app(scope, receive, send)
             return
 
-        query = dict(parse_qsl(scope.get("query_string", b"").decode("latin-1"), keep_blank_values=True))
+        query = dict(
+            parse_qsl(scope.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
+        )
         query_country = normalize_country(query.get("country"))
         country_code = query_country or _cookie_country(scope) or DEFAULT_COUNTRY
         token = _selected_country.set(country_code)
@@ -152,14 +161,16 @@ class CountryScopeMiddleware:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 if query_country is not None:
-                    headers.append(
-                        (
-                            b"set-cookie",
-                            f"{COOKIE_NAME}={country_code}; Path=/; SameSite=Lax; Max-Age=31536000".encode("latin-1"),
-                        )
+                    cookie_value = (
+                        f"{COOKIE_NAME}={country_code}; Path=/; SameSite=Lax; Max-Age=31536000"
                     )
+                    headers.append((b"set-cookie", cookie_value.encode("latin-1")))
                 content_type = next(
-                    (value.decode("latin-1").lower() for key, value in headers if key.lower() == b"content-type"),
+                    (
+                        value.decode("latin-1").lower()
+                        for key, value in headers
+                        if key.lower() == b"content-type"
+                    ),
                     "",
                 )
                 buffer_html = "text/html" in content_type
@@ -186,8 +197,16 @@ class CountryScopeMiddleware:
             else:
                 body += switch
 
-            start = pending_start or {"type": "http.response.start", "status": 200, "headers": []}
-            headers = [(key, value) for key, value in start.get("headers", []) if key.lower() != b"content-length"]
+            start = pending_start or {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [],
+            }
+            headers = [
+                (key, value)
+                for key, value in start.get("headers", [])
+                if key.lower() != b"content-length"
+            ]
             headers.append((b"content-length", str(len(body)).encode("ascii")))
             await send({**start, "headers": headers})
             await send({"type": "http.response.body", "body": body, "more_body": False})
