@@ -1,5 +1,5 @@
-from app.jobs.location_resolution import PostalCentroidCandidate
-from app.jobs.location_resolution_fallback import resolve_from_candidates
+from app.jobs import location_resolution_fallback as fallback
+from app.jobs.location_resolution import AUSTRIAN_POSTAL_SOURCE, PostalCentroidCandidate
 
 
 def _candidate(postal_code: str, name: str, *, longitude: float = 14.0):
@@ -13,7 +13,7 @@ def _candidate(postal_code: str, name: str, *, longitude: float = 14.0):
 
 
 def test_st_valentin_matches_rtr_name_despite_period_normalization() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "St. Valentin",
         [_candidate("4300", "St. Valentin", longitude=14.5167)],
     )
@@ -24,7 +24,7 @@ def test_st_valentin_matches_rtr_name_despite_period_normalization() -> None:
 
 
 def test_punctuation_fallback_stays_conservative() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "St. Valentin",
         [_candidate("2700", "St. Valentinberg")],
     )
@@ -33,7 +33,7 @@ def test_punctuation_fallback_stays_conservative() -> None:
 
 
 def test_city_suffix_can_reuse_explicit_city_centroid() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "Salzburg Stadt",
         [
             _candidate("5020", "Salzburg", longitude=13.04),
@@ -47,7 +47,7 @@ def test_city_suffix_can_reuse_explicit_city_centroid() -> None:
 
 
 def test_vienna_district_label_resolves_to_vienna_without_guessing_a_district_point() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "Wien 3. Bezirk (Landstraße)",
         [_candidate("1010", "Wien", longitude=16.37)],
     )
@@ -58,7 +58,7 @@ def test_vienna_district_label_resolves_to_vienna_without_guessing_a_district_po
 
 
 def test_qualified_locality_can_drop_bezirk_hint_when_base_is_unique() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "Niederndorf bei Kufstein",
         [_candidate("6342", "Niederndorf")],
     )
@@ -69,7 +69,7 @@ def test_qualified_locality_can_drop_bezirk_hint_when_base_is_unique() -> None:
 
 
 def test_qualified_locality_stays_unresolved_when_base_is_ambiguous() -> None:
-    resolution = resolve_from_candidates(
+    resolution = fallback.resolve_from_candidates(
         "Kirchschlag bei Linz",
         [
             _candidate("4202", "Kirchschlag"),
@@ -78,3 +78,20 @@ def test_qualified_locality_stays_unresolved_when_base_is_ambiguous() -> None:
     )
 
     assert resolution is None
+
+
+def test_full_scan_is_scoped_to_austrian_postal_source() -> None:
+    class CapturingSession:
+        statement = None
+
+        def execute(self, statement):
+            self.statement = statement
+            return []
+
+    session = CapturingSession()
+    assert fallback.resolve_localities_full_scan(session, {"Berlin"}) == {}
+    assert session.statement is not None
+
+    compiled = session.statement.compile()
+    assert "postal_codes.source" in str(compiled)
+    assert AUSTRIAN_POSTAL_SOURCE in compiled.params.values()
