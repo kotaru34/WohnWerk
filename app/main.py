@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 from app.admin import router as admin_router
 from app.catalog import router as catalog_router
 from app.config import get_settings
+from app.country_scope import CountryScopeMiddleware
 from app.http_normalization import NormalizeHouseQueryMiddleware
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.live_ui import router as live_ui_router
@@ -19,12 +20,13 @@ settings = get_settings()
 
 app = FastAPI(
     title="WohnWerk",
-    description="Austria-first home and job matching service",
+    description="Austria + Germany home and job matching service",
     version=__version__,
 )
 app.add_middleware(PropertyPageLivenessMiddleware)
 app.add_middleware(ProductUiMiddleware)
 app.add_middleware(NormalizeHouseQueryMiddleware)
+app.add_middleware(CountryScopeMiddleware)
 app.include_router(product_ui_router)
 app.include_router(catalog_router)
 app.include_router(site_router)
