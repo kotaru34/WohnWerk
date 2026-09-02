@@ -13,7 +13,7 @@ from app.models import Job, JobListing, ListingStatus, Property, PropertyListing
 SUPPORTED_COUNTRIES = ("DE", "AT")
 DEFAULT_COUNTRY = "AT"
 COOKIE_NAME = "wohnwerk_country"
-_SCOPED_PREFIXES = ("/houses", "/jobs", "/matches")
+_SCOPED_PREFIXES = ("/houses", "/jobs", "/matches", "/admin/matches")
 _selected_country: ContextVar[str | None] = ContextVar("wohnwerk_country", default=None)
 
 
