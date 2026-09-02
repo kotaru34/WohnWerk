@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--reconcile", action="store_true")
     parser.add_argument("--incremental-pages", type=int, default=2)
-    parser.add_argument("--delay", type=float, default=1.5)
+    parser.add_argument("--delay", type=float, default=15.0)
     parser.add_argument("--hard-max-pages", type=int, default=250)
     return parser.parse_args()
 
@@ -33,9 +33,12 @@ def get_or_create_source() -> int:
         "acquisition": "public browser-rendered search pages; no detail pages, login or challenge solving",
         "retention": "title, price, area, PLZ, city and source URL only; no contact data or photos",
         "sharding": "16 states/city-states x 3 non-overlapping price bands",
-        "ordering": "newest first",
+        "ordering": "newest first; incremental shard scheduling is least-recently-successful first",
         "coverage": "authoritative only when every shard is exhaustively parsed below page 250",
-        "rate_policy": "low-rate navigation with jitter; stops on access challenges",
+        "rate_policy": (
+            "low-rate navigation with roughly 15-second jittered spacing; "
+            "first HTTP 403 halts further source requests in that run"
+        ),
         "runtime": "headed Playwright Chromium on an Xvfb display is required",
         "reconciliation_interval_hours": 24,
     }
