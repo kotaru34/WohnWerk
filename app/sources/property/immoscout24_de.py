@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
 from app.sources.base import (
     PropertySource,
@@ -32,6 +33,9 @@ PAGE_SIZE = 20
 DEFAULT_HARD_MAX_PAGES = 250
 _CONTEXT_RE = re.compile(r'"heyImmoContext"\s*:\s*("(?:\\.|[^"\\])*")')
 _TOTAL_RE = re.compile(r"(?P<count>[\d.]+)")
+_ALLOWED_HOSTS = {"immobilienscout24.de", "www.immobilienscout24.de"}
+_BROWSER_FALLBACK_STATUSES = {401, 403}
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +193,10 @@ class ImmoScout24GermanyPropertySource(PropertySource):
         self.hard_max_pages = max(10, hard_max_pages)
         self.timeout_seconds = timeout_seconds
         self._requests_made = 0
+        self._browser_required = False
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._browser_context: BrowserContext | None = None
 
     def default_shards(self) -> list[SourceShardSpec]:
         return [
@@ -204,28 +212,88 @@ class ImmoScout24GermanyPropertySource(PropertySource):
     async def _sleep(self) -> None:
         await asyncio.sleep(self.request_delay_seconds * random.uniform(0.8, 1.25))
 
+    @staticmethod
+    def _validate_final_host(*, requested_url: str, final_url: str) -> None:
+        host = (httpx.URL(final_url).host or "").casefold()
+        if host not in _ALLOWED_HOSTS:
+            raise RuntimeError(
+                "ImmoScout24 redirected off-site: "
+                f"requested={requested_url!r} final={final_url!r}"
+            )
+
+    async def _ensure_browser_context(self) -> BrowserContext:
+        if self._browser_context is not None:
+            return self._browser_context
+
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(headless=True)
+        self._browser_context = await self._browser.new_context()
+        return self._browser_context
+
+    async def _get_with_browser(self, url: str) -> httpx.Response:
+        context = await self._ensure_browser_context()
+        page = await context.new_page()
+        try:
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=int(self.timeout_seconds * 1000),
+            )
+            if response is None:
+                raise RuntimeError("ImmoScout24 Chromium navigation returned no response")
+            if response.status >= 400:
+                raise RuntimeError(
+                    f"ImmoScout24 Chromium returned HTTP {response.status} for {url!r}"
+                )
+            final_url = page.url
+            self._validate_final_host(requested_url=url, final_url=final_url)
+            html = await page.content()
+            return httpx.Response(
+                response.status,
+                text=html,
+                request=httpx.Request("GET", final_url),
+            )
+        finally:
+            await page.close()
+
+    async def aclose(self) -> None:
+        if self._browser_context is not None:
+            await self._browser_context.close()
+            self._browser_context = None
+        if self._browser is not None:
+            await self._browser.close()
+            self._browser = None
+        if self._playwright is not None:
+            await self._playwright.stop()
+            self._playwright = None
+
     async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
         if self._requests_made:
             await self._sleep()
         self._requests_made += 1
+
+        if self._browser_required:
+            return await self._get_with_browser(url)
+
         last_error: Exception | None = None
         for attempt in range(3):
             try:
                 response = await client.get(url)
                 response.raise_for_status()
-                host = (response.url.host or "").casefold()
-                if host not in {"immobilienscout24.de", "www.immobilienscout24.de"}:
-                    raise RuntimeError(
-                        "ImmoScout24 redirected off-site: "
-                        f"requested={url!r} final={str(response.url)!r}"
-                    )
+                self._validate_final_host(requested_url=url, final_url=str(response.url))
                 return response
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                status = exc.response.status_code
+                if status in _BROWSER_FALLBACK_STATUSES:
+                    self._browser_required = True
+                    return await self._get_with_browser(url)
+                if attempt == 2 or status not in _RETRYABLE_STATUSES:
+                    raise
+                await asyncio.sleep(2**attempt)
             except (httpx.HTTPError, RuntimeError) as exc:
                 last_error = exc
-                status = (
-                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-                )
-                if attempt == 2 or (status is not None and status not in {429, 500, 502, 503, 504}):
+                if attempt == 2:
                     raise
                 await asyncio.sleep(2**attempt)
         raise RuntimeError("unreachable") from last_error
@@ -257,7 +325,6 @@ class ImmoScout24GermanyPropertySource(PropertySource):
         del cursor
         region_key = str(shard.params.get("region_key") or "")
         price_band_key = str(shard.params.get("price_band_key") or "")
-        # Validate before opening a client or making any request.
         self._page_url(region_key, price_band_key, 1)
 
         headers = {
@@ -348,6 +415,7 @@ class ImmoScout24GermanyPropertySource(PropertySource):
                     "discovery_max_page": max_page,
                     "discovery_latest_reported_count": latest_reported_count,
                     "discovery_max_reported_count": max_reported_count,
+                    "discovery_transport": "chromium" if self._browser_required else "httpx",
                 },
                 partial_items=list(items_by_id.values()),
             ) from exc
@@ -377,6 +445,7 @@ class ImmoScout24GermanyPropertySource(PropertySource):
                 "discovery_max_reported_count": max_reported_count,
                 "discovery_count_delta": count_delta,
                 "discovery_count_tolerance": count_tolerance,
+                "discovery_transport": "chromium" if self._browser_required else "httpx",
                 "country_code": "DE",
             },
             source_reported_count=source_reported_count,
