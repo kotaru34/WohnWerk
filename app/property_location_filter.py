@@ -34,6 +34,12 @@ class PropertyFilterCenter:
     latitude: float
 
 
+@dataclass(frozen=True, slots=True)
+class PropertyRadiusFilter:
+    condition: ColumnElement[bool]
+    error: str | None = None
+
+
 def _active_country() -> str:
     return selected_country() or DEFAULT_COUNTRY
 
