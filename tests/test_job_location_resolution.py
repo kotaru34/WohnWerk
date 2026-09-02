@@ -17,6 +17,24 @@ def test_bundesland_only_scope_does_not_become_an_invented_point() -> None:
     assert lr.canonicalize_locality("Steiermark") is None
 
 
+def test_non_point_scope_classifier_matches_operational_geo_semantics() -> None:
+    for label in (
+        "Kärnten",
+        "Wels-Land",
+        "Bezirk Wels-Land",
+        "Graz Umgebung-West",
+        "österreichweit",
+    ):
+        assert lr.is_non_point_location_scope(label) is True
+        assert lr.canonicalize_locality(label) is None
+
+    for label in ("Salzburg", "Salzburg Umgebung", "Schaftenau", "Puntigam"):
+        assert lr.is_non_point_location_scope(label) is False
+
+    # `Salzburg Umgebung` remains intentionally approximable from its explicit city anchor.
+    assert lr.area_anchor_locality("Salzburg Umgebung") == "salzburg"
+
+
 def test_directional_area_uses_only_explicit_anchor_locality() -> None:
     assert lr.directional_anchor_locality("Südlich von Wien") == "wien"
     assert lr.directional_anchor_locality("noerdlich von Graz, Austria") == "graz"

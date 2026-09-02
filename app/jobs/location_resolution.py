@@ -62,6 +62,18 @@ _NON_POINT_REGIONS = {
     "suedoesterreich",
 }
 
+# Source-backed scopes that are meaningful for display/filtering but deliberately do not
+# identify one point. Keep this list narrow: e.g. `Salzburg Umgebung` has an explicit city
+# anchor and remains resolvable through AREA_ANCHOR_LOCATION_METHOD.
+_NON_POINT_OPERATIONAL_SCOPES = {
+    "österreichweit",
+    "oesterreichweit",
+    "austriawide",
+    "austria wide",
+    "wels land",
+    "graz umgebung west",
+}
+
 # A few source phrases have a stable, well-understood regional meaning that can be
 # represented more honestly by several named city centroids than by one arbitrary point.
 # This is deliberately a tiny allow-list rather than a generic Bundesland-centre feature.
@@ -73,6 +85,7 @@ _NAMED_REGION_LOCALITIES = {
 }
 
 _NON_WORD_RE = re.compile(r"[^\wäöüß]+", flags=re.UNICODE)
+_DISTRICT_SCOPE_RE = re.compile(r"^bezirk\s+", flags=re.IGNORECASE)
 _AREA_PREFIX_RE = re.compile(r"^\s*(?:großraum|grossraum)\s+", flags=re.IGNORECASE)
 _COUNTRY_SUFFIX_RE = re.compile(
     r"(?:\s*,\s*|\s+)(?:austria|österreich)\s*$",
@@ -124,10 +137,29 @@ def _normalized_words(value: str | None) -> str:
     return " ".join(normalized.split())
 
 
+def is_non_point_location_scope(value: str | None) -> bool:
+    """Return whether a source label intentionally describes an area rather than a point.
+
+    This classifier is shared by the resolver and operational UI so a broad regional or
+    countrywide scope is not reported as a failed concrete-locality resolution. It is
+    intentionally conservative: only explicit country/region/district forms and a tiny set
+    of source-backed operational scopes are classified here.
+    """
+    normalized = _normalized_words(value)
+    if not normalized:
+        return False
+    return (
+        normalized in _REMOTE_ONLY
+        or normalized in _NON_POINT_REGIONS
+        or normalized in _NON_POINT_OPERATIONAL_SCOPES
+        or _DISTRICT_SCOPE_RE.match(normalized) is not None
+    )
+
+
 def canonicalize_locality(value: str | None) -> str | None:
     """Normalize a source city label without inventing a more precise location."""
     normalized = _normalized_words(value)
-    if not normalized or normalized in _REMOTE_ONLY or normalized in _NON_POINT_REGIONS:
+    if not normalized or is_non_point_location_scope(value):
         return None
     return _LOCALITY_ALIASES.get(normalized, normalized)
 

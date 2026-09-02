@@ -49,7 +49,7 @@
     <div class="stat"><strong>{{ snapshot.active_properties }}</strong>aktive Häuser</div>
     <div class="stat"><strong>{{ snapshot.active_jobs }}</strong>aktive Stellen (Rohbestand)</div>
     <div class="stat"><strong>{{ snapshot.visible_jobs }}</strong>sichtbare relevante Stellen</div>
-    <div class="stat"><strong>{{ snapshot.unresolved_job_locations }}</strong>ungeocodierte Job-Orte</div>
+    <div class="stat"><strong>{{ snapshot.unresolved_job_locations }}</strong>konkrete ungeocodierte Job-Orte</div>
     <div class="stat"><strong>{{ snapshot.enabled_sources }}</strong>aktive Quellen</div>
   </div>
 
@@ -143,7 +143,19 @@
       {% for label, count in snapshot.unresolved_labels %}
         <span class="label">{{ label }} · {{ count }}</span>
       {% else %}
-        <span class="subtle">Keine ungeocodierten nicht-remote Job-Orte.</span>
+        <span class="subtle">Keine ungeocodierten konkreten Job-Orte.</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <h2>Regionale / landesweite Ortsangaben</h2>
+  <div class="subtle">{{ snapshot.non_point_job_locations }} Angaben beschreiben bewusst keinen einzelnen Ortspunkt und werden daher nicht künstlich geocodiert.</div>
+  <div class="panel" style="margin-top:10px">
+    <div class="labels">
+      {% for label, count in snapshot.non_point_labels %}
+        <span class="label">{{ label }} · {{ count }}</span>
+      {% else %}
+        <span class="subtle">Keine regionalen oder landesweiten Ortsangaben.</span>
       {% endfor %}
     </div>
   </div>

@@ -7,7 +7,13 @@ from app.admin import require_admin
 from app.database import get_db
 from app.main import app
 from app.models import CoverageStatus, RunStatus
-from app.ops import JobSourceValueRow, OpsSnapshot, SourceOpsRow, source_ops_state
+from app.ops import (
+    JobSourceValueRow,
+    OpsSnapshot,
+    SourceOpsRow,
+    source_ops_state,
+    split_unresolved_location_labels,
+)
 
 
 def _source(**overrides):
@@ -79,6 +85,28 @@ def test_legacy_bounded_partial_without_failed_shards_is_not_a_warning() -> None
     ) == "warnung"
 
 
+def test_ops_geo_backlog_separates_non_point_scopes() -> None:
+    concrete, non_point = split_unresolved_location_labels(
+        (
+            ("Traboch", 2),
+            ("Kärnten", 1),
+            ("Wels-Land", 1),
+            ("Bezirk Wels-Land", 1),
+            ("Graz Umgebung-West", 1),
+            ("österreichweit", 1),
+        )
+    )
+
+    assert concrete == (("Traboch", 2),)
+    assert non_point == (
+        ("Kärnten", 1),
+        ("Wels-Land", 1),
+        ("Bezirk Wels-Land", 1),
+        ("Graz Umgebung-West", 1),
+        ("österreichweit", 1),
+    )
+
+
 def test_job_source_value_yield() -> None:
     row = JobSourceValueRow(
         name="example-source",
@@ -99,7 +127,7 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
     snapshot = OpsSnapshot(
         active_properties=1234,
         active_jobs=88,
-        unresolved_job_locations=3,
+        unresolved_job_locations=2,
         enabled_sources=7,
         sources=(
             SourceOpsRow(
@@ -135,6 +163,14 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
                 latest_rejected=15,
             ),
         ),
+        non_point_job_locations=5,
+        non_point_labels=(
+            ("Kärnten", 1),
+            ("Wels-Land", 1),
+            ("Bezirk Wels-Land", 1),
+            ("Graz Umgebung-West", 1),
+            ("österreichweit", 1),
+        ),
     )
 
     def override_db():
@@ -153,6 +189,11 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
             assert "Wert der Stellenquellen" in page.text
             assert "25.0 %" in page.text
             assert "example-source" in page.text
+            assert "konkrete ungeocodierte Job-Orte" in page.text
+            assert "Noch nicht aufgelöste konkrete Ortsangaben" in page.text
             assert "Traboch" in page.text
+            assert "Regionale / landesweite Ortsangaben" in page.text
+            assert "Kärnten" in page.text
+            assert "österreichweit" in page.text
     finally:
         app.dependency_overrides.clear()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.admin import AdminDependency, DbDependency
+from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
     CoverageStatus,
     CrawlRun,
@@ -82,6 +84,8 @@ class OpsSnapshot:
     unresolved_labels: tuple[tuple[str, int], ...]
     visible_jobs: int = 0
     job_sources: tuple[JobSourceValueRow, ...] = ()
+    non_point_job_locations: int = 0
+    non_point_labels: tuple[tuple[str, int], ...] = ()
 
 
 def _age_minutes(value: datetime | None, now: datetime) -> float | None:
@@ -123,6 +127,21 @@ def source_ops_state(
     if age > stale_after:
         return "veraltet"
     return "ok"
+
+
+def split_unresolved_location_labels(
+    rows: Iterable[tuple[str, int]],
+) -> tuple[tuple[tuple[str, int], ...], tuple[tuple[str, int], ...]]:
+    """Separate genuine point-resolution backlog from intentional non-point scopes."""
+    concrete: list[tuple[str, int]] = []
+    non_point: list[tuple[str, int]] = []
+    for label, count in rows:
+        item = (str(label), int(count))
+        if is_non_point_location_scope(label):
+            non_point.append(item)
+        else:
+            concrete.append(item)
+    return tuple(concrete), tuple(non_point)
 
 
 def _gate_accepted(raw_payload: dict | None) -> bool:
@@ -222,22 +241,8 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
         )
         or 0
     )
-    unresolved_job_locations = int(
-        db.scalar(
-            select(func.count())
-            .select_from(JobLocation)
-            .join(Job, Job.id == JobLocation.job_id)
-            .where(
-                Job.status == ListingStatus.ACTIVE,
-                JobLocation.remote.is_(False),
-                JobLocation.city.is_not(None),
-                JobLocation.location.is_(None),
-            )
-        )
-        or 0
-    )
 
-    unresolved_labels = tuple(
+    raw_unresolved_labels = tuple(
         (str(city), int(count))
         for city, count in db.execute(
             select(JobLocation.city, func.count())
@@ -250,9 +255,13 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
             )
             .group_by(JobLocation.city)
             .order_by(func.count().desc(), JobLocation.city)
-            .limit(20)
         )
     )
+    unresolved_labels, non_point_labels = split_unresolved_location_labels(
+        raw_unresolved_labels
+    )
+    unresolved_job_locations = sum(count for _label, count in unresolved_labels)
+    non_point_job_locations = sum(count for _label, count in non_point_labels)
 
     sources = list(db.scalars(select(Source).order_by(Source.category, Source.name)))
     visible_jobs, contribution_by_source = _job_source_contributions(db, sources)
@@ -343,9 +352,11 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
         unresolved_job_locations=unresolved_job_locations,
         enabled_sources=sum(source.enabled for source in sources),
         sources=tuple(rows),
-        unresolved_labels=unresolved_labels,
+        unresolved_labels=unresolved_labels[:20],
         visible_jobs=visible_jobs,
         job_sources=tuple(value_rows),
+        non_point_job_locations=non_point_job_locations,
+        non_point_labels=non_point_labels[:20],
     )
 
 

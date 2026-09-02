@@ -1,6 +1,6 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-09-01 (Europe/Vienna)  
+**Checkpoint date:** 2026-09-02 (Europe/Vienna)  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
 **Active branch:** `bootstrap/austria-mvp`  
@@ -10,10 +10,10 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Release state
 
-- Current production: **v0.3.45**.
-- Production SHA: `1b97f5e16d5e6e196237c2046f577a43cf1966cd`.
+- Current production: **v0.3.46**.
+- Production SHA: `00c3c6eb920efc481b5ce2c2fd12a5f1bb25c4f3`.
 - Production DB migration: `0011_live_ui_events` (head).
-- Current branch release candidate: **v0.3.46** — remaining evidence-backed job geography cleanup.
+- Current branch release candidate: **v0.3.47** — operational separation of concrete unresolved job localities from intentional regional/countrywide non-point scopes.
 - Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
@@ -114,30 +114,53 @@ v0.3.39 repaired the active `/houses` route after the v0.3.38 radius regression.
 
 ## Job geography
 
-v0.3.41 repaired 11 concrete unresolved location rows without inventing points. Broad regions remain intentionally non-point.
+v0.3.41 repaired 11 concrete unresolved location rows without inventing points. v0.3.46 closed the remaining evidence-backed concrete geo cleanup.
 
-A read-only production audit on v0.3.45 (`crawl_runs` stayed 691) established the remaining concrete cases:
+### v0.3.46 production proof
 
-- job #138 / SPIEGLTEC has five source locations: Innsbruck, Wien, Kundl, Brixlegg and **Schaftenau**. The first four are already resolved; only Schaftenau is missing. karriere.at employer/location evidence maps the Schaftenau site to postal code **6336 Langkampfen**. This is a real worksite, not a duplicate to discard.
-- job #352 / teampool has source-backed `Graz, 8055` plus `Puntigam`; the job description explicitly says `Standort Graz-Puntigam`. Public Graz/ÖBB evidence confirms Puntigam in **8055 Graz**. Preserve the source label while using the verified 8055 centroid.
-- job #160 / Lam Research already has a correct resolved Salzburg location plus an unresolved non-remote `city=AT, location_text='AT, Österreich'`. The latter is a country-code parser artifact, not a second worksite.
+Atomic production SHA: `00c3c6eb920efc481b5ce2c2fd12a5f1bb25c4f3`. Exact-head CI and production server gate both passed with **544 tests**.
 
-v0.3.46 release-candidate policy:
-- add a tiny **verified sublocality** postal-membership table, separate from the Statistics-Austria municipality fallback
-- `Schaftenau -> 6336`
-- `Puntigam -> 8055`
-- method: `verified_sublocality_postal_centroid`
-- source metadata: `verified Austrian sublocality postal membership + BEV postal centroids`
-- only the postal membership is curated; the actual point still comes exclusively from the locally imported BEV-backed postal centroid table
-- no fuzzy matching and no region/country centre
-- add postprocess cleanup for country-code city artifacts such as `AT`, but only when the row is non-remote, has no PLZ/point, and the same canonical job already has another concrete PLZ/point sibling
-- countrywide remote scopes survive
-- an `AT` row that is the only location evidence also survives rather than being silently discarded
-- scheduled refresh publishes its job SSE invalidation only after this postprocessing, so father-facing UI never receives the transient artifact as the final refreshed state
+The production repair was deliberately targeted and created no crawl run:
+- `crawl_runs`: 719 -> 719
+- `job_locations`: 484 -> 483, exactly the redundant country-code row removal
+- job #138 / SPIEGLTEC: `Schaftenau` resolved through verified postal membership `6336` and the local BEV-backed postal centroid to `POINT(12.09684228 47.5425033)`
+- job #352 / teampool: `Puntigam` resolved through verified postal membership `8055` to `POINT(15.43172668 47.02476775)`
+- method for both: `verified_sublocality_postal_centroid`
+- job #160 / Lam Research: redundant non-remote `AT, Österreich` row removed; the correct Salzburg row remains resolved at `POINT(13.04387009 47.8015246)`
+- no DB migration; Alembic remains `0011_live_ui_events`
+- `/houses`, `/jobs`, Salzburg+50km and external `/health` passed
+- refresh/images/liveness timers were restored active
 
-Broad/non-point labels such as `Kärnten`, `Wels-Land`, `Bezirk Wels-Land` and `Graz Umgebung-West` must remain unresolved.
+Remaining active null-point labels after the repair are broad scopes, not missing concrete geocodes:
+- `Wels-Land`
+- `Bezirk Wels-Land`
+- `Graz Umgebung-West`
+- `Kärnten`
+- `österreichweit`
 
-Development CI for v0.3.46 before squash: Ruff/Compile clean, **538 tests passed**. Added tests cover exact Schaftenau/Puntigam postal membership and fail-closed country-code cleanup semantics.
+Never invent one point for these scopes.
+
+### v0.3.47 ops geo semantics
+
+A production screenshot after v0.3.46 exposed an operational presentation bug: `/admin/health` still titled every active non-remote null-point `JobLocation` as `Noch nicht aufgelöste konkrete Ortsangaben`, so the broad scopes above looked like unresolved resolver failures.
+
+v0.3.47 fixes the semantic boundary rather than merely renaming the UI:
+- `app.jobs.location_resolution.is_non_point_location_scope()` is the shared classifier used by both the resolver and Ops UI
+- Bundesland/country/explicit district labels remain non-point
+- explicit operational broad scopes include `österreichweit`, `Wels-Land`, and `Graz Umgebung-West`
+- `Bezirk ...` is classified as a district scope
+- `Salzburg Umgebung` is deliberately **not** classified as a permanent non-point scope because its explicit Salzburg anchor remains resolvable through `area_anchor_locality`
+- `canonicalize_locality()` now returns `None` for the explicit broad scopes for a documented semantic reason, rather than only failing later because no postal row happens to match
+- `collect_ops_snapshot()` performs one grouped query and splits null-point labels into concrete resolver backlog vs intentional non-point scopes
+- `snapshot.unresolved_job_locations` and `snapshot.unresolved_labels` now mean **concrete unresolved** only
+- new `snapshot.non_point_job_locations` and `snapshot.non_point_labels` expose the informational broad-scope population separately
+- `/admin/health` top counter is labeled `konkrete ungeocodierte Job-Orte`
+- broad scopes render under `Regionale / landesweite Ortsangaben` with an explanation that they are intentionally not artificially geocoded
+- no JobLocation data mutation and no DB migration are required
+
+Regression tests cover the five production labels, preserve `Salzburg Umgebung` behavior, verify the Ops split, and verify both sections of the German admin UI.
+
+Development CI initially exposed two stale v0.3.46 tests that asserted the literal application version `0.3.46`. Those tests were removed rather than mechanically bumped because version-pinning is not a behavioral invariant; all actual v0.3.46 geo regression coverage remains. Final development CI is green: Ruff/Compile clean and **544 tests passed**.
 
 ## IMMMO coverage authority
 
@@ -192,20 +215,20 @@ Current behavior:
 - without JS, legacy POST+303 remains a fallback
 - hiding the currently open `/houses/{id}` detail page deliberately keeps navigation semantics because the hidden detail URL is no longer valid
 
-Manual production verification by the user: `Ausblenden` now works correctly without reload/navigation and without the page jumping upward.
+Manual production verification: `Ausblenden` works without reload/navigation and without the page jumping upward.
 
 ## Current near-term roadmap
 
-1. Squash v0.3.46 development commits into one atomic commit whose parent is exact production v0.3.45 SHA `1b97f5e...`.
-2. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
-3. Deploy v0.3.46 with timers quiesced; no DB migration required.
-4. Run `scripts/resolve_job_locations.py` exactly once as the targeted repair/postprocess.
-5. Production proof must show:
-   - Schaftenau resolved by `verified_sublocality_postal_centroid` to the local 6336 centroid
-   - Puntigam resolved by the same method to the local 8055 centroid
-   - redundant non-remote `AT` row on job #160 removed while Salzburg remains
-   - broad region rows remain unresolved
-   - no crawl run is created by the repair
+1. Inspect the final v0.3.47 diff against exact production v0.3.46 SHA `00c3c6eb...`.
+2. Squash development commits into one atomic v0.3.47 commit whose parent is exact production v0.3.46.
+3. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
+4. Deploy v0.3.47 with the usual timer quiesce/server gate/restart procedure; no DB migration and no data repair are required.
+5. Production proof for `/admin/health` must show:
+   - concrete unresolved counter = 0 for the current production dataset
+   - `Noch nicht aufgelöste konkrete Ortsangaben` contains no broad-scope chips
+   - `Regionale / landesweite Ortsangaben` contains the five current broad labels
+   - no JobLocation count change and no CrawlRun creation
+   - `/health` reports v0.3.47 / extractor v5
 6. Restore exactly the timers active before deployment.
 7. Close geo cleanup and move to matching/commute product work; do not resume generic job-source expansion.
 
