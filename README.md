@@ -1,38 +1,35 @@
 # WohnWerk
 
-Austria-first, self-hosted property + job acquisition and recommendation system.
+Self-hosted Austrian and German property + job acquisition and recommendation system.
 
-Current architecture keeps source lifecycle, canonical identity, normalized professional concepts, candidate preference/fit and geography as separate layers.
+The stable Austria-only release is frozen on `release/v1-austria`. Development on
+`feature/germany` preserves the same matching, lifecycle and fail-closed coverage logic while
+adding a `DE / AT` country scope.
 
-## Current production state
+## Market sources
 
-- Properties: IMMMO + s REAL.
-- Jobs: supplementary ATS feeds plus low-impact Austrian broad-board frontiers.
-- Canonical job corpus: 156 relevant jobs after reviewed fail-closed dedupe.
-- Normalized job concepts: migration `0007_job_concepts` applied; 747 deterministic evidence rows across 156 jobs.
-- Evidence distinguishes title `primary` identity from description `context`.
+- AT properties: `immmo.at`, `sreal.at`, plus configured OpenImmo feeds.
+- DE properties: `immoscout24-de`, `immowelt-de`, plus configured OpenImmo feeds.
+- DE jobs: Adzuna's documented Germany API and the public Bundesagentur Jobsuche interface.
+- Existing Austrian job and employer-ATS sources remain unchanged.
 
-## Current development stage
+The German portal adapters retain only title, price, living/plot area, PLZ, city and the original
+listing URL. They do not copy descriptions, contact data or photos. Incremental scans request the
+newest pages; disappearance is accepted only after every state/price shard completes a full scan
+below its safety cap.
 
-Candidate concept preferences use four states:
-
-- `can_want`
-- `can_not_want`
-- `cannot_want`
-- `cannot_not_want`
-
-The current fit engine is versioned and read-only. Do not apply migration `0008_candidate_preferences` until the production ranking audit has been reviewed.
-
-Run:
+## German data bootstrap
 
 ```bash
-python scripts/candidate_fit_audit.py --limit 25
+alembic upgrade head
+python scripts/import_german_postal_codes.py
+playwright install chromium
+python scripts/run_immoscout24_de.py
+python scripts/run_immowelt_de.py
 ```
 
-For detailed contribution inspection:
+Run either property source with `--reconcile` only after its incremental smoke run is healthy.
+Immowelt uses ordinary browser rendering and stops on an access challenge; there is no login,
+stealth or CAPTCHA-solving path.
 
-```bash
-python scripts/candidate_fit_audit.py --job-id <JOB_ID>
-```
-
-`HANDOFF.md` is the authoritative detailed checkpoint and work order.
+`HANDOFF.md` is the authoritative detailed checkpoint and rollout order.

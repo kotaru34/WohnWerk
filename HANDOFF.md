@@ -3,8 +3,9 @@
 **Checkpoint date:** 2026-09-02 (Europe/Vienna)  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active branch:** `bootstrap/austria-mvp`  
-**Draft PR:** #1 — `Bootstrap Austria-first WohnWerk MVP`
+**Active branch:** `feature/germany`
+**Frozen AT release:** `release/v1-austria` at `89f1833f`
+**Draft PR:** #2 — `DE + AT country expansion`
 
 This is the authoritative recovery point for a fresh context. Dynamic catalog counts are observations, not permanent invariants.
 
@@ -13,7 +14,8 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 - Current production: **v0.3.46**.
 - Production SHA: `00c3c6eb920efc481b5ce2c2fd12a5f1bb25c4f3`.
 - Production DB migration: `0011_live_ui_events` (head).
-- Current branch release candidate: **v0.3.47** — operational separation of concrete unresolved job localities from intentional regional/countrywide non-point scopes.
+- Current Germany branch release candidate: **v0.4.0**.
+- Germany branch DB migration: `0012_de_postal_codes` (head).
 - Current concept extractor: `concept-seed-2026-09-01-v5`.
 - Current discovery gate: `profile-seed-2026-08-30-v25`.
 - Current salary policy: `explicit-salary-text-2026-08-30-v7`.
@@ -24,7 +26,7 @@ This is the authoritative recovery point for a fresh context. Dynamic catalog co
 
 ## Product invariants
 
-WohnWerk is a private/self-hosted Austria-first property + job acquisition, personalization and matching system for the candidate/father.
+WohnWerk is a private/self-hosted AT+DE property + job acquisition, personalization and matching system for the candidate/father. The Austria-only behavior frozen in `release/v1-austria` remains the compatibility baseline.
 
 - User UI is German-only.
 - Häuser and Stellen catalogs are independent.
@@ -37,6 +39,9 @@ WohnWerk is a private/self-hosted Austria-first property + job acquisition, pers
 - Geography/commute is separate from intrinsic candidate fit.
 - No permanent Job×Property pair table unless measurements justify it.
 - Only a complete authoritative `coverage=ok` reconciliation may prove disappearance.
+- Country scope comes from `Source.config["country_code"]`; legacy sources default to AT.
+- DE portal acquisition is public-only: no login, CAPTCHA solving, stealth or protection bypass.
+- DE portal records retain minimal listing facts and source URLs, not descriptions, contacts or photos.
 
 ## Runtime
 
@@ -96,6 +101,14 @@ v0.3.39 repaired detail salary acquisition and Greenhouse structured pay ingesti
 Authoritative property sources:
 - `immmo.at`
 - `sreal.at`
+
+Germany branch sources pending production smoke/reconciliation proof:
+- `immoscout24-de`: public HTML/context, 16 states x 3 price bands, newest-first incrementals.
+- `immowelt-de`: ordinary Chromium-rendered public search, the same 48 shards, hard fail at page 250 or any challenge.
+
+Neither DE source has disappearance authority merely because code exists. Authority begins only
+after a real complete run reports all shards successful, uncapped and count-plausible. Any failed,
+partial, capped or parser-incomplete run remains non-authoritative.
 
 ImmoAds remains disabled.
 
@@ -219,18 +232,15 @@ Manual production verification: `Ausblenden` works without reload/navigation and
 
 ## Current near-term roadmap
 
-1. Inspect the final v0.3.47 diff against exact production v0.3.46 SHA `00c3c6eb...`.
-2. Squash development commits into one atomic v0.3.47 commit whose parent is exact production v0.3.46.
-3. Require exact-head GitHub CI: Install + Ruff + Compile + Tests all green.
-4. Deploy v0.3.47 with the usual timer quiesce/server gate/restart procedure; no DB migration and no data repair are required.
-5. Production proof for `/admin/health` must show:
-   - concrete unresolved counter = 0 for the current production dataset
-   - `Noch nicht aufgelöste konkrete Ortsangaben` contains no broad-scope chips
-   - `Regionale / landesweite Ortsangaben` contains the five current broad labels
-   - no JobLocation count change and no CrawlRun creation
-   - `/health` reports v0.3.47 / extractor v5
-6. Restore exactly the timers active before deployment.
-7. Close geo cleanup and move to matching/commute product work; do not resume generic job-source expansion.
+1. Require exact-head GitHub CI for `feature/germany`: Install + Ruff + Compile + Tests.
+2. Apply migration `0012_de_postal_codes` and import GeoNames DE postal centroids on the target DB.
+3. Install the matching Playwright Chromium runtime before enabling `immowelt-de`.
+4. Run one manual incremental smoke for each DE property source and inspect shard failures, caps,
+   parse counts and sample PLZ/price/area fields.
+5. Run the first `--reconcile` only after the incremental smoke is healthy. Do not manually promote
+   coverage or deactivate listings if the run is partial/degraded.
+6. Configure Adzuna credentials if that job source is desired; Bundesagentur needs no user account.
+7. Add any German OpenImmo feed only when its owner provides or authorizes the feed URL.
 
 ## Deployment discipline
 

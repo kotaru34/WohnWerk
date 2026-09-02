@@ -34,6 +34,8 @@ class DueSourceRun:
 SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("immmo.at", "scripts/run_immmo.py", True),
     SourceRefreshPlan("sreal.at", "scripts/run_sreal.py", True),
+    SourceRefreshPlan("immoscout24-de", "scripts/run_immoscout24_de.py", True),
+    SourceRefreshPlan("immowelt-de", "scripts/run_immowelt_de.py", True),
     SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
     SourceRefreshPlan(
         "greenhouse-public-job-board",

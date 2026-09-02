@@ -95,7 +95,7 @@ class SourceFetchError(RuntimeError):
 
 
 class PropertySource(ABC):
-    """Contract implemented by every Austrian property source adapter."""
+    """Contract implemented by every property source adapter."""
 
     name: str
 
@@ -119,7 +119,7 @@ class PropertySource(ABC):
 
 
 class JobSource(ABC):
-    """Contract implemented by every Austrian job source adapter."""
+    """Contract implemented by every job source adapter."""
 
     name: str
 

@@ -203,15 +203,15 @@ class CrawlShardRun(Base):
 
 
 class PostalCode(Base):
-    """Austrian postal-code reference data.
+    """Country postal-code reference data used for approximate centroids.
 
-    Austrian postal codes are four digits. `location` represents an approximate
-    centroid and is intentionally not treated as a street-accurate coordinate.
+    AT codes use four digits and DE codes use five. `location` represents an
+    approximate centroid and is intentionally not street-accurate.
     """
 
     __tablename__ = "postal_codes"
 
-    postal_code: Mapped[str] = mapped_column(String(4), primary_key=True)
+    postal_code: Mapped[str] = mapped_column(String(5), primary_key=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     location: Mapped[object | None] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=True)

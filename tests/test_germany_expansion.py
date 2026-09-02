@@ -4,6 +4,7 @@ from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.country_scope import _country_href, _switch_markup, normalize_country
+from app.models import PostalCode
 from app.postal_codes_de import parse_geonames_de_postal_zip
 from app.sources.job.adzuna import AdzunaQuery, parse_adzuna_job
 from app.sources.job.adzuna_de import _normalize_german_location
@@ -51,6 +52,10 @@ def test_geonames_de_parser_preserves_leading_zero_and_averages_duplicates() -> 
     assert records["01067"].sample_count == 2
     assert records["01067"].latitude == 51.052
     assert records["01067"].longitude == 13.732
+
+
+def test_runtime_model_matches_five_digit_postal_migration() -> None:
+    assert PostalCode.__table__.c.postal_code.type.length == 5
 
 
 def test_arbeitsagentur_parser_normalizes_integer_plz_and_coordinates() -> None:
