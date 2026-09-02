@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from app.country_scope import _country_href, _switch_markup, normalize_country
+from app.country_scope import _SCOPED_PREFIXES, _country_href, _switch_markup, normalize_country
 from app.models import PostalCode
 from app.postal_codes_de import parse_geonames_de_postal_zip
 from app.sources.job.adzuna import AdzunaQuery, parse_adzuna_job
@@ -33,6 +33,16 @@ def test_country_switch_normalizes_and_preserves_existing_query() -> None:
     assert "🇩🇪 DE" in markup
     assert "🇦🇹 AT" in markup
     assert 'href="/houses?sort=price&amp;page=2&amp;country=AT"' in markup
+
+
+def test_country_scope_includes_actual_matches_route() -> None:
+    assert "/admin/matches".startswith(_SCOPED_PREFIXES)
+
+    scope = {
+        "path": "/admin/matches",
+        "query_string": b"radius_km=50&country=AT",
+    }
+    assert _country_href(scope, "DE") == "/admin/matches?radius_km=50&country=DE"
 
 
 def test_geonames_de_parser_preserves_leading_zero_and_averages_duplicates() -> None:
