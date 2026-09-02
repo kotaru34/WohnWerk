@@ -9,10 +9,10 @@ from app.crawling.property_runner import run_property_source
 from app.database import SessionLocal
 from app.models import Source, SourceCategory
 from app.sources.property.immowelt_de import BASE_URL
-from app.sources.property.immowelt_de_warm import ImmoweltWarmSessionPropertySource
+from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
 SOURCE_NAME = "immowelt-de"
-ADAPTER_PATH = "app.sources.property.immowelt_de_warm.ImmoweltWarmSessionPropertySource"
+ADAPTER_PATH = "app.sources.property.immowelt_de_headed.ImmoweltHeadedPropertySource"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,7 @@ def get_or_create_source() -> int:
         "ordering": "newest first",
         "coverage": "authoritative only when every shard is exhaustively parsed below page 250",
         "rate_policy": "low-rate navigation with jitter; stops on access challenges",
-        "runtime": "Playwright Chromium is required (playwright install chromium)",
+        "runtime": "headed Playwright Chromium on an Xvfb display is required",
         "reconciliation_interval_hours": 24,
     }
     with SessionLocal() as session:
@@ -69,7 +69,7 @@ async def async_main() -> int:
         raise SystemExit("--incremental-pages and --hard-max-pages must be positive")
 
     source_id = get_or_create_source()
-    adapter = ImmoweltWarmSessionPropertySource(
+    adapter = ImmoweltHeadedPropertySource(
         request_delay_seconds=max(1.0, args.delay),
         incremental_pages=args.incremental_pages,
         hard_max_pages=args.hard_max_pages,
