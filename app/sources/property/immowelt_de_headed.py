@@ -4,6 +4,7 @@ from typing import Any
 
 from playwright.async_api import Page, async_playwright
 
+from app.sources.base import SourceFetchError
 from app.sources.property.immowelt_de import ImmoweltGermanyPropertySource
 
 
@@ -37,3 +38,14 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         await self._context.route("**/*", block_heavy_assets)
         self._page = await self._context.new_page()
         return self._page
+
+    async def _load_html(self, url: str) -> tuple[str, str]:
+        try:
+            return await super()._load_html(url)
+        except RuntimeError as exc:
+            if str(exc) == "Immowelt HTTP 403":
+                raise SourceFetchError(
+                    "Immowelt HTTP 403; source access gate observed",
+                    halt_source=True,
+                ) from exc
+            raise
