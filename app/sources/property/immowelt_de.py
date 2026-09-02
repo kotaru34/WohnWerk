@@ -14,9 +14,9 @@ from playwright.async_api import (
     BrowserContext,
     Page,
     Playwright,
-    TimeoutError as PlaywrightTimeoutError,
     async_playwright,
 )
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.sources.base import (
     PropertySource,
