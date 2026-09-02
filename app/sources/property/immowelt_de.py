@@ -40,7 +40,10 @@ PROVIDER_PAGE_CAP = 250
 CARD_TEST_ID = "serp-core-classified-card-testid"
 COVERING_LINK_TEST_ID = "card-mfe-covering-link-testid"
 ADDRESS_TEST_ID = "cardmfe-description-box-address"
-_EXPOSE_RE = re.compile(r"^/expose/(?P<listing_id>[0-9a-f-]{20,})/?$", re.IGNORECASE)
+_EXPOSE_RE = re.compile(
+    r"^/expose/(?P<listing_id>(?:[0-9a-f-]{20,}|[a-z0-9]{12}))/?$",
+    re.IGNORECASE,
+)
 _PROJECT_EXPOSE_RE = re.compile(
     r"^/projekte/expose/(?P<project_id>[a-z0-9-]{4,})/?$",
     re.IGNORECASE,
@@ -72,6 +75,7 @@ class ImmoweltPage:
     cards_parsed: int
     cards_total: int
     project_cards_skipped: int
+    blank_cards_skipped: int
 
 
 def _node_by_test_id(card: _Node, test_id: str) -> _Node | None:
@@ -189,9 +193,13 @@ def parse_immowelt_search_page(
     items: list[RawProperty] = []
     identity_cards_seen = 0
     project_cards_skipped = 0
+    blank_cards_skipped = 0
     for card in cards:
         anchor = _node_by_test_id(card, COVERING_LINK_TEST_ID)
         if anchor is None:
+            if not _clean_text(card.text()):
+                blank_cards_skipped += 1
+                continue
             identity_cards_seen += 1
             continue
 
@@ -244,6 +252,7 @@ def parse_immowelt_search_page(
         cards_parsed=len(items),
         cards_total=len(cards),
         project_cards_skipped=project_cards_skipped,
+        blank_cards_skipped=blank_cards_skipped,
     )
 
 
@@ -443,6 +452,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
         cards_parsed = 0
         cards_total = 0
         project_cards_skipped = 0
+        blank_cards_skipped = 0
         source_reported_count: int | None = None
         latest_reported_count: int | None = None
         max_reported_count = 0
@@ -477,6 +487,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             cards_parsed = first.cards_parsed
             cards_total = first.cards_total
             project_cards_skipped = first.project_cards_skipped
+            blank_cards_skipped = first.blank_cards_skipped
 
             page_number = 2
             while page_number <= target_pages:
@@ -508,6 +519,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 cards_parsed += page.cards_parsed
                 cards_total += page.cards_total
                 project_cards_skipped += page.project_cards_skipped
+                blank_cards_skipped += page.blank_cards_skipped
                 page_number += 1
         except Exception as exc:
             if isinstance(exc, SourceFetchError):
@@ -522,6 +534,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                     "discovery_cards_parsed": cards_parsed,
                     "discovery_cards_total": cards_total,
                     "discovery_project_cards_skipped": project_cards_skipped,
+                    "discovery_blank_cards_skipped": blank_cards_skipped,
                     "discovery_max_page": max_page,
                     "discovery_latest_reported_count": latest_reported_count,
                     "discovery_max_reported_count": max_reported_count,
@@ -539,6 +552,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             reconciliation
             and not result_cap_hit
             and project_cards_skipped == 0
+            and blank_cards_skipped == 0
             and pages_fetched == max_page
             and cards_seen == cards_parsed
             and count_plausible
@@ -551,6 +565,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 "discovery_cards_parsed": cards_parsed,
                 "discovery_cards_total": cards_total,
                 "discovery_project_cards_skipped": project_cards_skipped,
+                "discovery_blank_cards_skipped": blank_cards_skipped,
                 "discovery_max_page": max_page,
                 "discovery_initial_reported_count": source_reported_count,
                 "discovery_latest_reported_count": latest_reported_count,
