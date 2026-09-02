@@ -112,20 +112,43 @@ This is a private matching index, not republication of the source database.
 
 ## ImmoScout24 Germany
 
-Current adapter partitions Germany into the 48 shards above and parses public house-sale search results.
+The adapter partitions Germany into the 48 shards above and parses public house-sale search results, but the target-host acquisition path is currently paused/fail-closed.
 
-Target-host observation on 2026-09-02:
+Target-host observations on 2026-09-02:
 
-- plain `httpx` request to `Sachsen / EUR 30k..149,999` returned HTTP `401`;
-- this is treated as a transport/interface result, not as an automatic project veto;
-- next implementation step is ordinary stock Chromium rendering of the same unauthenticated public search page;
-- do not add stealth plugins, login, CAPTCHA handling, private cookies or proxy evasion.
+- plain `httpx` request to a Sachsen house search returned HTTP `401`;
+- stock Playwright Chromium in headless mode returned HTTP `401` with the explicit page `Ich bin kein Roboter - ImmobilienScout24`;
+- stock Playwright Chromium in headed mode under Xvfb returned the same HTTP `401` challenge;
+- a normal control browser sharing the same public IP also received the challenge initially, then similar public search URLs worked after one manual human CAPTCHA completion;
+- this strongly indicates browser/session clearance rather than an IP-only decision;
+- WohnWerk will not solve that CAPTCHA, automate it, copy clearance/session state from another browser, or otherwise bypass the challenge.
 
-Search/list-result acquisition is preferred over unnecessary detail-page crawling. Incrementals are newest-first where supported.
+Therefore ImmoScout24 remains available as an adapter for a future normally accepted environment, but the current server path must stop/fail closed. Germany MVP proceeds with other property sources.
+
+Search/list-result acquisition remains preferred over unnecessary detail-page crawling.
 
 ## Immowelt Germany
 
-The adapter uses ordinary Playwright Chromium public-search rendering. Do not open listing detail pages during normal discovery. Heavy image/media/font resources may be suppressed to avoid needless transfer. Page 250 remains a hard safety cap. CAPTCHA/challenge/access protection stops that crawl path rather than being solved.
+Immowelt uses the public `/classified-search` frontend with exact state parameters observed from the normal site UI:
+
+- `distributionTypes=Buy,Buy_Auction,Compulsory_Auction`;
+- `estateTypes=House`;
+- state/city-state `locations` IDs;
+- explicit `priceMin` / `priceMax`;
+- `order=DateDesc`;
+- `page=N`.
+
+Target-host observations on 2026-09-02:
+
+- stock Playwright Chromium in headless mode returned HTTP `403` for the confirmed public `/classified-search` URL;
+- the identical URL in stock Playwright Chromium with `headless=False` under Xvfb returned HTTP `200`;
+- the headed response contained 40 normal SERP cards and the expected filtered heading/results;
+- `navigator.webdriver` remained `true`, so no automation/fingerprint masking was required;
+- the successful path used no login, CAPTCHA, copied cookies, persisted private browser profile, proxy, or stealth framework.
+
+Accordingly the production Immowelt adapter keeps the confirmed direct `/classified-search` URLs and parser, but launches ordinary headed Chromium on the dedicated WohnWerk Xvfb display. Do not reintroduce the temporary UI-click/warm-session transport experiment unless new evidence invalidates direct headed navigation.
+
+Do not open listing detail pages during normal discovery. Heavy image/media/font resources may be suppressed to avoid needless transfer. Page 250 remains a hard safety cap. CAPTCHA/challenge/access protection stops that crawl path rather than being solved.
 
 ## Coverage and disappearance authority
 
@@ -189,15 +212,18 @@ Completed on the target system:
 5. DE 5-digit and city radius resolution smoke passed;
 6. stock Playwright Chromium installed and launches as `www-data`;
 7. DE/AT country switch works on Houses, Jobs and `/admin/matches`;
-8. refresh/images/liveness timers intentionally remain stopped while Germany acquisition is validated.
+8. refresh/images/liveness timers intentionally remain stopped while Germany acquisition is validated;
+9. Immowelt direct filtered search is confirmed healthy in headed Chromium under Xvfb;
+10. ImmoScout24 remains challenge-blocked in both headless and headed server Chromium and is fail-closed.
 
 Current property acquisition checkpoint:
 
-- ImmoScout plain-HTTP single-shard probe returned `401` before any DB mutation;
-- no ImmoScout source/listings/runs were created by that read-only probe;
-- next step is a read-only single-shard stock-Chromium ImmoScout smoke;
-- if healthy, proceed to bounded incremental ingestion;
-- validate Immowelt similarly after ImmoScout.
+- ImmoScout24 is paused for this server environment because an explicit human challenge remains;
+- no challenge solving or clearance-state reuse will be added;
+- Immowelt is the active broad Germany property source;
+- the temporary Immowelt warm/UI-click transport experiment has been removed;
+- next step is a staging smoke of the headed direct Immowelt adapter under the dedicated Xvfb runtime;
+- if healthy, proceed to bounded `48 x 1` Immowelt incremental ingestion and validate the resulting DE corpus before restoring scheduled timers.
 
 ## Recovery rule
 
