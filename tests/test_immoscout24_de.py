@@ -81,6 +81,50 @@ def test_shards_cover_states_and_non_overlapping_budget_bands() -> None:
 
 
 @pytest.mark.asyncio
+async def test_plain_http_401_switches_to_reused_stock_browser_transport(monkeypatch) -> None:
+    url = "https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen"
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def get(self, requested_url: str) -> httpx.Response:
+            self.calls += 1
+            return httpx.Response(
+                401,
+                text="unauthorized",
+                request=httpx.Request("GET", requested_url),
+            )
+
+    class ProbeSource(ImmoScout24GermanyPropertySource):
+        def __init__(self) -> None:
+            super().__init__()
+            self.browser_calls = 0
+
+        async def _sleep(self) -> None:
+            return None
+
+        async def _get_with_browser(self, requested_url: str) -> httpx.Response:
+            self.browser_calls += 1
+            return httpx.Response(
+                200,
+                text=_page_html(),
+                request=httpx.Request("GET", requested_url),
+            )
+
+    source = ProbeSource()
+    client = FakeClient()
+
+    first = await source._get(client, url)
+    second = await source._get(client, url)
+
+    assert first.status_code == second.status_code == 200
+    assert source._browser_required is True
+    assert client.calls == 1
+    assert source.browser_calls == 2
+
+
+@pytest.mark.asyncio
 async def test_single_page_reconciliation_is_authoritative(monkeypatch) -> None:
     url = "https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen"
     response = httpx.Response(200, text=_page_html(), request=httpx.Request("GET", url))
@@ -110,3 +154,4 @@ async def test_single_page_reconciliation_is_authoritative(monkeypatch) -> None:
     assert batch.result_cap_hit is False
     assert batch.pages_fetched == 1
     assert batch.next_cursor["discovery_count_delta"] == 0
+    assert batch.next_cursor["discovery_transport"] == "httpx"
