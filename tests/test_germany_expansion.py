@@ -3,9 +3,10 @@ from __future__ import annotations
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from app import postal_codes_de
 from app.country_scope import _SCOPED_PREFIXES, _country_href, _switch_markup, normalize_country
 from app.models import PostalCode
-from app.postal_codes_de import parse_geonames_de_postal_zip
+from app.postal_codes_de import GermanPostalCodeRecord, parse_geonames_de_postal_zip
 from app.sources.job.adzuna import AdzunaQuery, parse_adzuna_job
 from app.sources.job.adzuna_de import _normalize_german_location
 from app.sources.job.arbeitsagentur import ArbeitsagenturQuery, parse_arbeitsagentur_job
@@ -62,6 +63,40 @@ def test_geonames_de_parser_preserves_leading_zero_and_averages_duplicates() -> 
     assert records["01067"].sample_count == 2
     assert records["01067"].latitude == 51.052
     assert records["01067"].longitude == 13.732
+
+
+def test_geonames_upsert_batches_large_values(monkeypatch) -> None:
+    class FakeSession:
+        def __init__(self) -> None:
+            self.statements = []
+            self.commit_count = 0
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+        def commit(self) -> None:
+            self.commit_count += 1
+
+    monkeypatch.setattr(postal_codes_de, "GEONAMES_UPSERT_BATCH_SIZE", 2)
+
+    records = [
+        GermanPostalCodeRecord(
+            postal_code=f"{10000 + index:05d}",
+            name=f"Place {index}",
+            longitude=10.0 + index / 1000,
+            latitude=50.0 + index / 1000,
+            sample_count=1,
+        )
+        for index in range(5)
+    ]
+    session = FakeSession()
+
+    assert postal_codes_de.upsert_german_postal_codes(session, records) == 5
+    assert len(session.statements) == 3
+    assert session.commit_count == 1
+
+    bound_parameter_counts = [len(statement.compile().params) for statement in session.statements]
+    assert bound_parameter_counts == [14, 14, 7]
 
 
 def test_runtime_model_matches_five_digit_postal_migration() -> None:
