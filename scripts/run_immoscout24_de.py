@@ -29,7 +29,11 @@ def get_or_create_source() -> int:
     config = {
         "country_code": "DE",
         "scope": "Germany houses for sale priced EUR 30,000 through EUR 300,000",
-        "acquisition": "public search pages; title, price, area, PLZ, city and source URL only",
+        "acquisition": (
+            "public search pages; ordinary Chromium fallback when the public frontend "
+            "does not accept the plain HTTP transport; title, price, area, PLZ, city "
+            "and source URL only"
+        ),
         "sharding": "16 states/city-states x 3 non-overlapping price bands",
         "ordering": "newest first",
         "coverage": "authoritative only when every shard is exhaustively parsed below its cap",
@@ -71,31 +75,34 @@ async def async_main() -> int:
         incremental_pages=args.incremental_pages,
         hard_max_pages=args.hard_max_pages,
     )
-    with SessionLocal() as session:
-        source = session.get(Source, source_id)
-        if source is None:
-            raise RuntimeError("ImmoScout24 DE source disappeared before the run started")
-        run, summary = await run_property_source(
-            session,
-            source=source,
-            adapter=adapter,
-            reconciliation=args.reconcile,
-        )
+    try:
+        with SessionLocal() as session:
+            source = session.get(Source, source_id)
+            if source is None:
+                raise RuntimeError("ImmoScout24 DE source disappeared before the run started")
+            run, summary = await run_property_source(
+                session,
+                source=source,
+                adapter=adapter,
+                reconciliation=args.reconcile,
+            )
 
-        print(f"Run #{run.id}: {run.mode}")
-        print(f"status={summary.run_status} coverage={summary.coverage_status}")
-        print(
-            "shards="
-            f"{summary.shards_completed}/{summary.shards_total} "
-            f"failed={summary.shards_failed} pages={summary.pages_fetched}"
-        )
-        print(
-            f"seen={summary.items_seen} new={summary.items_new} "
-            f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
-        )
-        if args.reconcile:
-            print(f"disappeared={run.items_disappeared}")
-    return 0 if summary.run_status != "failed" else 1
+            print(f"Run #{run.id}: {run.mode}")
+            print(f"status={summary.run_status} coverage={summary.coverage_status}")
+            print(
+                "shards="
+                f"{summary.shards_completed}/{summary.shards_total} "
+                f"failed={summary.shards_failed} pages={summary.pages_fetched}"
+            )
+            print(
+                f"seen={summary.items_seen} new={summary.items_new} "
+                f"updated={summary.items_updated} source_reported={summary.source_reported_count}"
+            )
+            if args.reconcile:
+                print(f"disappeared={run.items_disappeared}")
+        return 0 if summary.run_status != "failed" else 1
+    finally:
+        await adapter.aclose()
 
 
 def main() -> None:
