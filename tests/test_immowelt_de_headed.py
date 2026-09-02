@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 import app.sources.property.immowelt_de_headed as headed_module
+from app.sources.base import SourceFetchError
+from app.sources.property.immowelt_de import ImmoweltGermanyPropertySource
 from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
 
@@ -79,3 +81,22 @@ def test_headed_adapter_keeps_confirmed_direct_search_urls() -> None:
     assert "priceMax=149999" in url
     assert "order=DateDesc" in url
     assert "page=1" in url
+
+
+@pytest.mark.asyncio
+async def test_headed_403_requests_source_wide_halt(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def blocked(
+        self: ImmoweltGermanyPropertySource,
+        url: str,
+    ) -> tuple[str, str]:
+        del self, url
+        raise RuntimeError("Immowelt HTTP 403")
+
+    monkeypatch.setattr(ImmoweltGermanyPropertySource, "_load_html", blocked)
+
+    source = ImmoweltHeadedPropertySource()
+    with pytest.raises(SourceFetchError) as caught:
+        await source._load_html("https://www.immowelt.de/classified-search")
+
+    assert caught.value.halt_source is True
+    assert "source access gate observed" in str(caught.value)
