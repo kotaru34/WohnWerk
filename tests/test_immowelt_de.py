@@ -49,8 +49,10 @@ def test_parser_keeps_only_minimal_public_facts_and_leading_zero_plz() -> None:
     page = parse_immowelt_search_page(
         _page_html(),
         page_url=(
-            "https://www.immowelt.de/suche/kaufen/haus/"
-            "preis-30000-149999/sachsen/ad04de14?order=DateDesc&page=1"
+            "https://www.immowelt.de/classified-search?"
+            "distributionTypes=Buy%2CBuy_Auction%2CCompulsory_Auction&"
+            "estateTypes=House&locations=AD04DE14&priceMax=149999&"
+            "priceMin=30000&order=DateDesc&page=1"
         ),
         region_key="sachsen",
         price_band_key="030000-149999",
@@ -85,7 +87,7 @@ def test_title_parser_handles_marketing_modifier_before_city() -> None:
                 "6 Zimmer, 180 m², 740 m² Grundstück"
             )
         ),
-        page_url="https://www.immowelt.de/suche/kaufen/haus/sachsen/ad04de14",
+        page_url="https://www.immowelt.de/classified-search",
         region_key="sachsen",
         price_band_key="225000-300000",
     )
@@ -107,7 +109,7 @@ def test_project_card_without_variant_identity_is_skipped_explicitly() -> None:
                 "5 Zimmer, 120,1 m², 238 m² Grundstück"
             ),
         ),
-        page_url="https://www.immowelt.de/suche/kaufen/haus/sachsen/ad04de14",
+        page_url="https://www.immowelt.de/classified-search",
         region_key="sachsen",
         price_band_key="225000-300000",
     )
@@ -122,7 +124,7 @@ def test_project_card_without_variant_identity_is_skipped_explicitly() -> None:
 def test_current_page_size_drives_count_based_pagination() -> None:
     page = parse_immowelt_search_page(
         _page_html(total=81),
-        page_url="https://www.immowelt.de/suche/kaufen/haus/sachsen/ad04de14",
+        page_url="https://www.immowelt.de/classified-search",
         region_key="sachsen",
         price_band_key="030000-149999",
     )
@@ -130,7 +132,7 @@ def test_current_page_size_drives_count_based_pagination() -> None:
     assert page.max_page == 3
 
 
-def test_shards_use_current_seo_route_and_non_overlapping_budget_bands() -> None:
+def test_shards_use_confirmed_classified_search_state() -> None:
     source = ImmoweltGermanyPropertySource()
     shards = source.default_shards()
 
@@ -141,10 +143,12 @@ def test_shards_use_current_seo_route_and_non_overlapping_budget_bands() -> None
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
 
-    assert parsed.path == (
-        "/suche/kaufen/haus/preis-225000-300000/"
-        "nordrhein-westfalen/ad04de5"
-    )
+    assert parsed.path == "/classified-search"
+    assert query["distributionTypes"] == ["Buy,Buy_Auction,Compulsory_Auction"]
+    assert query["estateTypes"] == ["House"]
+    assert query["locations"] == ["AD04DE5"]
+    assert query["priceMin"] == ["225000"]
+    assert query["priceMax"] == ["300000"]
     assert query["order"] == ["DateDesc"]
     assert query["page"] == ["2"]
 
