@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
 from app.sources.base import SourceChallenge
@@ -59,7 +60,7 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if self._page is not None:
             try:
                 await self._page.screenshot(path=str(screenshot_path), full_page=True)
-            except Exception:
+            except PlaywrightError:
                 screenshot_path = Path()
 
         handoff: dict[str, Any] = {
