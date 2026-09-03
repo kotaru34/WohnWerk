@@ -57,33 +57,38 @@ Primary broad property sources under development:
 
 ## Public-frontend acquisition policy
 
-Do **not** treat a portal ToS as an automatic technical veto. For this private/self-hosted project, ToS is considered an operational/civil risk signal and source-specific constraint, while the crawler design remains governed by the concrete technical/legal red lines below.
+Do **not** treat a portal ToS as an automatic technical veto. For this private/self-hosted project, ToS is considered an operational/civil risk signal and source-specific constraint, while the crawler design remains governed by the concrete technical red lines below.
 
-Publicly reachable frontend pages may be acquired carefully when doing so does not require bypassing a technical access barrier. A plain HTTP client returning `401/403` does not by itself mean the public frontend is forbidden: an ordinary browser renderer may be used if the same page is normally available to an unauthenticated user.
+Publicly reachable frontend pages may be acquired carefully with ordinary browser execution when required by the public frontend. A plain HTTP client returning `401/403` does not by itself determine source availability: an ordinary browser renderer may be used when the same public page is normally available to an unauthenticated user.
 
-Allowed engineering progression:
+Allowed engineering progression inside WohnWerk-owned code:
 
 ```text
 normal public HTTP
     -> ordinary Chromium rendering when the public site requires browser execution
+    -> explicit challenge detection
+    -> persist exact crawl/browser handoff state
+    -> user-provided external challenge-handler boundary
+    -> same-run resume after an explicit resolved disposition
 ```
 
-Red lines:
+Red lines for WohnWerk-owned code:
 
-- no login/account automation for portal crawling;
-- no CAPTCHA solving;
-- no paywall/access-control bypass;
+- no login/account automation for commercial portal crawling;
+- no CAPTCHA-solving implementation;
+- no paywall/access-control bypass implementation;
 - no deliberate IP-ban bypass;
-- no stealth/anti-bot frameworks intended to evade detection;
+- no stealth/anti-bot fingerprint frameworks intended to evade detection;
 - no residential/proxy rotation intended to defeat blocking;
 - no reverse-engineered private API solely to bypass the normal interface;
-- no credential theft or reuse of private session material;
-- no aggressive request rates;
-- stop/fail closed on an explicit challenge or technical block rather than trying to defeat it.
+- no credential theft or reuse of private login material;
+- no aggressive request rates.
 
-Normal browser execution is **not** considered stealth by itself. Use stock Playwright/Chromium behavior without fingerprint-masking plugins or challenge bypasses.
+Challenge handling is an explicit interface boundary. WohnWerk may detect a challenge, persist crawl and browser state, invoke an operator/user-provided external executable, and consume only its `resolved|defer|abort` disposition. The external handler's internal implementation is outside WohnWerk-owned code and must not be edited by WohnWerk automation. If no handler is configured, or the handler defers/fails, the crawl remains paused/fail-closed without losing its saved position.
 
-Use conservative delays, caching where useful, and standard backoff for transient `429/5xx` responses.
+Normal browser execution is **not** considered stealth by itself. Use stock Playwright/Chromium behavior without fingerprint-masking plugins in WohnWerk-owned code.
+
+Use conservative delays, caching where useful, standard backoff for transient `429/5xx` responses, and source-level isolation so one portal cannot interrupt unrelated production acquisition.
 
 ## Minimal-retention rule for commercial portals
 
@@ -105,8 +110,10 @@ Do not retain from normal commercial-portal discovery:
 - full descriptions/body text;
 - broker/seller contact details;
 - portal-hosted photos or local photo mirrors;
-- arbitrary page snapshots;
+- arbitrary page snapshots as catalog data;
 - invented/inferred attributes without source evidence.
+
+A temporary challenge diagnostic screenshot and Playwright storage-state file may be written under the private challenge-state directory for handoff/resume. They are operational state, not catalog data, and must not be exposed in the product UI.
 
 This is a private matching index, not republication of the source database.
 
@@ -120,10 +127,9 @@ Target-host observations on 2026-09-02:
 - stock Playwright Chromium in headless mode returned HTTP `401` with the explicit page `Ich bin kein Roboter - ImmobilienScout24`;
 - stock Playwright Chromium in headed mode under Xvfb returned the same HTTP `401` challenge;
 - a normal control browser sharing the same public IP also received the challenge initially, then similar public search URLs worked after one manual human CAPTCHA completion;
-- this strongly indicates browser/session clearance rather than an IP-only decision;
-- WohnWerk will not solve that CAPTCHA, automate it, copy clearance/session state from another browser, or otherwise bypass the challenge.
+- this strongly indicates browser/session clearance rather than an IP-only decision.
 
-Therefore ImmoScout24 remains available as an adapter for a future normally accepted environment, but the current server path must stop/fail closed. Germany MVP proceeds with other property sources.
+ImmoScout24 is therefore not in the automatic source scheduler while its production transport remains unvalidated. Stored source data stays available; the global scheduler does not call the paused source.
 
 Search/list-result acquisition remains preferred over unnecessary detail-page crawling.
 
@@ -144,11 +150,35 @@ Target-host observations on 2026-09-02:
 - the identical URL in stock Playwright Chromium with `headless=False` under Xvfb returned HTTP `200`;
 - the headed response contained 40 normal SERP cards and the expected filtered heading/results;
 - `navigator.webdriver` remained `true`, so no automation/fingerprint masking was required;
-- the successful path used no login, CAPTCHA, copied cookies, persisted private browser profile, proxy, or stealth framework.
+- the successful path used no login, copied private login state, proxy, or stealth framework.
 
 Accordingly the production Immowelt adapter keeps the confirmed direct `/classified-search` URLs and parser, but launches ordinary headed Chromium on the dedicated WohnWerk Xvfb display. Do not reintroduce the temporary UI-click/warm-session transport experiment unless new evidence invalidates direct headed navigation.
 
-Do not open listing detail pages during normal discovery. Heavy image/media/font resources may be suppressed to avoid needless transfer. Page 250 remains a hard safety cap. CAPTCHA/challenge/access protection stops that crawl path rather than being solved.
+Do not open listing detail pages during normal discovery. Heavy image/media/font resources may be suppressed to avoid needless transfer. Page 250 remains a hard safety cap.
+
+### Immowelt challenge/resume state machine
+
+A `403` or recognized challenge page/frame is not represented as forty-eight shard failures. The crawler must:
+
+1. identify the current `CrawlRun`, shard, Bundesland, price band and exact page/navigation point;
+2. persist cumulative page/card/unique-ID counters and the same-run resume cursor;
+3. persist the run's already chosen fair shard order;
+4. export browser storage state and a diagnostic screenshot when available;
+5. mark only the current shard/run as paused, leaving untouched shards unattempted;
+6. invoke the user-provided external challenge handler after persistence is committed;
+7. on `resolved`, reload the returned/updated browser state and retry the saved navigation point inside the same run;
+8. on `defer`, keep the run unfinished and resumable;
+9. on `abort` or a source-wide hard failure, count the actual failed shard separately and mark untouched remainder as skipped/not-attempted.
+
+The production runner accepts an external handler via `--challenge-handler` or `WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`. The executable receives one JSON object on stdin and returns one JSON object on stdout:
+
+```json
+{"action":"resolved","retry_after_seconds":0}
+```
+
+Valid actions are `resolved`, `defer`, and `abort`. WohnWerk invokes the command directly without a shell. The handler may update the supplied persisted `storage_state_path` before returning `resolved`; WohnWerk then recreates its ordinary Chromium context from that state and resumes the saved page. The default when no handler exists is `defer`.
+
+The normal Immowelt command keeps roughly 15-second jittered navigation spacing. HTTP `429` halts the source attempt and relies on the normal source poll interval before another network attempt. Immowelt remains incremental-only in the automatic scheduler while coverage behavior is being validated.
 
 ## Coverage and disappearance authority
 
@@ -167,9 +197,10 @@ A reconciliation may prove disappearance only when:
 3. every shard was fully traversed / `coverage_complete=true`;
 4. no shard hit a cap;
 5. parser identity coverage is complete enough;
-6. observed unique IDs are plausible against source-reported counts/tolerances where available.
+6. observed **unique IDs** are plausible against source-reported counts/tolerances where available;
+7. a challenge-resumed shard retained complete identity history from the pre-challenge part of the same run.
 
-Partial, capped, challenged, parser-incomplete or degraded runs are non-authoritative. Never manually promote `Source.coverage_status`.
+Partial, capped, challenged, paused, skipped, parser-incomplete or degraded runs are non-authoritative. Never manually promote `Source.coverage_status`. `reconcile_missing_listings()` remains gated on a complete `coverage=ok` reconciliation, so an incomplete/degraded scan cannot deactivate listings because they were absent from that scan.
 
 ## Germany postal geography
 
@@ -203,27 +234,20 @@ The Bundesagentur interface is not treated as reconciliation-authoritative merel
 
 ## Current rollout checkpoint
 
-Completed on the target system:
+Production now runs on the migrated Debian 13 VM with the established `/opt/wohnwerk` and `/var/lib/wohnwerk` layout, remote HA PostgreSQL through multi-host libpq/psycopg with `target_session_attrs=read-write`, PostGIS 3.5.6, OSRM, Xvfb and the existing systemd architecture. The retired LXC is not production. The exact production hostname is `wohnwerk.lainlounge.org` and Caddy serves that explicit site without a wildcard/default site.
 
-1. `v0.4.0` Germany-capable runtime deployed;
-2. DB at `0012_de_postal_codes`;
-3. 10,813 GeoNames DE postal centroids imported;
-4. AT postal integrity preserved;
-5. DE 5-digit and city radius resolution smoke passed;
-6. stock Playwright Chromium installed and launches as `www-data`;
-7. DE/AT country switch works on Houses, Jobs and `/admin/matches`;
-8. refresh/images/liveness timers intentionally remain stopped while Germany acquisition is validated;
-9. Immowelt direct filtered search is confirmed healthy in headed Chromium under Xvfb;
-10. ImmoScout24 remains challenge-blocked in both headless and headed server Chromium and is fail-closed.
+Current acquisition state:
 
-Current property acquisition checkpoint:
-
-- ImmoScout24 is paused for this server environment because an explicit human challenge remains;
-- no challenge solving or clearance-state reuse will be added;
-- Immowelt is the active broad Germany property source;
-- the temporary Immowelt warm/UI-click transport experiment has been removed;
-- next step is a staging smoke of the headed direct Immowelt adapter under the dedicated Xvfb runtime;
-- if healthy, proceed to bounded `48 x 1` Immowelt incremental ingestion and validate the resulting DE corpus before restoring scheduled timers.
+1. `v0.4.0` Germany-capable runtime and migration `0012_de_postal_codes` are the production baseline;
+2. 10,813 GeoNames DE postal centroids were imported while the Austria postal reference remained intact;
+3. DE/AT country switching works on Houses, Jobs and `/admin/matches`;
+4. refresh/images/liveness production timers are enabled and must remain enabled during source experiments;
+5. ImmoScout24 is absent from the automatic scheduler while its transport is paused;
+6. Immowelt is automatic **incremental/frontier only**, not reconciliation-authoritative;
+7. Immowelt failures are source-isolated so they cannot make `wohnwerk-refresh.service` fail by themselves;
+8. Immowelt challenge handling persists same-run state and uses the external handler boundary described above;
+9. untouched shards after a source-wide halt are telemetry `skipped`, not fabricated failures;
+10. Austria acquisition must continue independently of German source health.
 
 ## Recovery rule
 
