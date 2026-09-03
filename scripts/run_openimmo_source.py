@@ -16,6 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--name", required=True, help="Stable WohnWerk source name")
     parser.add_argument("--url", required=True, help="OpenImmo XML or ZIP feed URL")
     parser.add_argument(
+        "--country",
+        choices=("AT", "DE"),
+        default="AT",
+        help="Country represented by this feed (default: AT)",
+    )
+    parser.add_argument(
         "--reconcile",
         action="store_true",
         help="Treat this as a complete source snapshot and deactivate missing source listings",
@@ -26,6 +32,11 @@ def parse_args() -> argparse.Namespace:
 async def run() -> None:
     args = parse_args()
     adapter = OpenImmoFeedPropertySource(name=args.name, feed_url=args.url)
+    config = {
+        "feed_type": "openimmo",
+        "country_code": args.country,
+        "scope": f"{args.country} residential houses for sale from an authorized OpenImmo feed",
+    }
 
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == args.name))
@@ -35,13 +46,14 @@ async def run() -> None:
                 category=SourceCategory.PROPERTY,
                 adapter="app.sources.property.openimmo.OpenImmoFeedPropertySource",
                 base_url=args.url,
-                config={"feed_type": "openimmo"},
+                config=config,
             )
             session.add(source)
             session.commit()
             session.refresh(source)
         else:
             source.base_url = args.url
+            source.config = {**(source.config or {}), **config}
             session.commit()
 
         crawl_run, summary = await run_property_source(

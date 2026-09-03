@@ -33,6 +33,19 @@ Austria
   -> property subtype when necessary
 ```
 
+The Germany portal adapters use a fixed, deterministic equivalent:
+
+```text
+Germany
+  -> 16 states/city-states
+  -> EUR 30,000..149,999 / 150,000..224,999 / 225,000..300,000
+```
+
+The bands are non-overlapping and match the existing WohnWerk house budget. `immowelt-de` treats
+page 250 as a hard cap; either adapter reports capped/degraded coverage if a shard reaches its
+safety ceiling. Both request newest-first for incrementals and require count-plausible exhaustive
+coverage for reconciliation.
+
 A shard whose reported result count approaches or reaches a known source cap must be split before it can be considered fully covered.
 
 ## Incremental scans
@@ -50,7 +63,7 @@ Reconciliation periodically scans the complete configured source search space. L
 
 ## Multi-source coverage
 
-No single portal is assumed to represent the Austrian market. Property coverage should combine large portals, regional portals, direct broker websites, broker-network sites, and authorized structured feeds/APIs. Job coverage should combine aggregators, professional job boards, public-sector sources and direct employer career pages.
+No single portal is assumed to represent either market. Property coverage should combine large portals, regional portals, direct broker websites, broker-network sites, and authorized structured feeds/APIs. Job coverage should combine aggregators, professional job boards, public-sector sources and direct employer career pages.
 
 Cross-source duplicates remain separate source listings underneath one eventual canonical property/job entity.
 
