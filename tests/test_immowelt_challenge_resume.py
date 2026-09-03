@@ -94,6 +94,8 @@ async def test_challenge_persists_exact_shard_band_state_and_retry_page() -> Non
     assert exc.next_cursor["_resume_same_run"] is True
     assert exc.next_cursor["resume_page"] == 1
     assert exc.next_cursor["discovery_completed_pages"] == 0
+    assert exc.next_cursor["discovery_seen_ids"] == []
+    assert exc.next_cursor["discovery_identity_history_complete"] is True
 
 
 @pytest.mark.asyncio
@@ -128,6 +130,7 @@ async def test_same_run_resume_starts_at_saved_page_not_page_one() -> None:
         "discovery_initial_reported_count": 41,
         "discovery_latest_reported_count": 41,
         "discovery_max_reported_count": 41,
+        "discovery_seen_ids": [f"saved-{index}" for index in range(40)],
     }
 
     batch = await source.fetch_shard(
@@ -139,5 +142,40 @@ async def test_same_run_resume_starts_at_saved_page_not_page_one() -> None:
     assert source.requested_pages == [2]
     assert batch.pages_fetched == 1
     assert batch.next_cursor["discovery_completed_pages"] == 2
+    assert batch.next_cursor["discovery_unique_ids_seen"] == 41
     assert batch.coverage_complete is True
     assert batch.next_cursor["discovery_count_delta"] == 0
+
+
+@pytest.mark.asyncio
+async def test_legacy_resume_without_identity_history_cannot_gain_reconciliation_authority() -> None:
+    class Probe(ImmoweltGermanyPropertySource):
+        async def _load_html(self, url: str) -> tuple[str, str]:
+            return _one_card_html(total=41, listing_id="46zklwh9fcdf"), url
+
+    source = Probe(request_delay_seconds=1.0)
+    shard = next(
+        shard
+        for shard in source.default_shards()
+        if shard.key == "sachsen:030000-149999"
+    )
+    legacy_cursor = {
+        "_resume_same_run": True,
+        "resume_page": 2,
+        "discovery_completed_pages": 1,
+        "discovery_target_pages": 2,
+        "discovery_cards_seen": 40,
+        "discovery_cards_parsed": 40,
+        "discovery_cards_total": 40,
+        "discovery_project_cards_skipped": 0,
+        "discovery_blank_cards_skipped": 0,
+        "discovery_max_page": 2,
+        "discovery_initial_reported_count": 41,
+        "discovery_latest_reported_count": 41,
+        "discovery_max_reported_count": 41,
+    }
+
+    batch = await source.fetch_shard(shard, cursor=legacy_cursor, reconciliation=True)
+
+    assert batch.next_cursor["discovery_identity_history_complete"] is False
+    assert batch.coverage_complete is False
