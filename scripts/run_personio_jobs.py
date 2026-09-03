@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.crawling.job_runner import run_job_source
 from app.database import SessionLocal
@@ -105,7 +105,15 @@ def load_runtime(source_id: int) -> tuple[list[PersonioSite], set[str]]:
         if not sites:
             raise RuntimeError("No enabled Personio tenants are registered")
 
-        locality_names = set(session.scalars(select(PostalCode.name)))
+        # The postal reference is shared by AT and DE after the Germany rollout.
+        # Austrian PLZs are exactly four digits; German PLZs are five. Personio's
+        # Austria-only locality proof must therefore never be built from the whole
+        # shared table, otherwise names such as München become false Austria proof.
+        locality_names = set(
+            session.scalars(
+                select(PostalCode.name).where(func.length(PostalCode.postal_code) == 4)
+            )
+        )
         localities = {
             canonical
             for value in locality_names
