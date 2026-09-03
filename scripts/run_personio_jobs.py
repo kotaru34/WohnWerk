@@ -59,6 +59,7 @@ def get_or_create_source() -> int:
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         config = {
+            "country_code": "AT",
             "scope": "Austrian vacancies from registered Personio career sites",
             "acquisition": "documented public Personio career-site XML feed",
             "sharding": "one shard per enabled DB-backed tenant",
