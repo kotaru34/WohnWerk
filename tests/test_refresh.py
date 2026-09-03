@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.models import Source
-from app.refresh import SourceRefreshPlan, source_due_run
+from app.refresh import SOURCE_REFRESH_PLANS, SourceRefreshPlan, source_due_run
 
 NOW = datetime(2026, 8, 28, 15, 0, tzinfo=UTC)
 
@@ -97,3 +97,10 @@ def test_disabled_source_is_never_due() -> None:
     plan = SourceRefreshPlan("example", "scripts/example.py", True)
 
     assert source_due_run(object(), source, plan, now=NOW) is None
+
+
+def test_german_property_scheduler_keeps_paused_scout_out_and_immowelt_frontier_only() -> None:
+    plans = {plan.source_name: plan for plan in SOURCE_REFRESH_PLANS}
+
+    assert "immoscout24-de" not in plans
+    assert plans["immowelt-de"].supports_reconciliation is False

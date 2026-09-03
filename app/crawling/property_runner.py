@@ -51,6 +51,56 @@ async def _annotate_visibility_with_cursor(
     return next_cursor
 
 
+def _ordered_shards(shards: list[SourceShard], *, reconciliation: bool) -> list[SourceShard]:
+    if reconciliation:
+        return sorted(shards, key=lambda item: (item.priority, item.id))
+
+    epoch = datetime.min.replace(tzinfo=UTC)
+    return sorted(
+        shards,
+        key=lambda item: (
+            item.priority,
+            item.last_success_at is not None,
+            item.last_success_at or epoch,
+            item.id,
+        ),
+    )
+
+
+def _mark_unattempted_after_source_halt(
+    session: Session,
+    *,
+    run_id: int,
+    source_name: str,
+    failed_spec_key: str,
+    remaining_shards: list[SourceShard],
+    reason: str,
+) -> None:
+    now = datetime.now(UTC)
+    for shard in remaining_shards:
+        shard_run = session.scalar(
+            select(CrawlShardRun).where(
+                CrawlShardRun.crawl_run_id == run_id,
+                CrawlShardRun.shard_id == shard.id,
+            )
+        )
+        if shard_run is None or shard_run.status != RunStatus.RUNNING:
+            continue
+        shard_run.status = RunStatus.FAILED
+        shard_run.finished_at = now
+        shard_run.coverage_complete = False
+        shard_run.error = (
+            "SourceHalted: not attempted after source-wide halt at "
+            f"{source_name}/{failed_spec_key}: {reason}"
+        )
+
+
+def _source_halt_reason(exc: Exception) -> str | None:
+    if isinstance(exc, SourceFetchError) and exc.halt_source:
+        return str(exc)
+    return None
+
+
 async def run_property_source(
     session: Session,
     *,
@@ -64,6 +114,11 @@ async def run_property_source(
     visibility is stored as source-observation metadata and must not shrink `seen` coverage.
     IMMMO additionally verifies genuinely new downstream URLs before exposing them as product
     listings; synthetic fallback identities remain crawler-only.
+
+    Incremental runs visit never/least-recently successful shards first so a bounded or
+    temporarily gated source cannot starve the tail of its frontier forever. Reconciliations
+    keep deterministic priority/id order. A source-wide fetch halt stops further network work
+    in the current run and records the untouched remainder as not attempted.
     """
     specs = adapter.default_shards()
     shards = sync_source_shards(session, source, specs)
@@ -72,8 +127,9 @@ async def run_property_source(
     run = create_run(session, source, mode)
     source_id = source.id
     run_id = run.id
+    ordered_shards = _ordered_shards(shards, reconciliation=reconciliation)
 
-    for shard in sorted(shards, key=lambda item: (item.priority, item.id)):
+    for index, shard in enumerate(ordered_shards):
         spec = specs_by_key[shard.key]
         shard_run = session.scalar(
             select(CrawlShardRun).where(
@@ -86,6 +142,7 @@ async def run_property_source(
 
         shard_id = shard.id
         shard_run_id = shard_run.id
+        halt_reason: str | None = None
 
         try:
             batch = await adapter.fetch_shard(
@@ -144,6 +201,7 @@ async def run_property_source(
             if reconciliation and coverage_complete and not batch.result_cap_hit:
                 shard.last_full_scan_at = now
         except Exception as exc:
+            halt_reason = _source_halt_reason(exc)
             session.rollback()
             partial_new = 0
             partial_updated = 0
@@ -192,6 +250,18 @@ async def run_property_source(
             failed_shard.consecutive_failures += 1
 
         session.commit()
+
+        if halt_reason is not None:
+            _mark_unattempted_after_source_halt(
+                session,
+                run_id=run_id,
+                source_name=source.name,
+                failed_spec_key=spec.key,
+                remaining_shards=ordered_shards[index + 1 :],
+                reason=halt_reason,
+            )
+            session.commit()
+            break
 
     summary = finalize_run(session, run)
     if reconciliation:

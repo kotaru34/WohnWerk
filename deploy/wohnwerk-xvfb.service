@@ -1,0 +1,19 @@
+[Unit]
+Description=WohnWerk virtual X display for headed browser sources
+After=local-fs.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/bin/Xvfb :97 -screen 0 1920x1080x24 -nolisten tcp -ac
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
