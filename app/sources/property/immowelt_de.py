@@ -12,10 +12,12 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from playwright.async_api import (
     Browser,
     BrowserContext,
-    Error as PlaywrightError,
     Page,
     Playwright,
     async_playwright,
+)
+from playwright.async_api import (
+    Error as PlaywrightError,
 )
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
