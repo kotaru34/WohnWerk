@@ -31,7 +31,15 @@ from app.crawling.shards import sync_source_shards
 from app.ingestion.immmo_continuity import reconcile_immmo_continuity
 from app.ingestion.properties import ingest_properties
 from app.live_events import queue_live_event
-from app.models import CoverageStatus, CrawlMode, CrawlRun, CrawlShardRun, RunStatus, Source, SourceShard
+from app.models import (
+    CoverageStatus,
+    CrawlMode,
+    CrawlRun,
+    CrawlShardRun,
+    RunStatus,
+    Source,
+    SourceShard,
+)
 from app.property_acquisition import annotate_property_items_by_budget
 from app.property_liveness import prepare_immmo_item_liveness
 from app.sources.base import (
@@ -98,7 +106,7 @@ def _restore_shard_order(run: CrawlRun, shards: list[SourceShard]) -> list[Sourc
     persisted = metadata.get("shard_order")
     by_id = {shard.id: shard for shard in shards}
     if not isinstance(persisted, list):
-        raise RuntimeError(f"Paused crawl run {run.id} has no persisted fair shard order")
+        raise TypeError(f"Paused crawl run {run.id} has no persisted fair shard order")
 
     ordered: list[SourceShard] = []
     for item in persisted:
@@ -156,6 +164,14 @@ def _active_challenge(run: CrawlRun) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _challenge_handoff_count(run: CrawlRun) -> int:
+    raw = dict(run.run_metadata or {}).get("challenge_handoff_count", 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _challenge_request_from_payload(payload: dict[str, Any]) -> ChallengeRequest:
     return ChallengeRequest(
         source=str(payload["source"]),
@@ -169,6 +185,19 @@ def _challenge_request_from_payload(payload: dict[str, Any]) -> ChallengeRequest
         resume_cursor=dict(payload.get("resume_cursor") or {}),
         handoff_state=dict(payload.get("handoff_state") or {}),
     )
+
+
+def _set_active_challenge(
+    run: CrawlRun,
+    request: ChallengeRequest,
+    *,
+    handoff_count: int | None = None,
+) -> None:
+    metadata = dict(run.run_metadata or {})
+    metadata["active_challenge"] = request.to_payload()
+    if handoff_count is not None:
+        metadata["challenge_handoff_count"] = handoff_count
+    run.run_metadata = metadata
 
 
 def _record_challenge_result(
@@ -191,7 +220,7 @@ def _record_challenge_result(
         }
     )
     metadata["challenge_history"] = history[-100:]
-    if action == "resolved":
+    if action in {"resolved", "abort"}:
         metadata.pop("active_challenge", None)
     run.run_metadata = metadata
 
@@ -248,7 +277,12 @@ def _apply_attempt_metrics(
     shard_run.next_cursor = dict(next_cursor)
 
 
-def _queue_house_refresh(session: Session, source: Source, run: CrawlRun, summary: CoverageSummary) -> None:
+def _queue_house_refresh(
+    session: Session,
+    source: Source,
+    run: CrawlRun,
+    summary: CoverageSummary,
+) -> None:
     queue_live_event(
         session,
         topic="houses",
@@ -310,7 +344,7 @@ async def run_property_source(
 
     run_id = run.id
     handler = challenge_handler or DeferredChallengeHandler()
-    handoff_count = len(list((run.run_metadata or {}).get("challenge_history") or []))
+    handoff_count = _challenge_handoff_count(run)
 
     for index, shard in enumerate(ordered_shards):
         spec = specs_by_key.get(shard.key)
@@ -344,9 +378,7 @@ async def run_property_source(
                 message=result.message,
             )
             if result.action == "defer":
-                metadata = dict(run.run_metadata or {})
-                metadata["active_challenge"] = request.to_payload()
-                run.run_metadata = metadata
+                _set_active_challenge(run, request)
                 summary = checkpoint_paused_run(session, run)
                 current_source = session.get(Source, source_id)
                 if current_source is not None:
@@ -456,11 +488,13 @@ async def run_property_source(
                 break
             except SourceChallenge as exc:
                 session.rollback()
-                partial_seen, partial_new, partial_updated, partial_cursor = await _ingest_partial_fetch(
-                    session,
-                    source_id=source_id,
-                    run_id=run_id,
-                    exc=exc,
+                partial_seen, partial_new, partial_updated, partial_cursor = (
+                    await _ingest_partial_fetch(
+                        session,
+                        source_id=source_id,
+                        run_id=run_id,
+                        exc=exc,
+                    )
                 )
                 paused_shard_run = session.get(CrawlShardRun, shard_run_id)
                 paused_shard = session.get(SourceShard, shard_id)
@@ -506,6 +540,10 @@ async def run_property_source(
                         remaining_shards=ordered_shards[index + 1 :],
                         reason=paused_shard_run.error,
                     )
+                    metadata = dict(paused_run.run_metadata or {})
+                    metadata["challenge_handoff_count"] = handoff_count
+                    metadata.pop("active_challenge", None)
+                    paused_run.run_metadata = metadata
                     session.commit()
                     halt_reason = paused_shard_run.error
                     break
@@ -533,9 +571,11 @@ async def run_property_source(
                     resume_cursor=dict(partial_cursor),
                     handoff_state=dict(handoff_state),
                 )
-                metadata = dict(paused_run.run_metadata or {})
-                metadata["active_challenge"] = request.to_payload()
-                paused_run.run_metadata = metadata
+                _set_active_challenge(
+                    paused_run,
+                    request,
+                    handoff_count=handoff_count,
+                )
                 summary = checkpoint_paused_run(session, paused_run)
                 _queue_house_refresh(session, paused_source, paused_run, summary)
                 session.commit()
@@ -554,9 +594,7 @@ async def run_property_source(
                 )
 
                 if result.action == "defer":
-                    metadata = dict(paused_run.run_metadata or {})
-                    metadata["active_challenge"] = request.to_payload()
-                    paused_run.run_metadata = metadata
+                    _set_active_challenge(paused_run, request)
                     summary = checkpoint_paused_run(session, paused_run)
                     return paused_run, summary
                 if result.action == "abort":
@@ -596,11 +634,13 @@ async def run_property_source(
                 partial_updated = 0
                 partial_cursor: dict[str, Any] = {}
                 if isinstance(exc, SourceFetchError):
-                    partial_seen, partial_new, partial_updated, partial_cursor = await _ingest_partial_fetch(
-                        session,
-                        source_id=source_id,
-                        run_id=run_id,
-                        exc=exc,
+                    partial_seen, partial_new, partial_updated, partial_cursor = (
+                        await _ingest_partial_fetch(
+                            session,
+                            source_id=source_id,
+                            run_id=run_id,
+                            exc=exc,
+                        )
                     )
 
                 failed_shard_run = session.get(CrawlShardRun, shard_run_id)
