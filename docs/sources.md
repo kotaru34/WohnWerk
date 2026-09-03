@@ -19,6 +19,22 @@ WohnWerk should combine independent layers rather than depend on one portal:
 
 Cross-source duplicates remain distinct source listings underneath a later canonical property entity.
 
+### Germany public portal layer
+
+`immoscout24-de` and `immowelt-de` cover public German house-for-sale search pages inside the
+WohnWerk EUR 30,000..300,000 product budget. Each adapter uses 48 deterministic shards: all 16
+states/city-states crossed with three non-overlapping price bands. Live validation on the largest
+state kept those bands below the portals' safety ceilings.
+
+Both adapters keep only source ID/URL, title, price, living/plot area, PLZ and city. Descriptions,
+contact data and photos are not retained. ImmoScout24 is acquired through low-rate HTML requests.
+Immowelt requires ordinary browser rendering; it blocks heavy image/media/font resources, does not
+open detail pages, and stops rather than solving a CAPTCHA or access challenge.
+
+Incremental scans use newest-first ordering and never prove disappearance. A reconciliation is
+authoritative only when every shard is fully traversed, every card identity parses, observed unique
+IDs remain within the documented count tolerance and no shard reaches its cap.
+
 ### IMMMO meta-search discovery
 
 `immmo.at` is a live Austrian meta-search engine for third-party property offers. Its public house-for-sale result pages expose enough discovery metadata to retain a minimal local index: title, original external listing URL, price, PLZ/city and living area, with plot area sometimes recoverable from the visible result snippet.

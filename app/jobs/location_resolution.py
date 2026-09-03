@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import PostalCode
 
+AUSTRIAN_POSTAL_SOURCE = "RTR"
 LOCALITY_LOCATION_SOURCE = "RTR postal names + BEV postal centroids"
 LOCALITY_LOCATION_METHOD = "locality_weighted_postal_centroid"
 MULTI_LOCALITY_LOCATION_METHOD = "multi_locality_equal_centroid"
@@ -391,6 +392,7 @@ def resolve_locality(session: Session, city: str | None) -> LocalityResolution |
             PostalCode.location_sample_count,
         ).where(
             PostalCode.location.is_not(None),
+            PostalCode.source == AUSTRIAN_POSTAL_SOURCE,
             func.lower(PostalCode.name).like(f"{canonical.casefold()}%"),
         )
     )

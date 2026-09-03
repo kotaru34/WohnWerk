@@ -34,6 +34,12 @@ class DueSourceRun:
 SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("immmo.at", "scripts/run_immmo.py", True),
     SourceRefreshPlan("sreal.at", "scripts/run_sreal.py", True),
+    # ImmoScout24 DE remains explicitly paused/fail-closed after the public frontend
+    # required a human challenge. Do not schedule it until its transport is revalidated.
+    # Immowelt DE is currently a bounded discovery source: its source-wide 403 gate makes
+    # exhaustive reconciliation non-authoritative, while fair incremental runs can safely
+    # continue filling the frontier over time.
+    SourceRefreshPlan("immowelt-de", "scripts/run_immowelt_de.py", False),
     SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
     SourceRefreshPlan(
         "greenhouse-public-job-board",
@@ -58,6 +64,12 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
     SourceRefreshPlan("stepstone.at", "scripts/run_stepstone_at_jobs.py", False),
     SourceRefreshPlan("willhaben-jobs", "scripts/run_willhaben_jobs.py", False),
+    SourceRefreshPlan("adzuna-api-de", "scripts/run_adzuna_de_jobs.py", False),
+    SourceRefreshPlan(
+        "arbeitsagentur-jobsuche-de",
+        "scripts/run_arbeitsagentur_jobs.py",
+        False,
+    ),
 )
 
 

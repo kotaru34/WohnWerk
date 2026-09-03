@@ -86,3 +86,20 @@ def test_locality_centroid_is_weighted_by_bev_address_samples() -> None:
     assert resolution.address_sample_count == 400
     assert round(resolution.longitude, 4) == 16.3925
     assert round(resolution.latitude, 4) == 48.2175
+
+
+def test_sql_locality_resolver_is_scoped_to_austrian_postal_source() -> None:
+    class CapturingSession:
+        statement = None
+
+        def execute(self, statement):
+            self.statement = statement
+            return []
+
+    session = CapturingSession()
+    assert lr.resolve_locality(session, "Berlin") is None
+    assert session.statement is not None
+
+    compiled = session.statement.compile()
+    assert "postal_codes.source" in str(compiled)
+    assert lr.AUSTRIAN_POSTAL_SOURCE in compiled.params.values()

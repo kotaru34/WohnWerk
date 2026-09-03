@@ -74,7 +74,13 @@ class SourceBatch[T]:
 
 
 class SourceFetchError(RuntimeError):
-    """Source failure that preserves useful progress from a partially fetched shard."""
+    """Source failure that preserves useful progress from a partially fetched shard.
+
+    ``halt_source`` is reserved for source-wide access/runtime conditions where trying
+    additional shards in the same run would only repeat the same failed network action.
+    Runners may fail the current shard, mark the untouched remainder as not attempted,
+    and stop without issuing more requests.
+    """
 
     def __init__(
         self,
@@ -85,6 +91,7 @@ class SourceFetchError(RuntimeError):
         source_reported_count: int | None = None,
         next_cursor: dict[str, Any] | None = None,
         partial_items: list[Any] | None = None,
+        halt_source: bool = False,
     ) -> None:
         super().__init__(message)
         self.pages_fetched = pages_fetched
@@ -92,10 +99,11 @@ class SourceFetchError(RuntimeError):
         self.source_reported_count = source_reported_count
         self.next_cursor = next_cursor or {}
         self.partial_items = partial_items or []
+        self.halt_source = halt_source
 
 
 class PropertySource(ABC):
-    """Contract implemented by every Austrian property source adapter."""
+    """Contract implemented by every property source adapter."""
 
     name: str
 
@@ -119,7 +127,7 @@ class PropertySource(ABC):
 
 
 class JobSource(ABC):
-    """Contract implemented by every Austrian job source adapter."""
+    """Contract implemented by every job source adapter."""
 
     name: str
 

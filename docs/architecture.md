@@ -1,10 +1,10 @@
 # WohnWerk Architecture
 
-Status: bootstrap design, Austria-first
+Status: AT baseline with DE country-scope expansion
 
 ## Goal
 
-WohnWerk continuously builds a local, normalized knowledge base of Austrian houses for sale and Austrian job vacancies, then lets the user browse and match the two datasets in either direction.
+WohnWerk continuously builds a local, normalized knowledge base of Austrian or German houses for sale and job vacancies, then lets the user browse and match one country-scoped dataset in either direction.
 
 The core system must remain usable even if individual external sources or the optional AI VM are unavailable.
 
@@ -37,9 +37,9 @@ normalized job -> enrichment queue -> internal AI VM API -> structured features 
 
 ## Core decisions
 
-### Austria-first
+### Austria baseline, explicit country scope
 
-The initial implementation supports Austria only. Austrian postal codes are four digits and are the primary location key when exact addresses are unavailable or unnecessary.
+The frozen first release supports Austria. The parallel Germany branch keeps that behavior and adds country-scoped sources/UI. Austrian postal codes use four digits and German postal codes use five; both use the same centroid-based matching contract when exact addresses are unavailable or unnecessary.
 
 ### Multi-source from day one
 

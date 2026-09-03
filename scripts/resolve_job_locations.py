@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy import or_, select
+from sqlalchemy import exists, func, or_, select
 
 from app.database import SessionLocal
 from app.jobs.jobs_at_location_repair import repair_unresolved_jobs_at_locations
 from app.jobs.location_cleanup import prune_redundant_country_code_locations
 from app.jobs.location_resolution import canonicalize_locality, resolve_localities
 from app.jobs.location_resolution_fallback import resolve_localities_full_scan
-from app.models import JobLocation
+from app.models import JobListing, JobLocation, ListingStatus, Source
 
 
 def _resolution_label(location: JobLocation) -> str | None:
@@ -24,20 +24,35 @@ def _resolution_label(location: JobLocation) -> str | None:
     return text
 
 
+def _has_active_german_source():
+    # Existing v1 sources have no country_code and are intentionally interpreted as AT.
+    source_country = func.upper(func.coalesce(Source.config["country_code"].astext, "AT"))
+    return exists(
+        select(JobListing.id)
+        .join(Source, Source.id == JobListing.source_id)
+        .where(
+            JobListing.job_id == JobLocation.job_id,
+            JobListing.status == ListingStatus.ACTIVE,
+            source_country == "DE",
+        )
+    )
+
+
 def main() -> None:
     with SessionLocal() as session:
         source_repair = repair_unresolved_jobs_at_locations(session)
         redundant_country_codes_removed = prune_redundant_country_code_locations(session)
 
-        # Remote-capable jobs can still have a real source-provided locality. Preserve the
-        # remote flag, but resolve that physical place just like an on-site vacancy. For a
-        # few adapters the concrete locality exists only in location_text; countrywide and
-        # Bundesland-only labels remain excluded by canonicalize_locality()/the resolver.
+        # This resolver is deliberately Austria-specific. German jobs are resolved by
+        # their five-digit PLZ at ingest time or by explicit source WGS84 coordinates.
+        # Excluding every canonical job with an active DE listing prevents same-named
+        # German localities from ever being mapped to an Austrian postal centroid.
         locations = list(
             session.scalars(
                 select(JobLocation)
                 .where(
                     JobLocation.location.is_(None),
+                    ~_has_active_german_source(),
                     or_(
                         JobLocation.city.is_not(None),
                         JobLocation.location_text.is_not(None),
@@ -47,15 +62,8 @@ def main() -> None:
             )
         )
 
-        labels_by_location = {
-            location.id: _resolution_label(location)
-            for location in locations
-        }
-        labels = {
-            label
-            for label in labels_by_location.values()
-            if label is not None
-        }
+        labels_by_location = {location.id: _resolution_label(location) for location in locations}
+        labels = {label for label in labels_by_location.values() if label is not None}
         resolutions = resolve_localities(session, labels)
 
         # The normal resolver deliberately uses a narrow SQL prefix prefilter. Punctuation
@@ -89,9 +97,7 @@ def main() -> None:
 
             location.location = resolution.as_wkt()
             updated += 1
-            resolved[
-                f"{label} -> {resolution.canonical_locality} [{resolution.method}]"
-            ] += 1
+            resolved[f"{label} -> {resolution.canonical_locality} [{resolution.method}]"] += 1
 
         session.commit()
 
@@ -102,9 +108,7 @@ def main() -> None:
             f"unresolved:{source_repair.unresolved} "
             f"failed:{source_repair.failed}"
         )
-        print(
-            f"redundant_country_code_locations_removed={redundant_country_codes_removed}"
-        )
+        print(f"redundant_country_code_locations_removed={redundant_country_codes_removed}")
         print(
             f"location_candidates={len(locations)} resolved={updated} "
             f"unresolved={len(locations) - updated} "

@@ -1,7 +1,8 @@
 [Unit]
 Description=WohnWerk dynamic source refresh
+Requires=wohnwerk-xvfb.service
 Wants=network-online.target
-After=network-online.target
+After=network-online.target wohnwerk-xvfb.service
 
 [Service]
 Type=oneshot
@@ -10,8 +11,15 @@ Group=www-data
 WorkingDirectory=/opt/wohnwerk
 EnvironmentFile=/opt/wohnwerk/.env
 Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=DISPLAY=:97
+Environment=PLAYWRIGHT_BROWSERS_PATH=/var/cache/wohnwerk-playwright
+Environment=HOME=/run/wohnwerk-refresh/home
+Environment=XDG_CONFIG_HOME=/run/wohnwerk-refresh/config
+Environment=XDG_CACHE_HOME=/run/wohnwerk-refresh/cache
+Environment=XDG_RUNTIME_DIR=/run/wohnwerk-refresh/runtime
 RuntimeDirectory=wohnwerk-refresh
 RuntimeDirectoryMode=0750
+ExecStartPre=/usr/bin/install -d -m 700 /run/wohnwerk-refresh/home /run/wohnwerk-refresh/config /run/wohnwerk-refresh/cache /run/wohnwerk-refresh/runtime
 ExecStart=/opt/wohnwerk/.venv/bin/python /opt/wohnwerk/scripts/refresh_sources.py --lock-path /run/wohnwerk-refresh/refresh.lock
 TimeoutStartSec=2h
 Nice=10
@@ -20,7 +28,6 @@ IOSchedulingPriority=6
 UMask=0027
 
 NoNewPrivileges=true
-PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
 
