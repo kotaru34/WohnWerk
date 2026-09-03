@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Error as PlaywrightError,
     Page,
     Playwright,
     async_playwright,
@@ -481,12 +482,9 @@ class ImmoweltGermanyPropertySource(PropertySource):
     ) -> dict[str, Any] | None:
         try:
             html = await page.content()
-        except Exception:
+        except PlaywrightError:
             html = ""
-        try:
-            frame_urls = [frame.url for frame in page.frames]
-        except Exception:
-            frame_urls = []
+        frame_urls = [frame.url for frame in page.frames]
         return detect_immowelt_challenge(
             status=status,
             requested_url=requested_url,
@@ -577,6 +575,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
         source_reported_count: int | None,
         latest_reported_count: int | None,
         max_reported_count: int,
+        seen_ids: set[str],
+        identity_history_complete: bool,
     ) -> dict[str, Any]:
         region = REGIONS_BY_KEY[region_key]
         return {
@@ -593,6 +593,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
             "discovery_initial_reported_count": source_reported_count,
             "discovery_latest_reported_count": latest_reported_count,
             "discovery_max_reported_count": max_reported_count,
+            "discovery_seen_ids": sorted(seen_ids),
+            "discovery_identity_history_complete": identity_history_complete,
             "region_key": region_key,
             "bundesland": region.label,
             "price_band_key": price_band_key,
@@ -635,6 +637,14 @@ class ImmoweltGermanyPropertySource(PropertySource):
         if latest_reported_count is not None:
             latest_reported_count = int(latest_reported_count)
 
+        persisted_seen_ids = resume.get("discovery_seen_ids")
+        identity_history_complete = not resume or isinstance(persisted_seen_ids, list)
+        seen_ids = (
+            {str(listing_id) for listing_id in persisted_seen_ids if listing_id}
+            if isinstance(persisted_seen_ids, list)
+            else set()
+        )
+
         items_by_id: dict[str, RawProperty] = {}
         pages_fetched = 0
         result_cap_hit = max_page >= self.hard_max_pages
@@ -669,6 +679,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 minimum = 0 if page_number == target_pages else math.ceil(PAGE_SIZE * 0.75)
                 _validate_page(page, page_number=page_number, expected_minimum=minimum)
                 items_by_id.update({item.source_listing_id: item for item in page.items})
+                seen_ids.update(item.source_listing_id for item in page.items)
                 pages_fetched += 1
                 completed_pages += 1
                 cards_seen += page.cards_seen
@@ -696,6 +707,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
                 max_reported_count=max_reported_count,
+                seen_ids=seen_ids,
+                identity_history_complete=identity_history_complete,
             )
             challenge = dict(exc.challenge)
             challenge.update(
@@ -732,6 +745,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
                 max_reported_count=max_reported_count,
+                seen_ids=seen_ids,
+                identity_history_complete=identity_history_complete,
             )
             raise SourceFetchError(
                 str(exc),
@@ -758,6 +773,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
                 max_reported_count=max_reported_count,
+                seen_ids=seen_ids,
+                identity_history_complete=identity_history_complete,
             )
             raise SourceFetchError(
                 f"Immowelt shard failed: {type(exc).__name__}: {exc}",
@@ -770,12 +787,13 @@ class ImmoweltGermanyPropertySource(PropertySource):
 
         benchmark_count = latest_reported_count or source_reported_count or 0
         count_tolerance = max(3, math.ceil(benchmark_count * 0.01))
-        count_delta = cards_parsed - benchmark_count
+        count_delta = len(seen_ids) - benchmark_count
         count_plausible = (
             count_delta == 0 if not benchmark_count else (abs(count_delta) <= count_tolerance)
         )
         coverage_complete = bool(
             reconciliation
+            and identity_history_complete
             and not result_cap_hit
             and project_cards_skipped == 0
             and blank_cards_skipped == 0
@@ -797,6 +815,8 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 "discovery_initial_reported_count": source_reported_count,
                 "discovery_latest_reported_count": latest_reported_count,
                 "discovery_max_reported_count": max_reported_count,
+                "discovery_unique_ids_seen": len(seen_ids),
+                "discovery_identity_history_complete": identity_history_complete,
                 "discovery_count_delta": count_delta,
                 "discovery_count_tolerance": count_tolerance,
                 "region_key": region_key,
