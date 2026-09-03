@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import app.sources.property.immowelt_de_headed as headed_module
-from app.sources.base import SourceFetchError
-from app.sources.property.immowelt_de import ImmoweltGermanyPropertySource
+from app.sources.base import SourceChallenge
 from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
 
@@ -50,6 +51,19 @@ class FakeStarter:
         return self.playwright
 
 
+class HandoffContext:
+    async def storage_state(self, *, path: str) -> None:
+        Path(path).write_text('{"cookies": [], "origins": []}')
+
+
+class HandoffPage:
+    url = "https://www.immowelt.de/classified-search?page=2"
+
+    async def screenshot(self, *, path: str, full_page: bool) -> None:
+        assert full_page is True
+        Path(path).write_bytes(b"png")
+
+
 @pytest.mark.asyncio
 async def test_immowelt_launches_plain_headed_chromium(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = FakePlaywright()
@@ -84,19 +98,18 @@ def test_headed_adapter_keeps_confirmed_direct_search_urls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_headed_403_requests_source_wide_halt(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def blocked(
-        self: ImmoweltGermanyPropertySource,
-        url: str,
-    ) -> tuple[str, str]:
-        del self, url
-        raise RuntimeError("Immowelt HTTP 403")
-
-    monkeypatch.setattr(ImmoweltGermanyPropertySource, "_load_html", blocked)
-
+async def test_headed_adapter_exports_browser_state_for_external_handler(tmp_path) -> None:
     source = ImmoweltHeadedPropertySource()
-    with pytest.raises(SourceFetchError) as caught:
-        await source._load_html("https://www.immowelt.de/classified-search")
+    source._context = HandoffContext()  # type: ignore[assignment]
+    source._page = HandoffPage()  # type: ignore[assignment]
+    challenge = SourceChallenge("gate", challenge={"kind": "http_403", "page": 2})
 
-    assert caught.value.halt_source is True
-    assert "source access gate observed" in str(caught.value)
+    handoff = await source.prepare_challenge_handoff(
+        state_dir=tmp_path / "handoff",
+        challenge=challenge,
+    )
+
+    assert Path(handoff["storage_state_path"]).is_file()
+    assert Path(handoff["screenshot_path"]).is_file()
+    assert handoff["current_url"].endswith("page=2")
+    assert handoff["challenge"]["kind"] == "http_403"
