@@ -99,8 +99,8 @@ def test_disabled_source_is_never_due() -> None:
     assert source_due_run(object(), source, plan, now=NOW) is None
 
 
-def test_german_property_sources_are_scheduled_with_fail_closed_reconciliation() -> None:
+def test_german_property_scheduler_keeps_paused_scout_out_and_immowelt_frontier_only() -> None:
     plans = {plan.source_name: plan for plan in SOURCE_REFRESH_PLANS}
 
-    assert plans["immoscout24-de"].supports_reconciliation is True
-    assert plans["immowelt-de"].supports_reconciliation is True
+    assert "immoscout24-de" not in plans
+    assert plans["immowelt-de"].supports_reconciliation is False
