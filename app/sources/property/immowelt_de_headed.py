@@ -51,15 +51,18 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         state_dir: Path,
         challenge: SourceChallenge,
     ) -> dict[str, Any]:
-        state_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        state_dir.chmod(0o700)
         storage_state_path = state_dir / "storage-state.json"
         screenshot_path = state_dir / "challenge.png"
 
         if self._context is not None:
             await self._context.storage_state(path=str(storage_state_path))
+            storage_state_path.chmod(0o600)
         if self._page is not None:
             try:
                 await self._page.screenshot(path=str(screenshot_path), full_page=True)
+                screenshot_path.chmod(0o600)
             except PlaywrightError:
                 screenshot_path = Path()
 
