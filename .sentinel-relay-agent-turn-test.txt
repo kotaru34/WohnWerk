@@ -1,0 +1,3 @@
+Tethys Sentinel relay behavioral test D
+Purpose: unrelated GitHub write between relay attempts.
+No secrets are stored in this file.
