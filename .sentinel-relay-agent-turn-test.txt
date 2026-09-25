@@ -1,3 +1,4 @@
 Tethys Sentinel relay behavioral test D
 Purpose: unrelated GitHub write between relay attempts.
+Checkpoint: relay sequences 1-10 completed before this update.
 No secrets are stored in this file.
