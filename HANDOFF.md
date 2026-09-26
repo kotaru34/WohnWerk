@@ -28,9 +28,13 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production baseline before this development step:
+Production is now deployed on **v0.4.1**.
 
-- application version: **v0.4.0**
+- deployed application version: **v0.4.1**
+- deployed Git SHA: `0890f0283e217b84a9de37e418a6fb6677391c66`
+- previous production Git SHA / rollback point: `2a116de64d1f1a7b9982be3525252e545af628cf`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.0-pre-v0.4.1`
+- previous production application version: **v0.4.0**
 - database migration: `0012_de_postal_codes`
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
@@ -44,7 +48,7 @@ Production baseline before this development step:
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-Current development target is **v0.4.1**.
+v0.4.1 is deployed. The current implementation focus is the Germany house acquisition policy: EUR 30,000..200,000 plus explicit non-auction semantics.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -56,11 +60,28 @@ The v0.4.1 step:
 - documents the boundary in `docs/immowelt_handler_contract.md`;
 - does not modify the external challenge-handler implementation.
 
-The last fully green pre-v0.4.1 PR #5 HEAD was
-`4b8522c47065871a84343e229ef65fd95d08161e`, GitHub Actions CI #1213:
-Install + Ruff + Compile + Tests, **590 passed, 3 warnings**.
+The deployed v0.4.1 PR #5 code HEAD is
+`0890f0283e217b84a9de37e418a6fb6677391c66`, GitHub Actions CI #1231:
+Install + Ruff + Compile + Tests, **592 passed, 2 warnings**.
 
-The current v0.4.1 development HEAD must receive its own exact-head green CI before any production mutation.
+Production-host gates were also run against that exact SHA before the live checkout changed:
+- Ruff: passed;
+- Python compile: passed;
+- full pytest: **592 passed, 2 warnings**.
+
+Post-deploy proof:
+- local `/health`: `status=ok`, `version=0.4.1`, `country=AT`;
+- live checkout SHA exactly `0890f0283e217b84a9de37e418a6fb6677391c66`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`: all active;
+- deployed regression `test_de_job_sources_are_not_scheduled`: passed;
+- Austria acquisition plans `immmo.at` and `sreal.at` remain registered;
+- no migration or dependency-file change was part of this release;
+- temporary candidate worktree and test venv were removed after verification;
+- temporary `sentinel-ai` passwordless sudo delegation was removed;
+- the external Immowelt challenge-handler implementation was not modified and Run #990 was not resumed.
+
+The active development branch may move beyond the deployed SHA with documentation-only handoff commits. Production remains pinned to the deployed code SHA above until a later explicitly gated deployment.
 
 ## Production access/deployment discipline
 
@@ -260,16 +281,13 @@ Before the next authoritative Germany property acquisition cycle:
 
 ## Near-term roadmap
 
-1. **CURRENT:** finish v0.4.1 source-scheduler/docs step and obtain exact-head green CI.
-2. Obtain a shell-enabled Sentinel authorization before production deployment/diagnostics; a prior relay authorization lacked shell permission and Sentinel correctly denied even a read-only `git status`.
-3. Deploy exact green v0.4.1 to the WohnWerk VM.
-4. On production, verify German job sources are not due/scheduled; disable their Source rows as an additional operational guard if appropriate while preserving historical records.
-5. Verify Austria acquisition/timers remain healthy after the scheduler change.
-6. Next house implementation step: change Germany acquisition budget/shards to EUR 30,000..200,000 and make auction semantics explicit.
-7. Then implement local house suitability/rejection infrastructure (reason codes + rejected view + PLZ blacklist/radius).
-8. Add workplace-distance, hospital and Internet enrichment in evidence-backed slices.
-9. Improve dedupe and heating-type extraction/ranking.
-10. Keep the external handler untouched. When the operator declares it ready, validate the integration boundary and resume Run #990.
+1. **DONE:** v0.4.1 scheduler/docs/handler-boundary hardening deployed and production-verified at `0890f0283e217b84a9de37e418a6fb6677391c66`.
+2. **CURRENT:** change Germany acquisition budget/shards to EUR 30,000..200,000 and make auction semantics explicit.
+3. Then implement local house suitability/rejection infrastructure (reason codes + rejected view + PLZ blacklist/radius).
+4. Add workplace-distance, hospital and Internet enrichment in evidence-backed slices.
+5. Improve dedupe and heating-type extraction/ranking.
+6. Keep Germany jobs paused until an explicit operator decision reopens them.
+7. Keep the external handler untouched. When the operator declares it ready, validate the integration boundary and resume Run #990.
 
 ## Fresh-context recovery order
 
