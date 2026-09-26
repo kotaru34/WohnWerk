@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.crawling.challenge import ExternalCommandChallengeHandler
 from app.crawling.coverage import RUN_STATUS_PAUSED
 from app.crawling.property_runner import run_property_source
+from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
 from app.models import CrawlMode, CrawlRun, Source, SourceCategory
 from app.sources.property.immowelt_de import BASE_URL
@@ -126,24 +127,6 @@ def _latest_paused_run(source_id: int) -> CrawlRun | None:
         )
 
 
-def _paused_run_matches_current_shards(
-    run: CrawlRun,
-    adapter: ImmoweltHeadedPropertySource,
-) -> bool:
-    persisted = dict(run.run_metadata or {}).get("shard_order")
-    if not isinstance(persisted, list):
-        return False
-
-    persisted_keys: list[str] = []
-    for item in persisted:
-        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
-            return False
-        persisted_keys.append(item["key"])
-
-    current_keys = {spec.key for spec in adapter.default_shards()}
-    return len(persisted_keys) == len(current_keys) and set(persisted_keys) == current_keys
-
-
 def _challenge_handler(args: argparse.Namespace) -> ExternalCommandChallengeHandler | None:
     raw = str(args.challenge_handler or "").strip()
     if not raw:
@@ -173,7 +156,7 @@ async def async_main() -> int:
     reconciliation = args.reconcile
     resume_run_id: int | None = None
     if paused is not None:
-        if _paused_run_matches_current_shards(paused, adapter):
+        if shard_order_matches_specs(paused.run_metadata, adapter.default_shards()):
             resume_run_id = paused.id
             reconciliation = paused.mode == CrawlMode.RECONCILIATION
             print(f"resuming_run={paused.id} mode={paused.mode}")
