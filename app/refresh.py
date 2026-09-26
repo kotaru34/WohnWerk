@@ -70,12 +70,9 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
     SourceRefreshPlan("stepstone.at", "scripts/run_stepstone_at_jobs.py", False),
     SourceRefreshPlan("willhaben-jobs", "scripts/run_willhaben_jobs.py", False),
-    SourceRefreshPlan("adzuna-api-de", "scripts/run_adzuna_de_jobs.py", False),
-    SourceRefreshPlan(
-        "arbeitsagentur-jobsuche-de",
-        "scripts/run_arbeitsagentur_jobs.py",
-        False,
-    ),
+    # Germany job acquisition is intentionally paused by operator decision. Keep the
+    # adapters/scripts dormant for a possible later restart, but do not register DE job
+    # sources in the automatic refresh scheduler.
 )
 
 
