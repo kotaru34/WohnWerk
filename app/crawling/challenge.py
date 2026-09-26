@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
@@ -64,6 +65,30 @@ class DeferredChallengeHandler:
             action="defer",
             message="no user-provided challenge handler configured",
         )
+
+
+HANDLER_ENV_ALLOWLIST = (
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "DISPLAY",
+    "XDG_RUNTIME_DIR",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+)
+
+
+def _handler_environment() -> dict[str, str]:
+    env = {
+        key: value
+        for key in HANDLER_ENV_ALLOWLIST
+        if (value := os.environ.get(key))
+    }
+    env["WOHNWERK_CHALLENGE_CONTRACT_VERSION"] = "1"
+    return env
 
 
 class ExternalCommandChallengeHandler:
