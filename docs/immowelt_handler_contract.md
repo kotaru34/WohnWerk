@@ -101,9 +101,11 @@ The handler is not part of the WohnWerk codebase. WohnWerk must not:
 - copy private login material into the catalog;
 - weaken lifecycle/coverage authority because the handler reported success.
 
-The planned runner hardening also gives the handler a minimal subprocess environment rather than
-blindly inheriting WohnWerk runtime secrets. Until that hardening is deployed, the handler should be
-treated as a trusted local operator component.
+The v0.4.1 development runner gives the handler a minimal allowlisted subprocess environment rather
+than inheriting the full WohnWerk runtime environment. The child keeps ordinary execution context
+such as PATH/HOME/locale/DISPLAY where present and receives
+`WOHNWERK_CHALLENGE_CONTRACT_VERSION=1`; unrelated parent variables such as `DATABASE_URL` are not
+forwarded. This becomes production behavior only after the exact v0.4.1 release is deployed.
 
 ## Acceptance checks when the operator says the handler is ready
 
