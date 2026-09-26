@@ -7,6 +7,25 @@ from app.models import Source, SourceShard
 from app.sources.base import SourceShardSpec
 
 
+def shard_order_matches_specs(
+    run_metadata: dict | None,
+    specs: list[SourceShardSpec],
+) -> bool:
+    """Return whether a persisted crawl shard order matches the current adapter contract."""
+    persisted = dict(run_metadata or {}).get("shard_order")
+    if not isinstance(persisted, list):
+        return False
+
+    persisted_keys: list[str] = []
+    for item in persisted:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            return False
+        persisted_keys.append(item["key"])
+
+    current_keys = {spec.key for spec in specs}
+    return len(persisted_keys) == len(current_keys) and set(persisted_keys) == current_keys
+
+
 def sync_source_shards(
     session: Session,
     source: Source,
