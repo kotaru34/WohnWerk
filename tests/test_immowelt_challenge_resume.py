@@ -4,13 +4,13 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from app.crawling.shards import shard_order_matches_specs
 from app.sources.base import SourceChallenge
 from app.sources.property.germany import GERMAN_REGIONS
 from app.sources.property.immowelt_de import (
     ImmoweltGermanyPropertySource,
     detect_immowelt_challenge,
 )
-from scripts.run_immowelt_de import _paused_run_matches_current_shards
 
 
 def _one_card_html(*, total: int = 1, listing_id: str = "26zklwh9fcdf") -> str:
@@ -193,7 +193,7 @@ def test_legacy_paused_run_is_not_resume_compatible_after_price_repartition() ->
     ]
     run = type("PausedRun", (), {"run_metadata": {"shard_order": shard_order}})()
 
-    assert _paused_run_matches_current_shards(run, ImmoweltGermanyPropertySource()) is False
+    assert shard_order_matches_specs(run.run_metadata, ImmoweltGermanyPropertySource().default_shards()) is False
 
 
 def test_current_paused_run_shard_set_is_resume_compatible() -> None:
@@ -204,4 +204,4 @@ def test_current_paused_run_shard_set_is_resume_compatible() -> None:
     ]
     run = type("PausedRun", (), {"run_metadata": {"shard_order": shard_order}})()
 
-    assert _paused_run_matches_current_shards(run, source) is True
+    assert shard_order_matches_specs(run.run_metadata, source.default_shards()) is True
