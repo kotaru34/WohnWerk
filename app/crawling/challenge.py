@@ -112,12 +112,14 @@ class ExternalCommandChallengeHandler:
         self.timeout_seconds = max(1.0, float(timeout_seconds))
 
     async def handle(self, request: ChallengeRequest) -> ChallengeResult:
+        process: asyncio.subprocess.Process | None = None
         try:
             process = await asyncio.create_subprocess_exec(
                 *self.command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=_handler_environment(),
             )
             stdin = (json.dumps(request.to_payload(), ensure_ascii=False) + "\n").encode()
             stdout, stderr = await asyncio.wait_for(
@@ -125,11 +127,12 @@ class ExternalCommandChallengeHandler:
                 timeout=self.timeout_seconds,
             )
         except TimeoutError:
-            try:
-                process.kill()
-                await process.wait()
-            except (NameError, ProcessLookupError):
-                pass
+            if process is not None:
+                try:
+                    process.kill()
+                    await process.communicate()
+                except ProcessLookupError:
+                    pass
             return ChallengeResult(
                 action="defer",
                 message="user challenge handler timed out",
