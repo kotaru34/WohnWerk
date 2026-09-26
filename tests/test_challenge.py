@@ -66,3 +66,24 @@ async def test_invalid_external_handler_response_defers(tmp_path) -> None:
     assert result.action == "defer"
     assert result.message is not None
     assert "invalid" in result.message
+
+
+@pytest.mark.asyncio
+async def test_external_handler_receives_minimal_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://parent-only")
+    script = tmp_path / "handler.py"
+    script.write_text(
+        "import json, os, sys\n"
+        "json.load(sys.stdin)\n"
+        "assert 'DATABASE_URL' not in os.environ\n"
+        "assert os.environ['WOHNWERK_CHALLENGE_CONTRACT_VERSION'] == '1'\n"
+        "json.dump({'action': 'resolved'}, sys.stdout)\n"
+    )
+    handler = ExternalCommandChallengeHandler([sys.executable, str(script)], timeout_seconds=5)
+
+    result = await handler.handle(_request())
+
+    assert result.action == "resolved"
