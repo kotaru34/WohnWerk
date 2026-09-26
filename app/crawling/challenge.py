@@ -26,6 +26,12 @@ class ChallengeRequest:
     challenge: dict[str, Any]
     resume_cursor: dict[str, Any]
     handoff_state: dict[str, Any] = field(default_factory=dict)
+    contract_version: int = 1
+    handoff_id: str = ""
+
+    def __post_init__(self) -> None:
+        if self.contract_version != 1:
+            raise ValueError(f"Unsupported challenge contract version: {self.contract_version!r}")
 
     def to_payload(self) -> dict[str, Any]:
         return asdict(self)
