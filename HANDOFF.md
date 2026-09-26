@@ -1,294 +1,305 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-09-02 (Europe/Vienna)  
+**Checkpoint date:** 2026-09-26  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active branch:** `feature/germany`  
-**Frozen AT release:** `release/v1-austria` at `89f1833f`  
-**Draft PR:** #2 — `DE + AT country expansion`
-
-This is the authoritative recovery point for a fresh context. Dynamic catalog counts are observations, not permanent invariants.
-
-For the Germany product/UI/acquisition contract, read `docs/germany_mvp.md` immediately after this file. Do not infer the active task from the Austria version currently deployed in production.
-
-## Release state
-
-- Current production / frozen Austria release: **v0.3.47**.
-- Production SHA: `89f1833f2b18ca35c2c0183ed60adcd327c0a2e4`.
-- Production DB migration: `0011_live_ui_events` (head).
-- Current Germany branch release candidate: **v0.4.0**.
-- Germany branch DB migration: `0012_de_postal_codes` (head).
-- Current concept extractor: `concept-seed-2026-09-01-v5`.
-- Current discovery gate: `profile-seed-2026-08-30-v25`.
-- Current salary policy: `explicit-salary-text-2026-08-30-v7`.
-- Candidate fit policy: `candidate-fit-2026-08-28-v3`.
-- Last code-bearing Germany HEAD before documentation refresh: `3c7dd3c519d34e98200d9959cf7d86b4996d6ac1`.
-- Exact-head PR CI run #1121 on that code HEAD passed Install + Ruff + Compile + Tests: **556 passed, 2 warnings**.
-- `docs/germany_mvp.md` was added at documentation commit `6cbfa0549058dc43a59a882eacdf352dee5f3308`; require CI on the final documentation HEAD before proceeding with target-server mutation.
-- Exact-head GitHub CI is a hard deployment gate. Never deploy temporary development commits.
-
-`/health` exposes application version and `job_concept_extractor`. Mutating refresh work fails closed when disk and running web release/extractor differ.
-
-## Product invariants
+**Active development branch:** `feature/immowelt-challenge-resume`  
+**Base Germany branch:** `feature/germany`  
+**Active draft PR:** #5 — `Make Immowelt challenges resumable and source-isolated`  
+**Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
+
+This file is the authoritative recovery point for a fresh context. Read
+`docs/germany_mvp.md` immediately after it, then `docs/requirements.md`,
+`docs/acquisition.md` and `docs/sources.md`.
+
+Dynamic database/catalog counts are observations, not permanent invariants.
+
+## Current product decision
+
+The active Germany phase is now **house-only**.
+
+- Germany property acquisition/evaluation remains active.
+- Germany job acquisition, source expansion and debugging are fully paused until the operator explicitly reopens them.
+- Existing Austrian job acquisition/profile/ranking remains the compatibility baseline.
+- Workplace distance for German houses is based on an explicitly configured workplace location, not on a German job listing.
+- Current Germany house purchase target is **EUR 30,000..200,000**.
+- The external Immowelt challenge handler is operator-owned code. WohnWerk automation must not edit, refactor, install dependencies into, or otherwise modify that handler implementation unless the operator explicitly changes this rule.
+- WohnWerk owns everything around that handler boundary: detection, persistence, handoff contract, timeout/error behavior, same-run resume, source isolation, telemetry, tests and deployment.
+
+## Release/runtime state
+
+Production is now deployed on **v0.4.1**.
+
+- deployed application version: **v0.4.1**
+- deployed Git SHA: `0890f0283e217b84a9de37e418a6fb6677391c66`
+- previous production Git SHA / rollback point: `2a116de64d1f1a7b9982be3525252e545af628cf`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.0-pre-v0.4.1`
+- previous production application version: **v0.4.0**
+- database migration: `0012_de_postal_codes`
+- production host: migrated Debian 13 VM
+- checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
+- database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
+- PostGIS observed: 3.5.6
+- local OSRM present
+- Xvfb present for headed Immowelt Chromium
+- public hostname: `wohnwerk.lainlounge.org`
+- Caddy serves that explicit site
+- production timers for refresh/images/liveness are intended to stay enabled during source experiments
+- GeoNames DE postal import observed: 10,813 centroids
+- Austria postal reference remained intact at the Germany bootstrap
+
+v0.4.1 is deployed. The current development target is **v0.4.2**, implementing the Germany house acquisition policy: EUR 30,000..200,000 plus explicit non-auction semantics while preserving the Austria baseline.
+
+The v0.4.1 step:
+- removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
+- adds regression coverage that DE job sources are not scheduled;
+- records the house-only Germany scope and new house requirements;
+- versions the external handler request contract as v1;
+- assigns stable IDs to newly created challenge handoffs while keeping old persisted runs compatible;
+- launches the external handler with a minimal allowlisted environment instead of inheriting the complete WohnWerk runtime environment;
+- documents the boundary in `docs/immowelt_handler_contract.md`;
+- does not modify the external challenge-handler implementation.
+
+The deployed v0.4.1 PR #5 code HEAD is
+`0890f0283e217b84a9de37e418a6fb6677391c66`, GitHub Actions CI #1231:
+Install + Ruff + Compile + Tests, **592 passed, 2 warnings**.
+
+Production-host gates were also run against that exact SHA before the live checkout changed:
+- Ruff: passed;
+- Python compile: passed;
+- full pytest: **592 passed, 2 warnings**.
+
+Post-deploy proof:
+- local `/health`: `status=ok`, `version=0.4.1`, `country=AT`;
+- live checkout SHA exactly `0890f0283e217b84a9de37e418a6fb6677391c66`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`: all active;
+- deployed regression `test_de_job_sources_are_not_scheduled`: passed;
+- Austria acquisition plans `immmo.at` and `sreal.at` remain registered;
+- no migration or dependency-file change was part of this release;
+- temporary candidate worktree and test venv were removed after verification;
+- temporary `sentinel-ai` passwordless sudo delegation was removed;
+- the external Immowelt challenge-handler implementation was not modified and Run #990 was not resumed.
+
+The active development branch may move beyond the deployed SHA with documentation-only handoff commits. Production remains pinned to the deployed code SHA above until a later explicitly gated deployment.
+
+## Production access/deployment discipline
+
+For every production-affecting branch change:
+
+1. inspect the final diff;
+2. require GitHub CI on the exact branch HEAD;
+3. require Install + Ruff + Compile + Tests success;
+4. when preparing a production release, squash development work into one atomic release commit over the current production baseline where practical;
+5. require exact-head CI on that release SHA;
+6. only then mutate production;
+7. production reruns the relevant lint/compile/tests before restart;
+8. verify `/health` and targeted functional controls after restart;
+9. never deploy a red/intermediate SHA;
+10. do not use `/jobs/{id}` as an automated smoke because opening a job detail marks it viewed.
+
+Every newly released feature version bumps the WohnWerk version. Update this handoff when:
+- a new project version is released/deployed;
+- a large implementation step completes even without a release;
+- extended discussion changes the agreed next step or product contract.
+
+## Core data truth/lifecycle invariants
 
-WohnWerk is a private/self-hosted AT+DE property + job acquisition, personalization and matching system for the candidate/father. The Austria-only behavior frozen in `release/v1-austria` remains the compatibility baseline.
+- Never invent coordinates.
+- Never invent prices, salary semantics, areas, heating type, hospital capability or Internet availability.
+- Explicit Wohnfläche/Wohnnutzfläche maps to living area.
+- Explicit Grundstück/Grundstücksfläche/Grundfläche maps to plot area.
+- Ambiguous/generic area remains ambiguous/display-only.
+- Preserve source provenance.
+- Deduplicate conservatively; source listings survive underneath a canonical house.
+- User hidden/favorite/viewed state must survive lifecycle/canonical merges.
+- Incremental scans discover; they never prove disappearance.
+- Failed/partial/degraded/paused/skipped/challenged/capped/parser-incomplete scans never prove disappearance.
+- Only a complete authoritative `coverage=ok` reconciliation may mark unseen listings inactive.
+- Do not manually promote `Source.coverage_status`.
+- One source failing must not stop unrelated acquisition.
+- Austria behavior remains the compatibility baseline unless an explicit later decision changes it.
 
-- Active development is the **Germany-oriented MVP** on `feature/germany` until this handoff says otherwise.
-- Germany-specific product/UI/acquisition intent is authoritative in `docs/germany_mvp.md`.
-- User UI is German-only.
-- Häuser and Stellen catalogs are independent.
-- Source lifecycle, discovery relevance and candidate fit are separate concerns.
-- Failed/partial/degraded reconciliations never prove disappearance.
-- Missing from bounded frontier scans is not disappearance proof.
-- Disabled sources never contribute father-visible jobs.
-- Hidden/favorite/viewed state survives lifecycle/canonical merges.
-- Never invent coordinates, images, prices, salary semantics or property attributes.
-- Geography/commute is separate from intrinsic candidate fit.
-- No permanent Job×Property pair table unless measurements justify it.
-- Only a complete authoritative `coverage=ok` reconciliation may prove disappearance.
-- Country scope comes from `Source.config["country_code"]`; legacy sources default to AT.
-- DE portal acquisition is public-only: no login, CAPTCHA solving, stealth or protection bypass.
-- DE commercial property portal records retain minimal listing facts and source URLs, not descriptions, contacts or photos.
+## Germany postal/geography
 
-## Runtime
+Germany uses five-digit postal codes through migration `0012_de_postal_codes`.
 
-Public URL: `https://wohnwerk.kotaru.lainlounge.org`
+GeoNames supplies approximate DE postal centroids. Austria locality resolution remains source/country scoped so DE rows cannot contaminate Austria assumptions.
 
-- Caddy -> `127.0.0.1:8000`
-- FastAPI/Uvicorn: `wohnwerk.service`
-- local OSRM: `127.0.0.1:5000`
-- refresh: `wohnwerk-refresh.timer`
-- image worker: `wohnwerk-images.timer`
-- liveness worker: `wohnwerk-liveness.timer`
-- `/health` is unauthenticated
-- father-facing routes use HTTP Basic
-- never automate `/jobs/{id}` smoke because opening a job detail marks it viewed
+German rows must never be routed through Austria-only four-digit PLZ logic.
 
-Server timezone: `Europe/Vienna`.
+## Germany jobs — PAUSED
 
-Latest production sanity proof after the v0.3.47 Austria deploy:
-- branch/release SHA observed: `89f1833f2b18ca35c2c0183ed60adcd327c0a2e4`
-- services/timers reported active
-- `/health`: `status=ok`, `service=wohnwerk`, `version=0.3.47`, extractor v5, `country=AT`, `ai_enabled=false`
-- Alembic head remained `0011_live_ui_events`
-- filesystem had healthy free space
-
-## Candidate profile and matching
+Operator decision on 2026-09-26:
 
-Profile slug: `mechanical-project-engineer`  
-UI label: `Maschinenbau / technische Projektleitung`
+- Germany jobs are not needed for the current project phase.
+- `adzuna-api-de` and `arbeitsagentur-jobsuche-de` adapters/scripts may remain dormant in the repository.
+- They are intentionally absent from the automatic refresh scheduler in v0.4.1.
+- Do not spend work on German job crawling, credentials, ranking, geocoding, reconciliation or source expansion.
+- Austrian job sources/profile/ranking stay operational and unchanged.
+- A future operator decision is required to reopen Germany jobs.
 
-Approx. 30 years mechanical engineering + technical project leadership. Strong neighborhood: senior mechanical engineering, development engineering, technical project/program leadership and engineering leadership. Structural/near exclusions include sales, software/IT development, pure electrical, construction/TGA/HKLS, technician/trade, junior/trainee, commercial PM, procurement and HR.
+## ImmoScout24 DE
+
+ImmoScout24 is paused on the current server environment.
 
-Manual father preferences include:
-- `role:industrial-engineer = cannot_not_want`
-- `role:quality-manager = cannot_not_want`
+Observed behavior from the Germany bootstrap:
+- plain HTTP returned a challenge/401 path;
+- stock headless and headed Chromium also hit the human challenge;
+- no challenge solver, copied clearance state, stealth framework, proxy rotation or deliberate access-control bypass is added to WohnWerk.
 
-Concept extractor v5 adds the exact composite title alias `Mechanical/Fluids Engineer` to existing `role:mechanical-engineer`. Production proof: job #374 became score 69, coverage 1.000, compatible; v4->v5 changed exactly job #374 and all 248 relevant active jobs became scored.
+Its adapter may remain for a future environment, but it is not in the automatic scheduler.
+
+## Immowelt DE
 
-## Job-source expansion phase: CLOSED
+Immowelt is the active broad Germany property source.
 
-Do not continue generic job-source expansion. Existing enabled job sources are maintained/fixed only unless a concrete coverage gap justifies reopening.
-
-PALFINGER promotion is complete; do not rerun PALFINGER reconciliation merely to re-prove it.
-
-Germany-specific job sources already present in `feature/germany` are part of the Germany MVP bootstrap, not a signal to reopen unconstrained source expansion:
-- Bundesagentur Jobsuche / Arbeitsagentur public source
-- Adzuna DE when credentials are configured
+Production transport:
+- public `/classified-search` frontend;
+- stock Playwright/Chromium;
+- headed under the dedicated Xvfb display;
+- no login;
+- no stealth/fingerprint masking framework in WohnWerk;
+- normal discovery does not open listing details;
+- heavy image/media/font resources may be suppressed;
+- source failures are isolated from the global refresh service;
+- automatic mode remains incremental/frontier only while coverage behavior is being validated.
+
+### Resumable challenge boundary
 
-## Salary state
+WohnWerk owns a resumable state machine around the operator-owned handler.
 
-Policy: `explicit-salary-text-2026-08-30-v7`.
+On a recognized challenge WohnWerk must:
 
-Important invariants:
-- preserve source period
-- no automatic Austrian monthly ×14
-- monthly annualization only with explicit payment count
-- hourly remains non-annualized without defensible hours/year
-- structured source salary wins text
-- no invented period semantics
-
-v0.3.39 repaired detail salary acquisition and Greenhouse structured pay ingestion. Production backfill proved:
-- StepStone job 363: EUR 3700/month, no invented annualization
-- Willhaben job 365: EUR 19.98/hour
-- GROPYUS job 384: EUR 55k..60k/year structured
-- Willhaben job 385: EUR 17.50/hour
-
-## Property sources and semantics
-
-Authoritative Austria property sources:
-- `immmo.at`
-- `sreal.at`
-
-Germany branch sources pending target-server smoke/reconciliation proof:
-- `immoscout24-de`: public HTML/context, 16 states x 3 price bands, newest-first incrementals.
-- `immowelt-de`: ordinary Chromium-rendered public search, the same 48 shards, hard fail at page 250 or any challenge.
-
-Neither DE source has disappearance authority merely because code exists. Authority begins only
-after a real complete run reports all shards successful, uncapped and count-plausible. Any failed,
-partial, capped or parser-incomplete run remains non-authoritative.
-
-For these German commercial property portals, the retained dataset is deliberately minimal: source identity/URL, title, price, explicit living/plot area where exposed, PLZ/city and internal provenance/lifecycle metadata. Do not retain portal descriptions, seller/broker contacts or portal-hosted photos. See `docs/germany_mvp.md`.
-
-ImmoAds remains disabled.
-
-Property rules:
-- explicit Wohnfläche/Wohnnutzfläche -> living area
-- explicit Grundstück/Grundstücksfläche/Grundfläche -> plot area
-- explicit Nutzfläche -> usable area
-- generic source area -> neutral display-only area
-- source-backed images only where the source/access model allows image use; German commercial portal adapters above intentionally do not retain photos
-- conservative dedupe only
-- never invent property coordinates or attributes
-
-## House radius
-
-v0.3.39 repaired the active `/houses` route after the v0.3.38 radius regression. Production proof: `/houses` 200 and Salzburg exact 1 -> Salzburg 50 km 37. Saved `radius_km` is 1..250 km, uses stored Austrian postal/locality centroids and PostGIS `ST_DWithin`; unresolved centers fail closed.
-
-Germany requires the new five-digit postal-code path introduced by migration `0012_de_postal_codes` and the GeoNames DE postal centroid import. Do not route German rows through Austria-only PLZ assumptions.
-
-## Job geography
-
-v0.3.41 repaired 11 concrete unresolved location rows without inventing points. v0.3.46 closed the remaining evidence-backed concrete geo cleanup.
-
-### v0.3.46 production proof
-
-Atomic production SHA: `00c3c6eb920efc481b5ce2c2fd12a5f1bb25c4f3`. Exact-head CI and production server gate both passed with **544 tests**.
-
-The production repair was deliberately targeted and created no crawl run:
-- `crawl_runs`: 719 -> 719
-- `job_locations`: 484 -> 483, exactly the redundant country-code row removal
-- job #138 / SPIEGLTEC: `Schaftenau` resolved through verified postal membership `6336` and the local BEV-backed postal centroid to `POINT(12.09684228 47.5425033)`
-- job #352 / teampool: `Puntigam` resolved through verified postal membership `8055` to `POINT(15.43172668 47.02476775)`
-- method for both: `verified_sublocality_postal_centroid`
-- job #160 / Lam Research: redundant non-remote `AT, Österreich` row removed; the correct Salzburg row remains resolved at `POINT(13.04387009 47.8015246)`
-- no DB migration; Alembic remains `0011_live_ui_events`
-- `/houses`, `/jobs`, Salzburg+50km and external `/health` passed
-- refresh/images/liveness timers were restored active
-
-Remaining active null-point labels after the repair are broad scopes, not missing concrete geocodes:
-- `Wels-Land`
-- `Bezirk Wels-Land`
-- `Graz Umgebung-West`
-- `Kärnten`
-- `österreichweit`
-
-Never invent one point for these scopes.
-
-### v0.3.47 ops geo semantics
-
-A production screenshot after v0.3.46 exposed an operational presentation bug: `/admin/health` still titled every active non-remote null-point `JobLocation` as `Noch nicht aufgelöste konkrete Ortsangaben`, so the broad scopes above looked like unresolved resolver failures.
-
-v0.3.47 fixes the semantic boundary rather than merely renaming the UI:
-- `app.jobs.location_resolution.is_non_point_location_scope()` is the shared classifier used by both the resolver and Ops UI
-- Bundesland/country/explicit district labels remain non-point
-- explicit operational broad scopes include `österreichweit`, `Wels-Land`, and `Graz Umgebung-West`
-- `Bezirk ...` is classified as a district scope
-- `Salzburg Umgebung` is deliberately **not** classified as a permanent non-point scope because its explicit Salzburg anchor remains resolvable through `area_anchor_locality`
-- `canonicalize_locality()` now returns `None` for the explicit broad scopes for a documented semantic reason, rather than only failing later because no postal row happens to match
-- `collect_ops_snapshot()` performs one grouped query and splits null-point labels into concrete resolver backlog vs intentional non-point scopes
-- `snapshot.unresolved_job_locations` and `snapshot.unresolved_labels` now mean **concrete unresolved** only
-- new `snapshot.non_point_job_locations` and `snapshot.non_point_labels` expose the informational broad-scope population separately
-- `/admin/health` top counter is labeled `konkrete ungeocodierte Job-Orte`
-- broad scopes render under `Regionale / landesweite Ortsangaben` with an explanation that they are intentionally not artificially geocoded
-- no JobLocation data mutation and no DB migration are required
-
-Regression tests cover the five production labels, preserve `Salzburg Umgebung` behavior, verify the Ops split, and verify both sections of the German admin UI.
-
-Development CI initially exposed two stale v0.3.46 tests that asserted the literal application version `0.3.46`. Those tests were removed rather than mechanically bumped because version-pinning is not a behavioral invariant; all actual v0.3.46 geo regression coverage remains. Final development CI was green with Ruff/Compile clean and **544 tests passed** before the Germany branch expansion added further tests.
-
-Production was subsequently advanced to the frozen Austria v0.3.47 release at `89f1833f` and sanity-checked successfully as recorded above.
-
-## IMMMO coverage authority
-
-v0.3.42 remains the active IMMMO coverage policy. It separates structural source coverage from stable synthetic/source-less identity share.
-
-Policy `immmo-identity-churn-2026-09-01-v1`:
-- structural authority requires reconciliation + traversal complete + no cap + cards_seen==cards_parsed + count delta in tolerance
-- after ingest, each shard counts genuinely new synthetic identities
-- identity churn fails closed if new synthetic rows exceed `max(3, 1% of cards seen)`
-- legacy total-synthetic link-quality remains diagnostic only
-- stable source-less cards can therefore remain authoritative
-- a parser regression that creates many new synthetic identities still degrades coverage
-
-Do not manually change `Source.coverage_status`. Only a real complete reconciliation controls disappearance authority.
-
-## Source health semantics
-
-Execution success and coverage authority are independent:
-- complete successful authoritative scan -> `success / ok`
-- successful bounded incremental -> successful execution, non-authoritative coverage
-- mixed actual failures -> `partial / degraded`
-- all failed -> `failed / failed`
-
-Only `coverage=ok` reconciliation may prove disappearance.
-
-## SSE/live synchronization
-
-v0.3.43 introduced durable SSE invalidation events; v0.3.44 fixed isolated-process SQLAlchemy model registration for durable event writes.
-
-Production-proven architecture:
-- durable `live_ui_events` journal in Postgres, migration `0011_live_ui_events`
-- authenticated `GET /events`
-- monotonic event IDs and reconnect replay
-- separate crawler/web processes work through Postgres, not an in-memory broker
-- curation events are atomic with authoritative writes
-- job catalog invalidation is emitted only after location resolution/propagation and concept normalization all succeed
-
-v0.3.44 production proof included successful durable event insert and authenticated replay through Caddy/TLS.
-
-## v0.3.45 in-place curation UX
-
-v0.3.45 is production-proven manually. The original SSE release still allowed legacy browser `POST -> 303` navigation when clicking `Ausblenden`/`Favorit`, causing scroll jumps. v0.3.45 fixes that interaction layer while preserving backend POST+CSRF authority.
-
-Current behavior:
-- catalog house/job favorite/hidden forms are delegated through `fetch()` + `FormData`
-- `preventDefault()` prevents browser navigation
-- buttons are disabled while the POST is in flight
-- successful updates refresh the current server-rendered `<main>` in place
-- viewport anchor + `scrollY` are captured/restored around replacement
-- if the just-hidden card disappears, prior scroll offset is retained instead of jumping to top
-- SSE-triggered refresh uses the same viewport-preserving mechanism
-- without JS, legacy POST+303 remains a fallback
-- hiding the currently open `/houses/{id}` detail page deliberately keeps navigation semantics because the hidden detail URL is no longer valid
-
-Manual production verification: `Ausblenden` works without reload/navigation and without the page jumping upward.
-
-## Germany MVP implementation checkpoint
-
-Current code in `feature/germany` already contains:
-- DE/AT country scoping for `/houses`, `/jobs`, `/matches` using `Source.config["country_code"]` and a compact persistent UI switch;
-- migration `0012_de_postal_codes` and German postal-code import support;
-- `immoscout24-de` fail-closed public-search adapter with 48 deterministic shards;
-- `immowelt-de` fail-closed ordinary-Chromium public-search adapter with the same 48 shards;
-- German job-source code for Arbeitsagentur/Bundesagentur and Adzuna DE;
-- country-aware OpenImmo support for explicitly authorized feeds;
-- regression coverage protecting Austria semantics while adding Germany behavior.
-
-The last code-bearing HEAD `3c7dd3c...` passed exact-head PR CI with **556 passed, 2 warnings**. Documentation commits after it do not change runtime behavior but must still pass the branch CI gate before target-server mutation.
-
-## Current near-term roadmap
-
-1. **DONE for code HEAD `3c7dd3c...`:** exact-head GitHub CI passed Install + Ruff + Compile + Tests with 556 tests.
-2. **CURRENT:** require green exact-head CI on the final documentation HEAD, then begin target-server Germany bootstrap.
-3. Apply migration `0012_de_postal_codes` on the target DB and verify Alembic head.
-4. Import GeoNames DE postal centroids and sanity-check count plus representative five-digit PLZ rows.
-5. Install the matching Playwright Chromium runtime before enabling `immowelt-de`.
-6. Run one manual incremental smoke for `immoscout24-de`; inspect shard failures, cap hits, source/parsed counts and representative PLZ/price/living-area/plot-area records.
-7. Run one manual incremental smoke for `immowelt-de` with the same inspection; any challenge/access protection must fail closed.
-8. Run the first `--reconcile` for a DE property source only after its incremental smoke is healthy. Do not manually promote coverage or deactivate listings if the run is partial/degraded.
-9. Bootstrap Germany jobs after the property acquisition path is proven: Bundesagentur needs no user account; configure Adzuna credentials only if that source is desired.
-10. Add a German OpenImmo feed only when its owner provides or authorizes the feed URL.
-
-## Deployment discipline
-
-For every branch change:
-1. inspect final diff
-2. wait for GitHub CI on exact branch HEAD
-3. require Install + Ruff + Compile + Tests success
-4. squash development commits into one atomic release commit over current production when preparing a production release
-5. wait for exact-head CI on that atomic release SHA
-6. only then deploy
-7. production reruns Ruff/compile/tests before restart
-8. verify `/health` plus targeted production controls
-9. never deploy a red/intermediate SHA
+1. identify the exact `CrawlRun`, shard, region, price band and navigation point;
+2. persist cumulative page/card/unique-ID counters;
+3. persist the same-run resume cursor;
+4. persist the already selected fair shard order;
+5. export browser storage state and diagnostic screenshot where available;
+6. commit persistence before invoking the external handler;
+7. mark the current run/shard paused without fabricating failures for untouched shards;
+8. invoke the external handler through the documented JSON stdin/stdout contract;
+9. on `resolved`, load returned/updated browser state and retry the same saved navigation point in the same run;
+10. on `defer`, leave the run unfinished and resumable;
+11. on `abort`/hard source failure, count the actual failed work separately and mark untouched remainder as skipped/not-attempted;
+12. never allow a challenge-resumed/incomplete run to gain reconciliation authority unless complete identity history and all normal authority conditions hold.
+
+The supported operator boundary is exposed through `--challenge-handler` and/or
+`WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`. The request carries `contract_version=1`; newly created
+handoffs also carry a stable `handoff_id`. Persisted legacy handoffs such as Run #990 remain
+backward compatible even if that field is empty.
+
+The child process receives only the documented allowlisted execution environment plus
+`WOHNWERK_CHALLENGE_CONTRACT_VERSION=1`; unrelated WohnWerk runtime variables are not forwarded.
+
+See `docs/immowelt_handler_contract.md` for the concrete JSON contract and acceptance checklist.
+
+The handler itself is not a WohnWerk implementation task.
+
+### Latest production Immowelt checkpoint
+
+The last important live experiment is **Run #990**.
+
+Observed state:
+- run status: `paused`
+- coverage: `degraded`
+- 2 of 48 shards completed before the active challenge point
+- 4 pages fetched
+- 160 items seen
+- 93 new
+- 67 updated
+- actual failed shards: 0
+- paused shard: 1
+- untouched work was not fabricated as failure
+- persisted handoff state exists under the run/shard challenge-state hierarchy
+
+Do not discard this state merely to restart from page 1.
+
+When the operator finishes the external handler, first validate the WohnWerk-side integration contract, then resume **the same Run #990** if the persisted state is still compatible. Do not start a replacement crawl just to avoid using the resume path.
+
+## Current Germany house product requirements
+
+The operator confirmed these requirements on 2026-09-26. They are product targets; do not claim an item is implemented until code/data/runtime proof exists.
+
+### Acquisition/filtering
+
+- Purchase target: EUR 30,000..200,000.
+- Auction / `Versteigerung` houses are unacceptable.
+- Broad acquisition should collect houses inside the configured price range rather than encode subjective local preferences into source queries.
+- PLZ blacklist, hospital distance and similar suitability rules are evaluated locally.
+- If an auction can be excluded cleanly at source, exclude it; otherwise retain discovery evidence but locally reject it.
+- Locally rejected houses remain inspectable in a separate rejected/filtered view.
+- Every rejected house card shows explicit understandable reason tags.
+
+### Location filters
+
+- Add user-managed German PLZ blacklist.
+- Support exact 5-digit PLZ plus wildcard masks such as `0xxxx`.
+- `x` / `X` represents one decimal digit after PLZ normalization.
+- Add region browsing through a center `PLZ/Ort` plus configurable N-km radius.
+- Add a configured workplace location for the father.
+- House details show distance to that workplace.
+- Workplace distance is a decision factor rather than a daily-commute hard reject by default because work is mostly home office with roughly two office visits per month.
+
+### Hospital access
+
+- Determine nearby hospital access where defensible.
+- Show distance.
+- Show source-backed hospital name/type/capability information useful for distinguishing ordinary/emergency-capable care.
+- Do not infer emergency capability from a generic hospital label.
+- Support a configurable maximum hospital-distance rule for local rejection.
+- Missing hospital evidence remains unknown unless the operator explicitly configures fail-closed behavior.
+
+### Internet
+
+- Determine best available fixed Internet access as precisely as available house location/address permits.
+- Show maximum defensible speed.
+- Show price where source-backed.
+- Never invent availability from coarse geography.
+- Expose Starlink as an explicit fallback when terrestrial service is unavailable, insufficient or cannot be established under the configured rule.
+
+### Property quality
+
+- Improve conservative duplicate detection across sources.
+- Preserve every source listing/provenance beneath the canonical property.
+- Capture/display source-backed heating type such as oil, electric or wood.
+- Wood heating is a positive preference.
+- Unknown heating remains unknown.
+
+## Germany price/auction policy — v0.4.2 candidate
+
+The v0.4.2 implementation changes the Germany acquisition contract to:
+- 48 shards remain (16 regions x 3 bands);
+- bands are `030000-099999`, `100000-149999`, `150000-200000`;
+- the exact covered range is EUR 30,000..200,000 with no gaps or overlaps;
+- Immowelt requests `distributionTypes=Buy` only;
+- explicit `Versteigerung` / auction markers that still leak into discovery are retained as source evidence but locally rejected with reason `auction`;
+- DE product visibility uses a country-aware EUR 200,000 ceiling while legacy/AT behavior remains at EUR 300,000;
+- historical DE rows above EUR 200,000 remain stored for lifecycle/provenance but are no longer father-visible;
+- no migration or destructive cleanup is required.
+
+Run #990 was created under the old 30,000..300,000 shard contract. Its persisted state is retained,
+but the v0.4.2 launcher treats that paused run as shard-contract-incompatible and will not
+auto-resume it. This satisfies the earlier rule to resume it only if persisted state remains
+compatible; the new price policy deliberately makes that condition false.
+
+## Near-term roadmap
+
+1. **DONE:** v0.4.1 scheduler/docs/handler-boundary hardening deployed and production-verified at `0890f0283e217b84a9de37e418a6fb6677391c66`.
+2. **CURRENT:** finish v0.4.2 Germany EUR 30,000..200,000 + non-auction implementation, exact-head CI and production deployment.
+3. Then implement the broader local house suitability/rejection infrastructure (multi-reason rejected view + PLZ blacklist/radius).
+4. Add workplace-distance, hospital and Internet enrichment in evidence-backed slices.
+5. Improve dedupe and heating-type extraction/ranking.
+6. Keep Germany jobs paused until an explicit operator decision reopens them.
+7. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
+
+## Fresh-context recovery order
+
+1. `HANDOFF.md`
+2. `docs/germany_mvp.md`
+3. `docs/requirements.md`
+4. `docs/acquisition.md`
+5. `docs/sources.md`
+6. inspect current PR/branch HEAD and exact-head CI before any mutation
+
+Do not infer the active task from the old Austria deployment history or from dormant Germany job code.

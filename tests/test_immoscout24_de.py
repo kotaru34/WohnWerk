@@ -71,11 +71,11 @@ def test_shards_cover_states_and_non_overlapping_budget_bands() -> None:
 
     assert len(shards) == 48
     assert len({shard.key for shard in shards}) == 48
-    url = source._page_url("nordrhein-westfalen", "225000-300000", 2)
+    url = source._page_url("nordrhein-westfalen", "150000-200000", 2)
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
     assert parsed.path == "/Suche/de/nordrhein-westfalen/haus-kaufen"
-    assert query["price"] == ["225000.0-300000.0"]
+    assert query["price"] == ["150000.0-200000.0"]
     assert query["sorting"] == ["2"]
     assert query["pagenumber"] == ["2"]
 

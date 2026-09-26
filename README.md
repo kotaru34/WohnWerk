@@ -1,6 +1,6 @@
 # WohnWerk
 
-Self-hosted Austrian and German property + job acquisition and recommendation system.
+Self-hosted Austrian/German property acquisition and recommendation system with the proven Austrian job workflow.
 
 The stable Austria-only release is frozen on `release/v1-austria`. Development on
 `feature/germany` preserves the same matching, lifecycle and fail-closed coverage logic while
@@ -14,13 +14,15 @@ records the Germany product/UI/acquisition contract and legal/operational guardr
 
 - AT properties: `immmo.at`, `sreal.at`, plus configured OpenImmo feeds.
 - DE properties: `immoscout24-de`, `immowelt-de`, plus configured OpenImmo feeds.
-- DE jobs: Adzuna's documented Germany API and the public Bundesagentur Jobsuche interface.
+- DE jobs: currently paused; dormant adapters are not part of the automatic scheduler.
 - Existing Austrian job and employer-ATS sources remain unchanged.
 
-The German portal adapters retain only title, price, living/plot area, PLZ, city and the original
-listing URL. They do not copy descriptions, contact data or photos. Incremental scans request the
-newest pages; disappearance is accepted only after every state/price shard completes a full scan
-below its safety cap.
+The German portal adapters retain only the source-backed data needed by WohnWerk and link back to
+the original listing. Current Germany house acquisition/product target is EUR 30,000..200,000.
+Immowelt requests ordinary `Buy` listings only; explicit auction evidence is retained but locally
+rejected instead of being silently discarded. Incremental scans request the newest
+pages; disappearance is accepted only after every applicable shard completes a full authoritative
+scan below its safety cap.
 
 ## German data bootstrap
 
@@ -28,13 +30,13 @@ below its safety cap.
 alembic upgrade head
 python scripts/import_german_postal_codes.py
 playwright install chromium
-python scripts/run_immoscout24_de.py
 python scripts/run_immowelt_de.py
 ```
 
-Run either property source with `--reconcile` only after its incremental smoke run is healthy.
-Immowelt uses ordinary browser rendering and stops on an access challenge; there is no login,
-stealth or CAPTCHA-solving path.
+ImmoScout24 DE remains paused on the current production environment. Immowelt uses ordinary browser
+rendering and persists a resumable checkpoint when it encounters a challenge. The external challenge
+handler is operator-owned; WohnWerk owns only the integration boundary and does not modify the
+handler implementation.
 
 See also:
 

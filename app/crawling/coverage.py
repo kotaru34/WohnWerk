@@ -21,6 +21,9 @@ from app.models import (
     SourceShard,
 )
 
+SHARD_STATUS_SKIPPED = "skipped"
+RUN_STATUS_PAUSED = "paused"
+
 
 @dataclass(frozen=True, slots=True)
 class ShardOutcome:
@@ -41,6 +44,8 @@ class CoverageSummary:
     shards_total: int
     shards_completed: int
     shards_failed: int
+    shards_skipped: int
+    shards_paused: int
     pages_fetched: int
     items_seen: int
     items_new: int
@@ -53,12 +58,14 @@ def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
 
     A deliberately bounded incremental/frontier scan can execute perfectly while not
     claiming complete source coverage. In that case the run is SUCCESS and coverage is
-    DEGRADED. PARTIAL is reserved for mixed execution outcomes, such as one failed shard
-    alongside successful shards. This keeps operational health separate from authority.
+    DEGRADED. Untouched shards after a source-wide halt are SKIPPED, not failures. A
+    challenge-paused run is explicitly PAUSED and can never claim authoritative coverage.
     """
     total = len(outcomes)
     completed = sum(outcome.status == RunStatus.SUCCESS for outcome in outcomes)
     failed = sum(outcome.status == RunStatus.FAILED for outcome in outcomes)
+    skipped = sum(outcome.status == SHARD_STATUS_SKIPPED for outcome in outcomes)
+    paused = sum(outcome.status == RUN_STATUS_PAUSED for outcome in outcomes)
     pages = sum(outcome.pages_fetched for outcome in outcomes)
     seen = sum(outcome.items_seen for outcome in outcomes)
     new = sum(outcome.items_new for outcome in outcomes)
@@ -78,6 +85,8 @@ def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
             shards_total=0,
             shards_completed=0,
             shards_failed=0,
+            shards_skipped=0,
+            shards_paused=0,
             pages_fetched=0,
             items_seen=0,
             items_new=0,
@@ -93,10 +102,13 @@ def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
         for outcome in outcomes
     )
 
-    if all_success:
+    if paused:
+        run_status = RUN_STATUS_PAUSED
+        coverage_status = CoverageStatus.DEGRADED
+    elif all_success:
         run_status = RunStatus.SUCCESS
         coverage_status = CoverageStatus.OK if complete else CoverageStatus.DEGRADED
-    elif failed == total:
+    elif failed and completed == 0:
         run_status = RunStatus.FAILED
         coverage_status = CoverageStatus.FAILED
     else:
@@ -109,6 +121,8 @@ def summarize_shards(outcomes: list[ShardOutcome]) -> CoverageSummary:
         shards_total=total,
         shards_completed=completed,
         shards_failed=failed,
+        shards_skipped=skipped,
+        shards_paused=paused,
         pages_fetched=pages,
         items_seen=seen,
         items_new=new,
@@ -136,7 +150,7 @@ def create_run(session: Session, source: Source, mode: CrawlMode) -> CrawlRun:
     return run
 
 
-def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
+def summarize_run_state(session: Session, run: CrawlRun) -> CoverageSummary:
     shard_runs = list(
         session.scalars(
             select(CrawlShardRun)
@@ -144,25 +158,26 @@ def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
             .order_by(CrawlShardRun.id)
         )
     )
-    outcomes = [
-        ShardOutcome(
-            status=shard.status,
-            pages_fetched=shard.pages_fetched,
-            items_seen=shard.items_seen,
-            items_new=shard.items_new,
-            items_updated=shard.items_updated,
-            source_reported_count=shard.source_reported_count,
-            result_cap_hit=shard.result_cap_hit,
-            coverage_complete=shard.coverage_complete,
-        )
-        for shard in shard_runs
-    ]
-    summary = summarize_shards(outcomes)
-    now = datetime.now(UTC)
+    return summarize_shards(
+        [
+            ShardOutcome(
+                status=shard.status,
+                pages_fetched=shard.pages_fetched,
+                items_seen=shard.items_seen,
+                items_new=shard.items_new,
+                items_updated=shard.items_updated,
+                source_reported_count=shard.source_reported_count,
+                result_cap_hit=shard.result_cap_hit,
+                coverage_complete=shard.coverage_complete,
+            )
+            for shard in shard_runs
+        ]
+    )
 
+
+def _write_summary(run: CrawlRun, summary: CoverageSummary) -> None:
     run.status = summary.run_status
     run.coverage_status = summary.coverage_status
-    run.finished_at = now
     run.shards_total = summary.shards_total
     run.shards_completed = summary.shards_completed
     run.shards_failed = summary.shards_failed
@@ -171,6 +186,33 @@ def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
     run.items_new = summary.items_new
     run.items_updated = summary.items_updated
     run.source_reported_count = summary.source_reported_count
+    metadata = dict(run.run_metadata or {})
+    metadata["telemetry"] = {
+        "shards_completed": summary.shards_completed,
+        "shards_failed": summary.shards_failed,
+        "shards_skipped": summary.shards_skipped,
+        "shards_paused": summary.shards_paused,
+    }
+    run.run_metadata = metadata
+
+
+def checkpoint_paused_run(session: Session, run: CrawlRun) -> CoverageSummary:
+    """Persist aggregate counters for a resumable run without finishing it."""
+    summary = summarize_run_state(session, run)
+    _write_summary(run, summary)
+    run.status = RUN_STATUS_PAUSED
+    run.coverage_status = CoverageStatus.DEGRADED
+    run.finished_at = None
+    session.commit()
+    return summary
+
+
+def finalize_run(session: Session, run: CrawlRun) -> CoverageSummary:
+    summary = summarize_run_state(session, run)
+    now = datetime.now(UTC)
+
+    _write_summary(run, summary)
+    run.finished_at = now
 
     source = session.get(Source, run.source_id)
     if source is not None:

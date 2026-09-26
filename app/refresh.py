@@ -14,6 +14,7 @@ class SourceRefreshPlan:
     source_name: str
     script: str
     supports_reconciliation: bool
+    failure_isolated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,10 +37,15 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("sreal.at", "scripts/run_sreal.py", True),
     # ImmoScout24 DE remains explicitly paused/fail-closed after the public frontend
     # required a human challenge. Do not schedule it until its transport is revalidated.
-    # Immowelt DE is currently a bounded discovery source: its source-wide 403 gate makes
-    # exhaustive reconciliation non-authoritative, while fair incremental runs can safely
-    # continue filling the frontier over time.
-    SourceRefreshPlan("immowelt-de", "scripts/run_immowelt_de.py", False),
+    # Immowelt DE is currently a bounded discovery source. It remains incremental-only and
+    # its temporary browser/access failures are source-isolated so they cannot fail the
+    # global production refresh service or interrupt Austria acquisition.
+    SourceRefreshPlan(
+        "immowelt-de",
+        "scripts/run_immowelt_de.py",
+        False,
+        failure_isolated=True,
+    ),
     SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
     SourceRefreshPlan(
         "greenhouse-public-job-board",
@@ -64,12 +70,9 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
     SourceRefreshPlan("stepstone.at", "scripts/run_stepstone_at_jobs.py", False),
     SourceRefreshPlan("willhaben-jobs", "scripts/run_willhaben_jobs.py", False),
-    SourceRefreshPlan("adzuna-api-de", "scripts/run_adzuna_de_jobs.py", False),
-    SourceRefreshPlan(
-        "arbeitsagentur-jobsuche-de",
-        "scripts/run_arbeitsagentur_jobs.py",
-        False,
-    ),
+    # Germany job acquisition is intentionally paused by operator decision. Keep the
+    # adapters/scripts dormant for a possible later restart, but do not register DE job
+    # sources in the automatic refresh scheduler.
 )
 
 

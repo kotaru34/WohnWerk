@@ -86,6 +86,14 @@ def _source_command(run: DueSourceRun) -> list[str]:
     return args
 
 
+def _source_result_class(run: DueSourceRun, result: CommandResult) -> str:
+    if result.returncode == 0:
+        return "success"
+    if run.plan.failure_isolated:
+        return "isolated_failure"
+    return "failure"
+
+
 def _runtime_release_gate(health_url: str) -> tuple[bool, str]:
     """Fail closed if this refresh process is newer/different than the running web reader."""
 
@@ -182,14 +190,19 @@ def main() -> None:
             return
 
         failures: list[CommandResult] = []
+        isolated_failures: list[CommandResult] = []
         successful_job_sources: list[str] = []
         for run in due:
             result = _run_command(
                 f"source:{run.plan.source_name}:{run.mode}",
                 _source_command(run),
             )
-            if result.returncode != 0:
+            result_class = _source_result_class(run, result)
+            if result_class == "failure":
                 failures.append(result)
+                continue
+            if result_class == "isolated_failure":
+                isolated_failures.append(result)
                 continue
             if _source_category(run.plan.source_name) == SourceCategory.JOB:
                 successful_job_sources.append(run.plan.source_name)
@@ -220,6 +233,9 @@ def main() -> None:
                 if result.returncode != 0:
                     failures.append(result)
 
+        for failure in isolated_failures:
+            print(f"isolated_failure={failure.label} rc={failure.returncode}")
+
         if failures:
             print("refresh_status=partial")
             for failure in failures:
@@ -230,7 +246,10 @@ def main() -> None:
             _publish_job_catalog_refresh(successful_job_sources)
             print("live_invalidation=jobs")
 
-        print("refresh_status=ok")
+        if isolated_failures:
+            print(f"refresh_status=ok isolated_failures={len(isolated_failures)}")
+        else:
+            print("refresh_status=ok")
     finally:
         lock.close()
 
