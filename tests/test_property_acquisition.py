@@ -34,6 +34,10 @@ def _item(
     )
 
 
+def test_visibility_policy_marker_stays_compatible_with_existing_at_observations() -> None:
+    assert PROPERTY_VISIBILITY_POLICY == "property-product-visibility-2026-08-28-v1"
+
+
 def test_property_budget_boundaries_preserve_at_and_apply_de_ceiling() -> None:
     assert PROPERTY_MIN_PRICE_EUR == Decimal(30000)
     assert PROPERTY_MAX_PRICE_EUR == Decimal(300000)
