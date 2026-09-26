@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from itertools import pairwise
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -195,7 +196,7 @@ def test_price_bands_cover_exact_target_without_gaps_or_overlap() -> None:
         ("100000-149999", 100_000, 149_999),
         ("150000-200000", 150_000, 200_000),
     ]
-    for previous, current in zip(PROPERTY_PRICE_BANDS, PROPERTY_PRICE_BANDS[1:]):
+    for previous, current in pairwise(PROPERTY_PRICE_BANDS):
         assert previous.maximum_eur + 1 == current.minimum_eur
 
 
