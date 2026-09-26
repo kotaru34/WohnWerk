@@ -23,6 +23,8 @@ def _request() -> ChallengeRequest:
         challenge={"kind": "http_403", "page": 2},
         resume_cursor={"_resume_same_run": True, "resume_page": 2},
         handoff_state={"storage_state_path": "/tmp/state.json"},
+        contract_version=1,
+        handoff_id="test-handoff-123",
     )
 
 
@@ -41,6 +43,8 @@ async def test_external_handler_receives_json_and_returns_disposition(tmp_path) 
         "request = json.load(sys.stdin)\n"
         "assert request['run_id'] == 123\n"
         "assert request['resume_cursor']['resume_page'] == 2\n"
+        "assert request['contract_version'] == 1\n"
+        "assert request['handoff_id'] == 'test-handoff-123'\n"
         "json.dump({'action': 'resolved', 'retry_after_seconds': 0}, sys.stdout)\n"
     )
     handler = ExternalCommandChallengeHandler([sys.executable, str(script)], timeout_seconds=5)
