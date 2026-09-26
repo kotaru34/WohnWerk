@@ -5,10 +5,12 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from app.sources.base import SourceChallenge
+from app.sources.property.germany import GERMAN_REGIONS
 from app.sources.property.immowelt_de import (
     ImmoweltGermanyPropertySource,
     detect_immowelt_challenge,
 )
+from scripts.run_immowelt_de import _paused_run_matches_current_shards
 
 
 def _one_card_html(*, total: int = 1, listing_id: str = "26zklwh9fcdf") -> str:
@@ -18,7 +20,7 @@ def _one_card_html(*, total: int = 1, listing_id: str = "26zklwh9fcdf") -> str:
       <div data-testid="serp-core-classified-card-testid">
         <a data-testid="card-mfe-covering-link-testid"
            href="https://www.immowelt.de/expose/{listing_id}"
-           title="Haus zum Kauf - Dresden - 149.500 € - 4 Zimmer, 98 m², 300 m² Grundstück"></a>
+           title="Haus zum Kauf - Dresden - 89.500 € - 4 Zimmer, 98 m², 300 m² Grundstück"></a>
         <div data-testid="cardmfe-description-box-address">01067 Dresden</div>
       </div>
     </body></html>
@@ -80,7 +82,7 @@ async def test_challenge_persists_exact_shard_band_state_and_retry_page() -> Non
     shard = next(
         shard
         for shard in source.default_shards()
-        if shard.key == "sachsen:030000-149999"
+        if shard.key == "sachsen:030000-099999"
     )
 
     with pytest.raises(SourceChallenge) as caught:
@@ -89,7 +91,7 @@ async def test_challenge_persists_exact_shard_band_state_and_retry_page() -> Non
     exc = caught.value
     assert exc.challenge["region_key"] == "sachsen"
     assert exc.challenge["bundesland"] == "Sachsen"
-    assert exc.challenge["price_band_key"] == "030000-149999"
+    assert exc.challenge["price_band_key"] == "030000-099999"
     assert exc.challenge["page"] == 1
     assert exc.next_cursor["_resume_same_run"] is True
     assert exc.next_cursor["resume_page"] == 1
@@ -114,7 +116,7 @@ async def test_same_run_resume_starts_at_saved_page_not_page_one() -> None:
     shard = next(
         shard
         for shard in source.default_shards()
-        if shard.key == "sachsen:030000-149999"
+        if shard.key == "sachsen:030000-099999"
     )
     resume_cursor = {
         "_resume_same_run": True,
@@ -157,7 +159,7 @@ async def test_legacy_resume_without_identity_history_cannot_gain_reconciliation
     shard = next(
         shard
         for shard in source.default_shards()
-        if shard.key == "sachsen:030000-149999"
+        if shard.key == "sachsen:030000-099999"
     )
     legacy_cursor = {
         "_resume_same_run": True,
@@ -179,3 +181,27 @@ async def test_legacy_resume_without_identity_history_cannot_gain_reconciliation
 
     assert batch.next_cursor["discovery_identity_history_complete"] is False
     assert batch.coverage_complete is False
+
+
+def test_legacy_paused_run_is_not_resume_compatible_after_price_repartition() -> None:
+    legacy_bands = ("030000-149999", "150000-224999", "225000-300000")
+    shard_order = [
+        {"key": f"{region.key}:{band}", "id": index + 1, "priority": 100}
+        for index, (region, band) in enumerate(
+            (region, band) for region in GERMAN_REGIONS for band in legacy_bands
+        )
+    ]
+    run = type("PausedRun", (), {"run_metadata": {"shard_order": shard_order}})()
+
+    assert _paused_run_matches_current_shards(run, ImmoweltGermanyPropertySource()) is False
+
+
+def test_current_paused_run_shard_set_is_resume_compatible() -> None:
+    source = ImmoweltGermanyPropertySource()
+    shard_order = [
+        {"key": spec.key, "id": index + 1, "priority": spec.priority}
+        for index, spec in enumerate(reversed(source.default_shards()))
+    ]
+    run = type("PausedRun", (), {"run_metadata": {"shard_order": shard_order}})()
+
+    assert _paused_run_matches_current_shards(run, source) is True

@@ -48,7 +48,7 @@ Production is now deployed on **v0.4.1**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.1 is deployed. The current implementation focus is the Germany house acquisition policy: EUR 30,000..200,000 plus explicit non-auction semantics.
+v0.4.1 is deployed. The current development target is **v0.4.2**, implementing the Germany house acquisition policy: EUR 30,000..200,000 plus explicit non-auction semantics while preserving the Austria baseline.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -266,28 +266,32 @@ The operator confirmed these requirements on 2026-09-26. They are product target
 - Wood heating is a positive preference.
 - Unknown heating remains unknown.
 
-## Current implementation gap: Germany price shards
+## Germany price/auction policy — v0.4.2 candidate
 
-The current portal implementation still carries the earlier EUR 30,000..300,000 48-shard price partition.
+The v0.4.2 implementation changes the Germany acquisition contract to:
+- 48 shards remain (16 regions x 3 bands);
+- bands are `030000-099999`, `100000-149999`, `150000-200000`;
+- the exact covered range is EUR 30,000..200,000 with no gaps or overlaps;
+- Immowelt requests `distributionTypes=Buy` only;
+- explicit `Versteigerung` / auction markers that still leak into discovery are retained as source evidence but locally rejected with reason `auction`;
+- DE product visibility uses a country-aware EUR 200,000 ceiling while legacy/AT behavior remains at EUR 300,000;
+- historical DE rows above EUR 200,000 remain stored for lifecycle/provenance but are no longer father-visible;
+- no migration or destructive cleanup is required.
 
-That is now legacy implementation state, not the product requirement.
-
-Before the next authoritative Germany property acquisition cycle:
-- reduce the acquisition ceiling to EUR 200,000;
-- rebalance shard boundaries as needed to stay below source result/safety caps;
-- keep the price partitions non-overlapping;
-- add regression tests for the new range;
-- ensure historical rows above EUR 200,000 are locally excluded/rejected according to the new product policy rather than corrupting lifecycle evidence.
+Run #990 was created under the old 30,000..300,000 shard contract. Its persisted state is retained,
+but the v0.4.2 launcher treats that paused run as shard-contract-incompatible and will not
+auto-resume it. This satisfies the earlier rule to resume it only if persisted state remains
+compatible; the new price policy deliberately makes that condition false.
 
 ## Near-term roadmap
 
 1. **DONE:** v0.4.1 scheduler/docs/handler-boundary hardening deployed and production-verified at `0890f0283e217b84a9de37e418a6fb6677391c66`.
-2. **CURRENT:** change Germany acquisition budget/shards to EUR 30,000..200,000 and make auction semantics explicit.
-3. Then implement local house suitability/rejection infrastructure (reason codes + rejected view + PLZ blacklist/radius).
+2. **CURRENT:** finish v0.4.2 Germany EUR 30,000..200,000 + non-auction implementation, exact-head CI and production deployment.
+3. Then implement the broader local house suitability/rejection infrastructure (multi-reason rejected view + PLZ blacklist/radius).
 4. Add workplace-distance, hospital and Internet enrichment in evidence-backed slices.
 5. Improve dedupe and heating-type extraction/ranking.
 6. Keep Germany jobs paused until an explicit operator decision reopens them.
-7. Keep the external handler untouched. When the operator declares it ready, validate the integration boundary and resume Run #990.
+7. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
 
 ## Fresh-context recovery order
 

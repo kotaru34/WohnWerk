@@ -51,12 +51,18 @@ GERMAN_REGIONS: tuple[GermanRegion, ...] = (
 )
 
 
-# These non-overlapping bands are the existing WohnWerk product budget.  They also
-# keep every regional result set far below the portals' pagination safety ceilings.
+GERMANY_PROPERTY_MIN_PRICE_EUR = 30_000
+GERMANY_PROPERTY_MAX_PRICE_EUR = 200_000
+
+
+# The current Germany acquisition target is intentionally split into three contiguous,
+# non-overlapping bands. The narrower low-price band reduces the largest legacy shard
+# while preserving the existing 16 regions x 3 bands scheduler shape. Provider result
+# caps remain authoritative: a capped/incomplete shard never gains disappearance authority.
 PROPERTY_PRICE_BANDS: tuple[PropertyPriceBand, ...] = (
-    PropertyPriceBand("030000-149999", 30_000, 149_999),
-    PropertyPriceBand("150000-224999", 150_000, 224_999),
-    PropertyPriceBand("225000-300000", 225_000, 300_000),
+    PropertyPriceBand("030000-099999", GERMANY_PROPERTY_MIN_PRICE_EUR, 99_999),
+    PropertyPriceBand("100000-149999", 100_000, 149_999),
+    PropertyPriceBand("150000-200000", 150_000, GERMANY_PROPERTY_MAX_PRICE_EUR),
 )
 
 

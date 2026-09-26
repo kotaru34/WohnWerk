@@ -60,6 +60,10 @@ _TOTAL_RE = re.compile(
     re.IGNORECASE,
 )
 _PRICE_ON_REQUEST_RE = re.compile(r"^Preis\s+auf\s+Anfrage$", re.IGNORECASE)
+_AUCTION_RE = re.compile(
+    r"\b(?:Zwangsversteigerung|Versteigerungsobjekt|Versteigerung)\b",
+    re.IGNORECASE,
+)
 _SEARCH_STATE_KEYS = (
     "distributionTypes",
     "estateTypes",
@@ -236,6 +240,16 @@ def _postal_from_card(card: _Node) -> str | None:
     return None
 
 
+def _auction_evidence(card: _Node, raw_title: str) -> list[str]:
+    text = f"{raw_title} {_clean_text(card.text())}"
+    markers: list[str] = []
+    for match in _AUCTION_RE.finditer(text):
+        marker = _clean_text(match.group(0)).casefold()
+        if marker and marker not in markers:
+            markers.append(marker)
+    return markers
+
+
 def _page_count(root: _Node) -> tuple[int, int]:
     match = next(
         (
@@ -297,6 +311,7 @@ def parse_immowelt_search_page(
         title, city, price_text = _title_facts(raw_title)
         living_area, plot_area = _areas(raw_title)
         postal_code = _postal_from_card(card)
+        auction_evidence = _auction_evidence(card, raw_title)
 
         items.append(
             RawProperty(
@@ -312,6 +327,9 @@ def parse_immowelt_search_page(
                 raw_payload={
                     "format": "immowelt-public-search-v2",
                     "country_code": "DE",
+                    "source_distribution_type": "Buy",
+                    "auction_detected": bool(auction_evidence),
+                    "auction_evidence": auction_evidence,
                     "discovery_url": page_url,
                     "region_key": region_key,
                     "price_band_key": price_band_key,
@@ -464,7 +482,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             )
         query = urlencode(
             {
-                "distributionTypes": "Buy,Buy_Auction,Compulsory_Auction",
+                "distributionTypes": "Buy",
                 "estateTypes": "House",
                 "locations": region.immowelt_location_id,
                 "priceMax": band.maximum_eur,

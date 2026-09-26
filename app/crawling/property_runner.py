@@ -68,6 +68,7 @@ async def _annotate_visibility_with_cursor(
     next_cursor["product_price_unknown"] = counts["price_unknown"]
     next_cursor["product_price_below_min"] = counts["price_below_min"]
     next_cursor["product_price_above_max"] = counts["price_above_max"]
+    next_cursor["product_rejected_auction"] = counts["auction"]
     if source.name == "immmo.at":
         next_cursor["source_liveness_attempted"] = liveness.attempted
         next_cursor["source_liveness_live"] = liveness.live

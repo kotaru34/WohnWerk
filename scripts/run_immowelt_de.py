@@ -55,13 +55,20 @@ def parse_args() -> argparse.Namespace:
 def get_or_create_source() -> int:
     config = {
         "country_code": "DE",
-        "scope": "Germany houses for sale priced EUR 30,000 through EUR 300,000",
+        "scope": "Germany houses for sale priced EUR 30,000 through EUR 200,000",
         "acquisition": (
             "public browser-rendered search pages; no detail pages or login; explicit challenge "
             "detection with state handoff to an operator-provided external interface"
         ),
         "retention": "title, price, area, PLZ, city and source URL only; no contact data or photos",
-        "sharding": "16 states/city-states x 3 non-overlapping price bands",
+        "auction_policy": (
+            "request distributionTypes=Buy only; retain explicit auction marker evidence and "
+            "reject any leaked auction listing locally"
+        ),
+        "sharding": (
+            "16 states/city-states x 3 non-overlapping bands: 30000-99999, "
+            "100000-149999, 150000-200000"
+        ),
         "ordering": (
             "newest first; incremental shard scheduling is least-recently-successful first; "
             "the exact shard order is frozen inside a resumable crawl run"
@@ -119,6 +126,24 @@ def _latest_paused_run(source_id: int) -> CrawlRun | None:
         )
 
 
+def _paused_run_matches_current_shards(
+    run: CrawlRun,
+    adapter: ImmoweltHeadedPropertySource,
+) -> bool:
+    persisted = dict(run.run_metadata or {}).get("shard_order")
+    if not isinstance(persisted, list):
+        return False
+
+    persisted_keys: list[str] = []
+    for item in persisted:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            return False
+        persisted_keys.append(item["key"])
+
+    current_keys = {spec.key for spec in adapter.default_shards()}
+    return len(persisted_keys) == len(current_keys) and set(persisted_keys) == current_keys
+
+
 def _challenge_handler(args: argparse.Namespace) -> ExternalCommandChallengeHandler | None:
     raw = str(args.challenge_handler or "").strip()
     if not raw:
@@ -138,19 +163,22 @@ async def async_main() -> int:
         raise SystemExit("--incremental-pages and --hard-max-pages must be positive")
 
     source_id = get_or_create_source()
-    paused = _latest_paused_run(source_id)
-    reconciliation = args.reconcile
-    resume_run_id: int | None = None
-    if paused is not None:
-        resume_run_id = paused.id
-        reconciliation = paused.mode == CrawlMode.RECONCILIATION
-        print(f"resuming_run={paused.id} mode={paused.mode}")
-
     adapter = ImmoweltHeadedPropertySource(
         request_delay_seconds=max(1.0, args.delay),
         incremental_pages=args.incremental_pages,
         hard_max_pages=args.hard_max_pages,
     )
+
+    paused = _latest_paused_run(source_id)
+    reconciliation = args.reconcile
+    resume_run_id: int | None = None
+    if paused is not None:
+        if _paused_run_matches_current_shards(paused, adapter):
+            resume_run_id = paused.id
+            reconciliation = paused.mode == CrawlMode.RECONCILIATION
+            print(f"resuming_run={paused.id} mode={paused.mode}")
+        else:
+            print(f"paused_run_incompatible={paused.id} reason=shard_contract_changed")
     try:
         with SessionLocal() as session:
             source = session.get(Source, source_id)

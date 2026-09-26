@@ -87,12 +87,12 @@ async def test_immowelt_launches_plain_headed_chromium(monkeypatch: pytest.Monke
 
 def test_headed_adapter_keeps_confirmed_direct_search_urls() -> None:
     source = ImmoweltHeadedPropertySource()
-    url = source._page_url("sachsen", "030000-149999", 1)
+    url = source._page_url("sachsen", "030000-099999", 1)
 
     assert url.startswith("https://www.immowelt.de/classified-search?")
     assert "locations=AD04DE14" in url
     assert "priceMin=30000" in url
-    assert "priceMax=149999" in url
+    assert "priceMax=99999" in url
     assert "order=DateDesc" in url
     assert "page=1" in url
 

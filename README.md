@@ -18,8 +18,9 @@ records the Germany product/UI/acquisition contract and legal/operational guardr
 - Existing Austrian job and employer-ATS sources remain unchanged.
 
 The German portal adapters retain only the source-backed data needed by WohnWerk and link back to
-the original listing. Current Germany house product target is EUR 30,000..200,000; locally rejected
-houses remain explainable rather than silently disappearing. Incremental scans request the newest
+the original listing. Current Germany house acquisition/product target is EUR 30,000..200,000.
+Immowelt requests ordinary `Buy` listings only; explicit auction evidence is retained but locally
+rejected instead of being silently discarded. Incremental scans request the newest
 pages; disappearance is accepted only after every applicable shard completes a full authoritative
 scan below its safety cap.
 

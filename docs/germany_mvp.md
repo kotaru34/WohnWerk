@@ -38,7 +38,7 @@ Configured product budget:
 EUR 30,000 .. 200,000
 ```
 
-The branch still contains the earlier 48-shard EUR 30,000..300,000 portal partitioning. That is now legacy implementation state, not the product requirement. Before the next authoritative Germany acquisition cycle, re-shard portal searches so the acquisition ceiling is EUR 200,000 while keeping every shard below source safety/result caps.
+The v0.4.2 Germany acquisition policy uses 48 shards (16 regions x 3 price bands): EUR 30,000..99,999, EUR 100,000..149,999, and EUR 150,000..200,000. The bands are contiguous and non-overlapping; provider result/page caps remain hard authority limits, so a capped or incomplete shard never proves disappearance.
 
 Shard boundaries are engineering details only. They are **not** product preferences or ranking weights and may be rebalanced when observed result distributions justify it.
 
@@ -52,7 +52,7 @@ Primary broad property sources under development:
 
 These requirements were confirmed by the operator on 2026-09-26. They are the active product target; items not yet implemented remain backlog rather than implied current behavior.
 
-- Houses offered only by auction / `Versteigerung` are not acceptable. If the source can exclude auctions cleanly, do so; otherwise retain the discovered row but reject it locally with an explicit reason.
+- Houses offered only by auction / `Versteigerung` are not acceptable. Immowelt requests `distributionTypes=Buy` only. If an auction still appears with explicit source-card evidence, WohnWerk retains the observation for provenance/lifecycle but marks it locally rejected with reason `auction`.
 - Collect the broad house corpus inside the configured purchase-price range instead of encoding subjective local preferences into source queries. PLZ blacklist, hospital-distance and similar suitability rules are evaluated locally.
 - Locally rejected houses remain inspectable in a separate rejected/filtered view. Every rejected card must show one or more understandable reason tags.
 - Support a user-managed German PLZ blacklist with exact five-digit values and wildcard masks such as `0xxxx`. Normalize to five digits and treat `x`/ `X` as one-digit wildcards.
@@ -147,7 +147,7 @@ Search/list-result acquisition remains preferred over unnecessary detail-page cr
 
 Immowelt uses the public `/classified-search` frontend with exact state parameters observed from the normal site UI:
 
-- `distributionTypes=Buy,Buy_Auction,Compulsory_Auction`;
+- `distributionTypes=Buy` (auction distribution types are intentionally excluded);
 - `estateTypes=House`;
 - state/city-state `locations` IDs;
 - explicit `priceMin` / `priceMax`;
@@ -272,3 +272,12 @@ Fresh context order:
 5. frozen Austria compatibility baseline.
 
 Do not reopen the generic debate "ToS means we cannot crawl". Follow the explicit public-frontend policy and red lines in this document, then continue implementation evidence-first.
+
+
+### Legacy paused-run compatibility
+
+The pre-v0.4.2 Immowelt Run #990 was created under the legacy EUR 30,000..300,000
+price-shard contract. Its persisted state remains retained for audit/diagnostic value, but
+it is not resume-compatible with the v0.4.2 shard set. The launcher detects this mismatch
+and does not auto-resume that run. This is an intentional contract change, not lifecycle
+data deletion. The operator-owned challenge handler remains untouched.
