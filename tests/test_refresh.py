@@ -106,3 +106,10 @@ def test_german_property_scheduler_keeps_paused_scout_out_and_immowelt_frontier_
     assert plans["immowelt-de"].supports_reconciliation is False
     assert plans["immowelt-de"].failure_isolated is True
     assert plans["immmo.at"].failure_isolated is False
+
+
+def test_de_job_sources_are_not_scheduled() -> None:
+    names = {plan.source_name for plan in SOURCE_REFRESH_PLANS}
+
+    assert "adzuna-api-de" not in names
+    assert "arbeitsagentur-jobsuche-de" not in names
