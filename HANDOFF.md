@@ -50,6 +50,10 @@ The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
 - adds regression coverage that DE job sources are not scheduled;
 - records the house-only Germany scope and new house requirements;
+- versions the external handler request contract as v1;
+- assigns stable IDs to newly created challenge handoffs while keeping old persisted runs compatible;
+- launches the external handler with a minimal allowlisted environment instead of inheriting the complete WohnWerk runtime environment;
+- documents the boundary in `docs/immowelt_handler_contract.md`;
 - does not modify the external challenge-handler implementation.
 
 The last fully green pre-v0.4.1 PR #5 HEAD was
@@ -160,7 +164,14 @@ On a recognized challenge WohnWerk must:
 12. never allow a challenge-resumed/incomplete run to gain reconciliation authority unless complete identity history and all normal authority conditions hold.
 
 The supported operator boundary is exposed through `--challenge-handler` and/or
-`WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`.
+`WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`. The request carries `contract_version=1`; newly created
+handoffs also carry a stable `handoff_id`. Persisted legacy handoffs such as Run #990 remain
+backward compatible even if that field is empty.
+
+The child process receives only the documented allowlisted execution environment plus
+`WOHNWERK_CHALLENGE_CONTRACT_VERSION=1`; unrelated WohnWerk runtime variables are not forwarded.
+
+See `docs/immowelt_handler_contract.md` for the concrete JSON contract and acceptance checklist.
 
 The handler itself is not a WohnWerk implementation task.
 
