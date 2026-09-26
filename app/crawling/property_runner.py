@@ -570,6 +570,10 @@ async def run_property_source(
                     challenge=dict(exc.challenge),
                     resume_cursor=dict(partial_cursor),
                     handoff_state=dict(handoff_state),
+                    contract_version=1,
+                    handoff_id=(
+                        f"{source.name}:run-{run_id}:shard-{shard_id}:handoff-{handoff_count}"
+                    ),
                 )
                 _set_active_challenge(
                     paused_run,
