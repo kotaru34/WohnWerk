@@ -12,6 +12,11 @@ This file is the authoritative recovery point for a fresh context. Read
 `docs/germany_mvp.md` immediately after it, then `docs/requirements.md`,
 `docs/acquisition.md` and `docs/sources.md`.
 
+Host-level machine recovery companion (intentionally **not** stored in Git):
+`/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`. For infrastructure/deployment work,
+read that file through Tethys Sentinel before rediscovering host layout, services or tooling.
+Update it only when ChatGPT itself installs software or materially changes the host/runtime.
+
 Dynamic database/catalog counts are observations, not permanent invariants.
 
 ## Current product decision
