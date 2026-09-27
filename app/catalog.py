@@ -688,6 +688,56 @@ def houses_page(
     return response
 
 
+@router.post("/houses/settings", include_in_schema=False)
+def update_house_settings(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    plz_blacklist_text: Annotated[str, Form()] = "",
+    hospital_max_distance_km: Annotated[str, Form()] = "",
+    hospital_fail_closed: Annotated[str, Form()] = "",
+    internet_minimum_mbps: Annotated[str, Form()] = "",
+    workplace_country: Annotated[str, Form()] = "DE",
+    workplace_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    country_code = selected_country() or DEFAULT_COUNTRY
+    try:
+        if country_code == "DE":
+            save_de_plz_blacklist(
+                db,
+                profile.id,
+                plz_blacklist_text,
+                commit=False,
+            )
+            save_hospital_distance_policy(
+                db,
+                profile.id,
+                hospital_max_distance_km,
+                fail_closed=hospital_fail_closed == "1",
+                commit=False,
+            )
+            save_internet_policy(
+                db,
+                profile.id,
+                internet_minimum_mbps,
+                commit=False,
+            )
+        save_candidate_workplace(
+            db,
+            profile.id,
+            country_code=workplace_country,
+            input_text=workplace_text,
+            commit=False,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/plz-blacklist", include_in_schema=False)
 def update_house_plz_blacklist(
     _: AdminDependency,

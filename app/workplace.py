@@ -183,13 +183,15 @@ def save_candidate_workplace(
     *,
     country_code: str,
     input_text: str,
+    commit: bool = True,
 ) -> CandidateWorkplace | None:
     text = input_text.strip()
     row = load_candidate_workplace(session, profile_id)
     if not text:
         if row is not None:
             session.delete(row)
-            session.commit()
+            if commit:
+                session.commit()
         return None
 
     resolution = resolve_candidate_workplace(
@@ -220,7 +222,8 @@ def save_candidate_workplace(
         if resolution.center is not None
         else None
     )
-    session.commit()
+    if commit:
+        session.commit()
     return row
 
 

@@ -54,6 +54,17 @@ def test_root_and_father_facing_routes_are_registered() -> None:
             data={"internet_minimum_mbps": "100"},
             follow_redirects=False,
         )
+        house_settings = client.post(
+            "/houses/settings",
+            data={
+                "plz_blacklist_text": "0xxxx",
+                "hospital_max_distance_km": "30",
+                "internet_minimum_mbps": "100",
+                "workplace_country": "DE",
+                "workplace_text": "01067 Dresden",
+            },
+            follow_redirects=False,
+        )
         jobs = client.get("/jobs", follow_redirects=False)
         job_detail = client.get("/jobs/1", follow_redirects=False)
         concepts = client.get("/admin/concepts", follow_redirects=False)
@@ -68,6 +79,7 @@ def test_root_and_father_facing_routes_are_registered() -> None:
     assert workplace.status_code != 404
     assert hospital_policy.status_code != 404
     assert internet_policy.status_code != 404
+    assert house_settings.status_code != 404
     assert jobs.status_code != 404
     assert job_detail.status_code != 404
     assert concepts.status_code != 404
