@@ -128,6 +128,8 @@ def save_de_plz_blacklist(
     session: Session,
     profile_id: int,
     raw: str,
+    *,
+    commit: bool = True,
 ) -> HouseSuitabilityPolicy:
     masks = parse_de_plz_blacklist(raw)
     row = session.scalar(
@@ -138,7 +140,8 @@ def save_de_plz_blacklist(
         session.add(row)
     else:
         row.de_plz_blacklist = list(masks)
-    session.commit()
+    if commit:
+        session.commit()
     return load_house_suitability_policy(session, profile_id)
 
 
@@ -161,6 +164,7 @@ def save_hospital_distance_policy(
     raw_distance_km: str,
     *,
     fail_closed: bool,
+    commit: bool = True,
 ) -> HouseSuitabilityPolicy:
     max_distance = _parse_hospital_distance(raw_distance_km)
     row = session.scalar(
@@ -177,7 +181,8 @@ def save_hospital_distance_policy(
     else:
         row.max_hospital_distance_km = max_distance
         row.hospital_distance_fail_closed = fail_closed
-    session.commit()
+    if commit:
+        session.commit()
     return load_house_suitability_policy(session, profile_id)
 
 
@@ -191,6 +196,8 @@ def save_internet_policy(
     session: Session,
     profile_id: int,
     raw_minimum_mbps: str,
+    *,
+    commit: bool = True,
 ) -> HouseSuitabilityPolicy:
     normalized = raw_minimum_mbps.strip()
     minimum: int | None = None
@@ -217,7 +224,8 @@ def save_internet_policy(
         session.add(row)
     else:
         row.min_internet_download_mbps = minimum
-    session.commit()
+    if commit:
+        session.commit()
     return load_house_suitability_policy(session, profile_id)
 
 
