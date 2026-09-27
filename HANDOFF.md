@@ -28,14 +28,14 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.4**.
+Production is now deployed on **v0.4.5**.
 
-- deployed application version: **v0.4.4**
-- deployed Git SHA: `4472cb160f7f599e5c956d22b03bbcf299c4e556`
-- previous production Git SHA / rollback point: `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.3-pre-v0.4.4`
-- previous production application version: **v0.4.3**
-- database migration: `0014_candidate_workplace`
+- deployed application version: **v0.4.5**
+- deployed Git SHA: `e1b42a425e469a291298196f25b54a328341da86`
+- previous production Git SHA / rollback point: `4472cb160f7f599e5c956d22b03bbcf299c4e556`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.4-pre-v0.4.5`
+- previous production application version: **v0.4.4**
+- database migration: `0015_hospital_access`
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
 - database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
@@ -48,7 +48,7 @@ Production is now deployed on **v0.4.4**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.4 is deployed. The next implementation focus is **hospital-access enrichment** with source-backed facility identity/type/capability and defensible distance semantics. Internet enrichment follows after that.
+v0.4.5 is deployed. Hospital-access enrichment is now in production with source-backed facility identity/type/capability and defensible distance semantics. The next implementation focus is **Internet enrichment**.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -167,6 +167,46 @@ Production deployment proof:
 - temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged action;
 - the external Immowelt challenge handler was not modified or invoked;
 - Run #990 was not resumed.
+
+### v0.4.5 production proof
+
+The deployed v0.4.5 release SHA is
+`e1b42a425e469a291298196f25b54a328341da86`.
+
+GitHub Actions exact-head CI #1271 passed on that exact atomic release commit:
+- Install: passed;
+- Ruff: passed;
+- Compile: passed;
+- Tests: **625 passed, 2 warnings**.
+
+Production deployment proof:
+- pre-deploy production SHA was exactly `4472cb160f7f599e5c956d22b03bbcf299c4e556` and the tree was clean;
+- rollback ref `refs/wohnwerk/rollback-v0.4.4-pre-v0.4.5` points to that v0.4.4 SHA;
+- pre-migration DB revision was `0014_candidate_workplace (head)`;
+- an isolated exact-release production-host worktree/venv passed Ruff, Python compileall and full pytest before cutover;
+- migration `0014_candidate_workplace -> 0015_hospital_access` completed successfully under PostgreSQL transactional DDL;
+- the pinned official Bundes-Klinik-Atlas Open Data export dated **2026-09-01** was ZIP-integrity-tested before cutover and imported only after the migration;
+- the import completed successfully with **1,572 hospital facilities**;
+- post-import readback recorded `coverage_status=ok`, `dataset_date=2026-09-01`, `facility_count=1572`;
+- post-migration DB revision is `0015_hospital_access (head)`;
+- local `/health`: `status=ok`, `version=0.4.5`, `country=AT`;
+- live checkout SHA exactly `e1b42a425e469a291298196f25b54a328341da86`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`: all active after cleanup;
+- a final post-cleanup health check still reported v0.4.5 and all four units remained active;
+- temporary v0.4.5 validation worktree, venv and Atlas ZIP were removed;
+- temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action;
+- the external Immowelt challenge handler was not modified or invoked;
+- Run #990 was not resumed.
+
+Hospital-data authority semantics in production:
+- Bundes-Klinik-Atlas is the DE hospital source for this release;
+- Standort identity, coordinates, Notfallstufe and capability modules are source-backed;
+- a current emergency level is only treated as confirmed when `Stufe` is 1..3 and `StufeNichtVereinbart` is not true;
+- capability modules such as Schwerverletztenversorgung, Kinder-Notfallstufe, Spezialversorgung, Stroke Unit and Chest Pain Unit are retained separately rather than inferred from a hospital name;
+- hospital-distance rejection is local suitability logic and does not mutate source lifecycle/provenance;
+- missing hospital evidence remains fail-open by default, with explicit fail-closed behavior configurable by the operator;
+- partial/failed hospital imports do not gain authority because suitability only trusts dataset state with `coverage_status=ok`.
 
 The active development branch may move beyond the deployed SHA with documentation-only handoff commits. Production remains pinned to the deployed code SHA above until a later explicitly gated deployment.
 
@@ -328,14 +368,16 @@ The operator confirmed these requirements on 2026-09-26. They are product target
 - House details show distance to that workplace.
 - Workplace distance is a decision factor rather than a daily-commute hard reject by default because work is mostly home office with roughly two office visits per month.
 
-### Hospital access
+### Hospital access — v0.4.5 deployed
 
-- Determine nearby hospital access where defensible.
-- Show distance.
-- Show source-backed hospital name/type/capability information useful for distinguishing ordinary/emergency-capable care.
-- Do not infer emergency capability from a generic hospital label.
-- Support a configurable maximum hospital-distance rule for local rejection.
-- Missing hospital evidence remains unknown unless the operator explicitly configures fail-closed behavior.
+- Bundes-Klinik-Atlas Open Data is the current DE hospital source.
+- Nearby hospital access is derived only from source-backed facility coordinates.
+- House UI shows defensible air distance and source-backed hospital identity/type/capability.
+- Confirmed Notfallstufe 1–3 is distinguished from unagreed/unknown emergency level.
+- Capability modules are shown separately and are never inferred from a generic hospital name.
+- A configurable maximum confirmed-emergency distance is part of local suitability/rejection, not source lifecycle.
+- Missing hospital evidence remains unknown/fail-open unless the operator explicitly configures fail-closed behavior.
+- Dataset authority requires `coverage_status=ok`; incomplete/failed imports do not gain rejection authority.
 
 ### Internet
 
@@ -404,9 +446,9 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 2. **DONE:** v0.4.2 Germany EUR 30,000..200,000 + non-auction policy deployed and production-verified at `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`.
 3. **DONE:** v0.4.3 local suitability/rejection layer deployed and production-verified at `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`, DB head `0013_candidate_house_policy`.
 4. **DONE:** v0.4.4 workplace configuration/distance deployed and production-verified at `4472cb160f7f599e5c956d22b03bbcf299c4e556`, DB head `0014_candidate_workplace`.
-5. **CURRENT:** add hospital-access enrichment with source-backed facility identity/type/capability and defensible distance semantics.
-6. Then add Internet enrichment.
-7. Improve dedupe and heating-type extraction/ranking.
+5. **DONE:** v0.4.5 hospital-access enrichment deployed and production-verified at `e1b42a425e469a291298196f25b54a328341da86`, DB head `0015_hospital_access`, Bundes-Klinik-Atlas snapshot 2026-09-01 with 1,572 facilities and `coverage_status=ok`.
+6. **CURRENT:** add Internet enrichment.
+7. Then improve dedupe and heating-type extraction/ranking.
 8. Keep Germany jobs paused until an explicit operator decision reopens them.
 9. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
 
