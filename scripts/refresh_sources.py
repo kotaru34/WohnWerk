@@ -148,6 +148,15 @@ def _source_category(source_name: str) -> str | None:
         return session.scalar(select(Source.category).where(Source.name == source_name))
 
 
+def _source_country(source_name: str) -> str | None:
+    with SessionLocal() as session:
+        source = session.scalar(select(Source).where(Source.name == source_name))
+        if source is None:
+            return None
+        value = (source.config or {}).get("country_code")
+        return str(value).upper() if value else None
+
+
 def _publish_job_catalog_refresh(source_names: list[str]) -> None:
     with SessionLocal() as session:
         queue_live_event(
@@ -192,6 +201,7 @@ def main() -> None:
         failures: list[CommandResult] = []
         isolated_failures: list[CommandResult] = []
         successful_job_sources: list[str] = []
+        successful_de_property_sources: list[str] = []
         for run in due:
             result = _run_command(
                 f"source:{run.plan.source_name}:{run.mode}",
@@ -204,8 +214,22 @@ def main() -> None:
             if result_class == "isolated_failure":
                 isolated_failures.append(result)
                 continue
-            if _source_category(run.plan.source_name) == SourceCategory.JOB:
+            category = _source_category(run.plan.source_name)
+            if category == SourceCategory.JOB:
                 successful_job_sources.append(run.plan.source_name)
+            elif (
+                category == SourceCategory.PROPERTY
+                and _source_country(run.plan.source_name) == "DE"
+            ):
+                successful_de_property_sources.append(run.plan.source_name)
+
+        if successful_de_property_sources:
+            result = _run_command(
+                "postprocess:de-internet",
+                [sys.executable, str(PROJECT_ROOT / "scripts/enrich_de_internet.py")],
+            )
+            if result.returncode != 0:
+                isolated_failures.append(result)
 
         if successful_job_sources:
             for label, command in (
