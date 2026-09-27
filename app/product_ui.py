@@ -31,10 +31,16 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
+from app.internet_access import (
+    internet_dataset_ready,
+    load_property_internet_access,
+    starlink_fallback_reason,
+)
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.house_suitability import (
     active_de_plz_blacklist,
     active_hospital_distance_policy,
+    active_internet_policy,
     format_de_plz_blacklist,
     load_house_suitability_policy,
     load_property_rejection_reasons,
@@ -313,6 +319,20 @@ def houses_page(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
+    internet_access = (
+        load_property_internet_access(db, property_ids) if country_code == "DE" else {}
+    )
+    internet_data_ready = (
+        internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    internet_minimum_mbps = active_internet_policy(suitability_policy)
+    internet_fallback_reasons = {
+        property_id: starlink_fallback_reason(
+            internet_access.get(property_id),
+            minimum_download_mbps=internet_minimum_mbps,
+        )
+        for property_id in property_ids
+    } if country_code == "DE" else {}
     accepted_conditions = _product_property_conditions(
         plz_blacklist,
         max_hospital_distance_km=hospital_max_distance_km,
@@ -408,6 +428,10 @@ def houses_page(
             "hospital_data_ready": hospital_data_ready,
             "hospital_max_distance_km": suitability_policy.max_hospital_distance_km,
             "hospital_fail_closed": suitability_policy.hospital_distance_fail_closed,
+            "internet_access": internet_access,
+            "internet_data_ready": internet_data_ready,
+            "internet_minimum_mbps": internet_minimum_mbps,
+            "internet_fallback_reasons": internet_fallback_reasons,
             "system_price_min": system_price_min,
             "system_price_max": system_price_max,
             "eur_label": _eur_label,
