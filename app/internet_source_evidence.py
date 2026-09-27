@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from sqlalchemy import (
@@ -25,6 +25,9 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
 from app.models import PropertyListing, Source
+
+if TYPE_CHECKING:
+    from app.internet_access import InternetAccess
 
 IMMOSCOUT_DE_HOSTS = {"immobilienscout24.de", "www.immobilienscout24.de"}
 IMMOWELT_DE_HOSTS = {"immowelt.de", "www.immowelt.de"}
@@ -215,7 +218,7 @@ class InternetSourceEvidence:
         return f"{prefix} bis {self.max_download_mbps} Mbit/s"
 
     @property
-    def rank(self) -> tuple[int, int, int]:
+    def rank(self) -> tuple[int, int, int, int]:
         kind_rank = {
             EVIDENCE_PORTAL_ADDRESS_ESTIMATE: 300,
             EVIDENCE_LISTING_CLAIM: 200,
@@ -228,7 +231,12 @@ class InternetSourceEvidence:
             "planned": 1,
             "unavailable": 0,
         }.get(self.availability_status or "", 0)
-        return (kind_rank, availability_rank, self.max_download_mbps or 0)
+        return (
+            kind_rank,
+            1 if self.max_download_mbps is not None else 0,
+            availability_rank,
+            self.max_download_mbps or 0,
+        )
 
 
 class _VisibleHtml(HTMLParser):
@@ -758,3 +766,86 @@ def primary_property_internet_source_evidence(
         ),
         None,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class InternetEvidenceBundle:
+    source_claims: tuple[InternetSourceEvidence, ...]
+    official_grid: "InternetAccess | None"
+
+    @property
+    def primary_source(self) -> InternetSourceEvidence | None:
+        return primary_property_internet_source_evidence(self.source_claims)
+
+
+def load_property_internet_evidence_bundles(
+    session: Session,
+    property_ids: set[int],
+) -> dict[int, InternetEvidenceBundle]:
+    from app.internet_access import load_property_internet_access
+
+    source = load_property_internet_source_evidence(session, property_ids)
+    official = load_property_internet_access(session, property_ids)
+    return {
+        property_id: InternetEvidenceBundle(
+            source_claims=source.get(property_id, ()),
+            official_grid=official.get(property_id),
+        )
+        for property_id in property_ids
+    }
+
+
+def fixed_minimum_evidence_established(
+    bundle: InternetEvidenceBundle | None,
+    minimum_download_mbps: int | None,
+) -> bool:
+    if bundle is None:
+        return False
+
+    if minimum_download_mbps is None:
+        if any(
+            item.availability_status in {"available", "connected", "at_property"}
+            or item.max_download_mbps is not None
+            for item in bundle.source_claims
+        ):
+            return True
+        return bool(
+            bundle.official_grid
+            and bundle.official_grid.max_any_download_mbps is not None
+        )
+
+    if any(
+        item.max_download_mbps is not None
+        and item.max_download_mbps >= minimum_download_mbps
+        and item.availability_status != "unavailable"
+        for item in bundle.source_claims
+    ):
+        return True
+    return bool(
+        bundle.official_grid
+        and bundle.official_grid.minimum_established(minimum_download_mbps)
+    )
+
+
+def starlink_fallback_reason_for_bundle(
+    bundle: InternetEvidenceBundle | None,
+    *,
+    minimum_download_mbps: int | None,
+) -> str | None:
+    if fixed_minimum_evidence_established(bundle, minimum_download_mbps):
+        return None
+    if bundle is None:
+        return "fixed_unknown"
+
+    has_positive_source = any(
+        item.availability_status in {"available", "connected", "at_property"}
+        or item.max_download_mbps is not None
+        for item in bundle.source_claims
+    )
+    has_official = bool(
+        bundle.official_grid
+        and bundle.official_grid.max_any_download_mbps is not None
+    )
+    if not has_positive_source and not has_official:
+        return "fixed_unknown"
+    return "minimum_not_established"
