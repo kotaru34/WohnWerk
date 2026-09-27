@@ -95,6 +95,23 @@
         {% endif %}
         {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
         {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
+        {% if selected_country == 'DE' %}
+          {% if internet_evidence %}
+            {% if internet_evidence.max_grid_mbps is not none %}
+              <span class="fact">Festnetz-Raster bis {{ internet_evidence.max_grid_mbps }} Mbit/s{% if internet_evidence.max_grid_coverage_pct is not none %} · {{ '%.0f'|format(internet_evidence.max_grid_coverage_pct) }}% Haushalte{% endif %}</span>
+            {% else %}
+              <span class="fact">Festnetz-Raster: keine gemeldete Versorgung</span>
+            {% endif %}
+            {% if internet_evidence.max_full_coverage_mbps is not none %}
+              <span class="fact">100% Rasterhaushalte bis {{ internet_evidence.max_full_coverage_mbps }} Mbit/s</span>
+            {% endif %}
+          {% elif internet_data_ready %}
+            <span class="fact">Festnetz: Hausposition nicht präzise genug für 100-m-Raster</span>
+          {% else %}
+            <span class="fact">Festnetz: Daten unbekannt</span>
+          {% endif %}
+          {% if starlink_fallback %}<span class="fact">Starlink-Fallback: separat prüfen</span>{% endif %}
+        {% endif %}
         {% if workplace_distance %}
           {% if workplace_distance.road_duration_minutes is not none %}
             <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
@@ -155,6 +172,38 @@
       {% elif selected_country == 'DE' %}
         <div class="semantics">Keine belastbare Entfernung zu einer ausdrücklich bestätigten G-BA-Notfallstufe 1–3 verfügbar. WohnWerk erfindet dafür keine Capability oder Koordinate.</div>
       {% endif %}
+      {% if selected_country == 'DE' %}
+        {% if internet_evidence %}
+          <div class="semantics">
+            Festnetz-Evidenz: <strong>{{ internet_attribution }}</strong>, Datenstand {{ internet_evidence.dataset_date.strftime('%d.%m.%Y') }},
+            Raster {{ internet_evidence.raster_id }} (100×100 m).
+            {% if internet_evidence.max_grid_mbps is not none and internet_evidence.max_grid_coverage_pct is not none %}
+              Die höchste im Raster gemeldete Downloadklasse ist {{ internet_evidence.max_grid_mbps }} Mbit/s für {{ '%.1f'|format(internet_evidence.max_grid_coverage_pct) }}% der Privathaushalte.
+            {% endif %}
+            {% if internet_evidence.max_full_coverage_mbps is not none %}
+              Bis {{ internet_evidence.max_full_coverage_mbps }} Mbit/s werden für 100% der Rasterhaushalte gemeldet.
+            {% endif %}
+            {% if internet_evidence.technology_labels_de %}
+              Technologien: {{ internet_evidence.technology_labels_de|join(' · ') }}.
+            {% endif %}
+            Das ist Raster-Evidenz und keine adressgenaue Tarif- oder Anschlusszusage; ein Preis wird ohne providerseitigen Beleg nicht angegeben.
+            <a href="{{ internet_source_url }}" target="_blank" rel="noopener noreferrer">Quelle</a>
+          </div>
+        {% elif internet_data_ready %}
+          <div class="semantics">
+            Der offizielle Breitbandatlas-Snapshot ist geladen, aber WohnWerk ordnet diesem Haus bewusst keine 100-m-Rasterzelle zu:
+            die gespeicherte Hausposition ist {{ house.property.location_method or 'in ihrer Genauigkeit unbekannt' }} und damit nicht belastbar hausgenau.
+          </div>
+        {% endif %}
+        {% if starlink_fallback %}
+          <div class="semantics">
+            Starlink wird nur als expliziter Fallback zur separaten Adressprüfung angeboten; WohnWerk behauptet daraus weder Verfügbarkeit noch Preis.
+            <a href="{{ starlink_url }}" target="_blank" rel="noopener noreferrer">Starlink Residential prüfen</a>
+            {% if minimum_fixed_internet_mbps is not none %} · konfigurierte Mindestanforderung: {{ minimum_fixed_internet_mbps }} Mbit/s{% endif %}
+          </div>
+        {% endif %}
+      {% endif %}
+
       {% if house.sources %}
         <div class="sources">
           <strong>Originalanzeigen</strong><br>
