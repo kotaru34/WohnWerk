@@ -102,3 +102,81 @@ def test_austria_does_not_apply_german_plz_blacklist() -> None:
     )
 
     assert all(reason.code != "plz_blacklist" for reason in reasons)
+
+
+
+def test_hospital_distance_can_join_existing_rejection_reasons() -> None:
+    row = Property(
+        id=9,
+        title="Haus",
+        postal_code="10115",
+        price_eur=Decimal(120000),
+    )
+
+    reasons = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        hospital_distance_km=42.5,
+        hospital_max_distance_km=Decimal("30"),
+        hospital_fail_closed=False,
+    )
+
+    assert [reason.code for reason in reasons] == ["hospital_distance"]
+    assert reasons[0].label_de == "Notfallversorgung weiter als 30 km"
+
+
+def test_missing_hospital_distance_is_fail_open_by_default() -> None:
+    row = Property(
+        id=10,
+        title="Haus",
+        postal_code="10115",
+        price_eur=Decimal(120000),
+    )
+
+    reasons = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        hospital_distance_km=None,
+        hospital_max_distance_km=Decimal("30"),
+        hospital_fail_closed=False,
+    )
+
+    assert all(reason.code != "hospital_distance_unknown" for reason in reasons)
+
+
+def test_missing_hospital_distance_can_be_explicitly_fail_closed() -> None:
+    row = Property(
+        id=11,
+        title="Haus",
+        postal_code="10115",
+        price_eur=Decimal(120000),
+    )
+
+    reasons = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        hospital_distance_km=None,
+        hospital_max_distance_km=Decimal("30"),
+        hospital_fail_closed=True,
+    )
+
+    assert [reason.code for reason in reasons] == ["hospital_distance_unknown"]
+
+
+def test_hospital_policy_is_local_and_absent_from_austria_predicate() -> None:
+    accepted = select(Property.id).where(
+        accepted_property_condition(
+            country_code="AT",
+            hospital_max_distance_km=Decimal("30"),
+            hospital_fail_closed=True,
+        )
+    )
+    compiled = accepted.compile(dialect=postgresql.dialect())
+
+    assert "hospital_facilities" not in str(compiled)
