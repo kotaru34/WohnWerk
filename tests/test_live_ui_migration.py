@@ -5,4 +5,4 @@ from alembic.script import ScriptDirectory
 def test_database_migrations_have_one_expected_alembic_head() -> None:
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert scripts.get_heads() == ["0015_hospital_access"]
+    assert scripts.get_heads() == ["0016_internet_access"]
