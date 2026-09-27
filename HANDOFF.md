@@ -33,14 +33,14 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.5**.
+Production is now deployed on **v0.4.6**.
 
-- deployed application version: **v0.4.5**
-- deployed Git SHA: `e1b42a425e469a291298196f25b54a328341da86`
-- previous production Git SHA / rollback point: `4472cb160f7f599e5c956d22b03bbcf299c4e556`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.4-pre-v0.4.5`
-- previous production application version: **v0.4.4**
-- database migration: `0015_hospital_access`
+- deployed application version: **v0.4.6**
+- deployed Git SHA: `7e636b6edd80a1db0e56c160fc383c5630121008`
+- previous production Git SHA / rollback point: `e1b42a425e469a291298196f25b54a328341da86`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.5-pre-v0.4.6`
+- previous production application version: **v0.4.5**
+- database migration: `0016_internet_access`
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
 - database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
@@ -53,7 +53,7 @@ Production is now deployed on **v0.4.5**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.5 is deployed. Hospital-access enrichment is now in production with source-backed facility identity/type/capability and defensible distance semantics. The next implementation focus is **Internet enrichment**.
+v0.4.6 is deployed. The official DE fixed-Internet evidence layer is now in production with explicit location-provenance safeguards. Current DE properties still resolve only to PLZ centroids, so property-level 100 m evidence intentionally remains unknown instead of fabricating precision. The current implementation focus is the house-settings UI consolidation; deeper Internet evidence/address extraction and prediction design follows separately.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -203,6 +203,44 @@ Production deployment proof:
 - temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action;
 - the external Immowelt challenge handler was not modified or invoked;
 - Run #990 was not resumed.
+
+### v0.4.6 production proof
+
+The deployed v0.4.6 release SHA is
+`7e636b6edd80a1db0e56c160fc383c5630121008`.
+
+GitHub Actions exact-release CI #36336089862 passed on that exact atomic release commit:
+- Install: passed;
+- Ruff: passed;
+- Compile: passed;
+- Tests: **629 passed, 2 warnings**.
+
+Production deployment proof:
+- pre-deploy production SHA was exactly `e1b42a425e469a291298196f25b54a328341da86` and the tree was clean;
+- rollback ref `refs/wohnwerk/rollback-v0.4.5-pre-v0.4.6` points to that v0.4.5 SHA;
+- an isolated exact-release production-host validation venv passed Ruff, compileall and full pytest: **629 passed, 2 warnings**;
+- pre-migration DB revision was `0015_hospital_access`;
+- migration `0015_hospital_access -> 0016_internet_access` completed successfully under PostgreSQL transactional DDL;
+- the official Bundesnetzagentur Breitbandatlas / Gigabit-Grundbuch snapshot dated **2025-12-31** was ZIP-integrity-tested and GeoPackage-validated before import;
+- source GeoPackage row count: **3,590,703** 100×100 m grid cells;
+- post-import readback recorded `coverage_status=ok`, `dataset_date=2025-12-31`, `source_row_count=3590703`;
+- property Internet evidence rows remain **0 by design** because current DE property coordinates are PLZ centroids and are not defensible for 100 m house-level matching;
+- post-migration DB revision is `0016_internet_access (head)`;
+- local `/health`: `status=ok`, `version=0.4.6`;
+- live checkout SHA exactly `7e636b6edd80a1db0e56c160fc383c5630121008`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer` and Caddy all active after cleanup;
+- temporary validation/staging artifacts were removed;
+- persistent host notes were updated in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`;
+- temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action.
+
+Internet-data authority semantics in production:
+- source evidence is DE-only in this release; Austria broadband behavior was not changed;
+- Broadbandatlas percentages describe household coverage in a 100×100 m cell, not exact-address service;
+- NULL coverage is not treated as 0;
+- a PLZ centroid never qualifies for property-to-grid matching;
+- Internet price/provider remain unknown unless a separate source backs them;
+- Starlink remains an explicit fallback concept and is not mixed into terrestrial coverage evidence.
 
 Hospital-data authority semantics in production:
 - Bundes-Klinik-Atlas is the DE hospital source for this release;
@@ -384,13 +422,16 @@ The operator confirmed these requirements on 2026-09-26. They are product target
 - Missing hospital evidence remains unknown/fail-open unless the operator explicitly configures fail-closed behavior.
 - Dataset authority requires `coverage_status=ok`; incomplete/failed imports do not gain rejection authority.
 
-### Internet
+### Internet — v0.4.6 deployed baseline
 
-- Determine best available fixed Internet access as precisely as available house location/address permits.
-- Show maximum defensible speed.
-- Show price where source-backed.
-- Never invent availability from coarse geography.
-- Expose Starlink as an explicit fallback when terrestrial service is unavailable, insufficient or cannot be established under the configured rule.
+- Official DE fixed-network evidence comes from Breitbandatlas | Gigabit-Grundbuch snapshot 2025-12-31.
+- Dataset authority is explicit and currently `coverage_status=ok`.
+- A property is matched to a 100×100 m grid cell only when its coordinate provenance/precision is defensible for that grid.
+- Current portal ingestion supplies PLZ-centroid coordinates, so current property-level fixed-Internet evidence correctly remains unknown rather than selecting a nearby cell.
+- Public grid values remain percentages of covered households, not Boolean exact-house availability.
+- Price/provider stay unknown without a separate source.
+- Starlink is a separate fallback concept, never terrestrial coverage.
+- Next Internet work may add source-backed exact-address/coordinate extraction and description/portal Internet evidence; any predictive model must be presented as an estimate distinct from source evidence.
 
 ### Property quality
 
@@ -452,10 +493,12 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 3. **DONE:** v0.4.3 local suitability/rejection layer deployed and production-verified at `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`, DB head `0013_candidate_house_policy`.
 4. **DONE:** v0.4.4 workplace configuration/distance deployed and production-verified at `4472cb160f7f599e5c956d22b03bbcf299c4e556`, DB head `0014_candidate_workplace`.
 5. **DONE:** v0.4.5 hospital-access enrichment deployed and production-verified at `e1b42a425e469a291298196f25b54a328341da86`, DB head `0015_hospital_access`, Bundes-Klinik-Atlas snapshot 2026-09-01 with 1,572 facilities and `coverage_status=ok`.
-6. **CURRENT:** add Internet enrichment.
-7. Then improve dedupe and heating-type extraction/ranking.
-8. Keep Germany jobs paused until an explicit operator decision reopens them.
-9. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
+6. **DONE:** v0.4.6 DE Internet enrichment deployed and production-verified at `7e636b6edd80a1db0e56c160fc383c5630121008`, DB head `0016_internet_access`, Breitbandatlas snapshot 2025-12-31 with 3,590,703 grid cells and `coverage_status=ok`.
+7. **CURRENT:** consolidate the four house policy/workplace controls into one settings modal with one save action and fix the checkbox/text form layout.
+8. Then design/implement deeper Internet evidence: exact address/coordinate extraction where source-backed, listing-description/portal Internet fields, and optionally a clearly labelled predictive estimate layer.
+9. Then improve dedupe and heating-type extraction/ranking.
+10. Keep Germany jobs paused until an explicit operator decision reopens them.
+11. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
 
 ## Fresh-context recovery order
 
