@@ -31,10 +31,12 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
+from app.internet_access import STARLINK_URL, load_internet_assessments
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.house_suitability import (
     active_de_plz_blacklist,
     active_hospital_distance_policy,
+    active_internet_policy,
     format_de_plz_blacklist,
     load_house_suitability_policy,
     load_property_rejection_reasons,
@@ -253,6 +255,7 @@ def houses_page(
     hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(
         suitability_policy
     )
+    internet_min_download_mbps = active_internet_policy(suitability_policy)
 
     if ansicht == "abgelehnt":
         conditions = [
@@ -308,6 +311,12 @@ def houses_page(
     emergency_access = load_confirmed_emergency_access(
         db,
         property_ids,
+        country_code=country_code,
+    )
+    internet_assessments = load_internet_assessments(
+        db,
+        property_ids,
+        minimum_download_mbps=internet_min_download_mbps,
         country_code=country_code,
     )
     hospital_data_ready = (
@@ -408,6 +417,9 @@ def houses_page(
             "hospital_data_ready": hospital_data_ready,
             "hospital_max_distance_km": suitability_policy.max_hospital_distance_km,
             "hospital_fail_closed": suitability_policy.hospital_distance_fail_closed,
+            "internet_assessments": internet_assessments,
+            "internet_min_download_mbps": internet_min_download_mbps,
+            "starlink_url": STARLINK_URL,
             "system_price_min": system_price_min,
             "system_price_max": system_price_max,
             "eur_label": _eur_label,
