@@ -9,7 +9,6 @@ from app.hospital_access import (
     parse_bundes_klinik_atlas_xml,
 )
 
-
 SAMPLE_XML = b'''<?xml version="1.0" encoding="UTF-8"?>
 <Standorte>
   <Standort>
