@@ -180,6 +180,27 @@
   </section>
   {% endif %}
 
+  {% if selected_country == 'DE' %}
+  <section class="policy-box">
+    <h2>Festnetz / Internet</h2>
+    <div class="subtle">Quelle: Breitbandatlas | Gigabit-Grundbuch, 100×100-m-Raster. Die Prozentwerte beschreiben den Anteil versorgter Privathaushalte im Raster und sind keine adressgenaue Tarifzusage. Ein PLZ-Mittelpunkt reicht bewusst nicht für die Zuordnung eines Hauses.</div>
+    <form method="post" action="/houses/internet-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_to" value="/houses?country=DE&ansicht={{ selected_view }}">
+      <div class="policy-row">
+        <label>Mindest-Festnetz (Mbit/s)
+          <input type="number" min="1" max="1000" step="1" name="minimum_fixed_internet_mbps" value="{{ minimum_fixed_internet_mbps if minimum_fixed_internet_mbps is not none else '' }}" placeholder="leer = nur anzeigen">
+        </label>
+        <button type="submit">Internet-Präferenz speichern</button>
+      </div>
+    </form>
+    <div class="resolved">
+      {% if internet_data_ready %}Offizieller Festnetz-Raster-Snapshot geladen.{% else %}Festnetzdaten noch nicht vollständig geladen.{% endif %}
+      Starlink bleibt ein expliziter Fallback zur separaten Adressprüfung; WohnWerk erfindet weder Verfügbarkeit noch Preis.
+    </div>
+  </section>
+  {% endif %}
+
   <section class="policy-box">
     <h2>Arbeitsplatz</h2>
     <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
@@ -283,6 +304,26 @@
                 <span class="fact">Notfall {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie · Stufe {{ emergency.emergency_level }}</span>
               {% elif hospital_data_ready %}
                 <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
+              {% endif %}
+            {% endif %}
+            {% if selected_country == 'DE' %}
+              {% set internet = internet_evidence.get(house.id) if internet_evidence is defined else none %}
+              {% if internet %}
+                {% if internet.max_grid_mbps is not none %}
+                  <span class="fact">Festnetz-Raster bis {{ internet.max_grid_mbps }} Mbit/s{% if internet.max_grid_coverage_pct is not none %} · {{ '%.0f'|format(internet.max_grid_coverage_pct) }}% Haushalte{% endif %}</span>
+                {% else %}
+                  <span class="fact">Festnetz-Raster: keine gemeldete Versorgung</span>
+                {% endif %}
+                {% if internet.max_full_coverage_mbps is not none %}
+                  <span class="fact">100% Rasterhaushalte bis {{ internet.max_full_coverage_mbps }} Mbit/s</span>
+                {% endif %}
+              {% elif internet_data_ready %}
+                <span class="fact">Festnetz: keine hausgenaue 100-m-Evidenz{% if house.location_method %} · Position {{ house.location_method }}{% endif %}</span>
+              {% else %}
+                <span class="fact">Festnetz: Daten unbekannt</span>
+              {% endif %}
+              {% if starlink_fallback.get(house.id) if starlink_fallback is defined else false %}
+                <span class="fact">Starlink-Fallback: separat prüfen</span>
               {% endif %}
             {% endif %}
             {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
