@@ -5,12 +5,28 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, and_, false, func, or_, select
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    and_,
+    false,
+    func,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.country_scope import DEFAULT_COUNTRY, selected_country
 from app.database import Base
+from app.hospital_access import (
+    hospital_distance_rejection_condition,
+    load_nearest_hospital_access,
+)
 from app.models import ListingStatus, Property, PropertyListing, Source
 from app.property_acquisition import property_budget_limits
 from app.property_visibility import product_visible_property_condition
@@ -47,6 +63,8 @@ class CandidateHousePolicy(Base):
         nullable=False,
     )
     de_plz_blacklist: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
+    hospital_max_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    hospital_fail_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -58,6 +76,8 @@ class CandidateHousePolicy(Base):
 @dataclass(frozen=True, slots=True)
 class HouseSuitabilityPolicy:
     de_plz_blacklist: tuple[str, ...] = ()
+    hospital_max_distance_km: Decimal | None = None
+    hospital_fail_closed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +116,9 @@ def load_house_suitability_policy(session: Session, profile_id: int) -> HouseSui
     if row is None:
         return HouseSuitabilityPolicy()
     return HouseSuitabilityPolicy(
-        de_plz_blacklist=tuple(str(value).casefold() for value in (row.de_plz_blacklist or []))
+        de_plz_blacklist=tuple(str(value).casefold() for value in (row.de_plz_blacklist or [])),
+        hospital_max_distance_km=row.hospital_max_distance_km,
+        hospital_fail_closed=bool(row.hospital_fail_closed),
     )
 
 
@@ -116,6 +138,32 @@ def save_de_plz_blacklist(
         row.de_plz_blacklist = list(masks)
     session.commit()
     return HouseSuitabilityPolicy(de_plz_blacklist=masks)
+
+
+def save_hospital_policy(
+    session: Session,
+    profile_id: int,
+    *,
+    max_distance_km: Decimal | None,
+    fail_closed: bool,
+) -> HouseSuitabilityPolicy:
+    if max_distance_km is not None and not Decimal(1) <= max_distance_km <= Decimal(250):
+        raise ValueError("Maximale Krankenhausentfernung muss zwischen 1 und 250 km liegen.")
+
+    row = session.scalar(
+        select(CandidateHousePolicy).where(CandidateHousePolicy.profile_id == profile_id)
+    )
+    if row is None:
+        row = CandidateHousePolicy(
+            profile_id=profile_id,
+            de_plz_blacklist=[],
+        )
+        session.add(row)
+
+    row.hospital_max_distance_km = max_distance_km
+    row.hospital_fail_closed = bool(fail_closed and max_distance_km is not None)
+    session.commit()
+    return load_house_suitability_policy(session, profile_id)
 
 
 def active_de_plz_blacklist(policy: HouseSuitabilityPolicy) -> tuple[str, ...]:
@@ -143,24 +191,79 @@ def plz_blacklist_property_condition(masks: tuple[str, ...]):
     return and_(Property.postal_code.is_not(None), or_(*comparisons))
 
 
-def accepted_property_condition(masks: tuple[str, ...] = ()):
+def accepted_property_condition(
+    masks: tuple[str, ...] = (),
+    *,
+    country_code: str | None = None,
+    hospital_max_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
+):
     source_visible = product_visible_property_condition()
-    if not masks:
-        return source_visible
-    return and_(source_visible, ~plz_blacklist_property_condition(masks))
+    conditions = [source_visible]
+    if masks:
+        conditions.append(~plz_blacklist_property_condition(masks))
+
+    country = country_code or selected_country() or DEFAULT_COUNTRY
+    if hospital_max_distance_km is not None:
+        conditions.append(
+            ~hospital_distance_rejection_condition(
+                hospital_max_distance_km,
+                fail_closed=hospital_fail_closed,
+                country_code=country,
+            )
+        )
+    return and_(*conditions)
 
 
-def rejected_property_condition(masks: tuple[str, ...] = ()):
-    source_rejected = ~product_visible_property_condition()
-    if not masks:
-        return source_rejected
-    return or_(source_rejected, plz_blacklist_property_condition(masks))
+def rejected_property_condition(
+    masks: tuple[str, ...] = (),
+    *,
+    country_code: str | None = None,
+    hospital_max_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
+):
+    conditions = [~product_visible_property_condition()]
+    if masks:
+        conditions.append(plz_blacklist_property_condition(masks))
+
+    country = country_code or selected_country() or DEFAULT_COUNTRY
+    if hospital_max_distance_km is not None:
+        conditions.append(
+            hospital_distance_rejection_condition(
+                hospital_max_distance_km,
+                fail_closed=hospital_fail_closed,
+                country_code=country,
+            )
+        )
+    return or_(*conditions)
 
 
-def _reason(code: str, *, postal_code: str | None = None) -> HouseRejectionReason:
+def _distance_label(value: Decimal | None) -> str:
+    if value is None:
+        return "?"
+    text = format(value.normalize(), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _reason(
+    code: str,
+    *,
+    postal_code: str | None = None,
+    hospital_max_distance_km: Decimal | None = None,
+) -> HouseRejectionReason:
     if code == "plz_blacklist":
         location = f" {postal_code}" if postal_code else ""
         return HouseRejectionReason(code=code, label_de=f"PLZ{location} auf Sperrliste")
+    if code == "hospital_distance":
+        return HouseRejectionReason(
+            code=code,
+            label_de=(
+                "Notfallversorgung weiter als "
+                f"{_distance_label(hospital_max_distance_km)} km"
+            ),
+        )
+    if code == "hospital_distance_unknown":
+        return HouseRejectionReason(code=code, label_de="Notfallversorgung unbekannt")
     return HouseRejectionReason(
         code=code,
         label_de=_SOURCE_REASON_LABELS.get(code, "Lokale Auswahlregel"),
@@ -173,6 +276,9 @@ def rejection_reasons_for_property(
     country_code: str,
     plz_blacklist: tuple[str, ...],
     source_payloads: tuple[dict, ...] = (),
+    hospital_distance_km: float | None = None,
+    hospital_max_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
 ) -> tuple[HouseRejectionReason, ...]:
     """Derive explainable reasons without changing canonical/source lifecycle state."""
     codes: list[str] = []
@@ -206,19 +312,36 @@ def rejection_reasons_for_property(
     ):
         codes.append("plz_blacklist")
 
+    if country_code == "DE" and hospital_max_distance_km is not None:
+        if hospital_distance_km is None:
+            if hospital_fail_closed:
+                codes.append("hospital_distance_unknown")
+        elif hospital_distance_km > float(hospital_max_distance_km):
+            codes.append("hospital_distance")
+
     unique: list[str] = []
     for code in codes:
         if code not in unique:
             unique.append(code)
     if not unique:
         unique.append("source_policy")
-    return tuple(_reason(code, postal_code=property_row.postal_code) for code in unique)
+    return tuple(
+        _reason(
+            code,
+            postal_code=property_row.postal_code,
+            hospital_max_distance_km=hospital_max_distance_km,
+        )
+        for code in unique
+    )
 
 
 def load_property_rejection_reasons(
     session: Session,
     properties: list[Property],
     plz_blacklist: tuple[str, ...],
+    *,
+    hospital_max_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
 ) -> dict[int, tuple[HouseRejectionReason, ...]]:
     if not properties:
         return {}
@@ -241,12 +364,26 @@ def load_property_rejection_reasons(
         if isinstance(payload, dict):
             payloads[int(property_id)].append(payload)
 
+    hospital_distances: dict[int, float] = {}
+    if country_code == "DE" and hospital_max_distance_km is not None:
+        hospital_distances = {
+            property_id: access.air_distance_km
+            for property_id, access in load_nearest_hospital_access(
+                session,
+                ids,
+                min_emergency_level=1,
+            ).items()
+        }
+
     return {
         row.id: rejection_reasons_for_property(
             row,
             country_code=country_code,
             plz_blacklist=plz_blacklist,
             source_payloads=tuple(payloads.get(row.id, ())),
+            hospital_distance_km=hospital_distances.get(row.id),
+            hospital_max_distance_km=hospital_max_distance_km,
+            hospital_fail_closed=hospital_fail_closed,
         )
         for row in properties
     }
