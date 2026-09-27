@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from collections.abc import BinaryIO, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 from zipfile import ZipFile
-import xml.etree.ElementTree as ET
 
 import httpx
 from geoalchemy2 import Geography
