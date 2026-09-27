@@ -49,7 +49,11 @@ def test_active_product_house_route_forwards_radius_to_filter_pipeline(monkeypat
         "active_hospital_distance_policy",
         lambda _policy: (None, False),
     )
-    monkeypatch.setattr(product_ui, "_product_property_conditions", lambda *_args: [])
+    monkeypatch.setattr(
+        product_ui,
+        "_product_property_conditions",
+        lambda *_args, **_kwargs: [],
+    )
     monkeypatch.setattr(product_ui, "property_curation_condition", lambda *_args: True)
 
     def fake_resolve_house_filters(_request, **kwargs):
