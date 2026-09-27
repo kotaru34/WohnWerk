@@ -512,7 +512,9 @@ def store_breitbandatlas_evidence(
             "availability_state": "available" if maximum is not None else "unknown",
             "max_download_mbps": maximum,
             "technology": "all",
-            "coverage_percent": Decimal(100) if maximum is not None else None,
+            "coverage_percent": (
+                cell.coverage_all.get(maximum) if maximum is not None else None
+            ),
             "monthly_price_eur": None,
             "source_url": BBA_SOURCE_URL,
             "dataset_date": BBA_DATASET_DATE,
