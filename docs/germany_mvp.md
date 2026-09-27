@@ -220,6 +220,22 @@ GeoNames supplies approximate DE postal centroids. Target production bootstrap o
 
 Austria name/PLZ resolution is explicitly source-scoped so GeoNames DE rows cannot contaminate AT locality resolution.
 
+## v0.4.5 hospital-access layer
+
+The v0.4.5 candidate uses the official Bundes-Klinik-Atlas open-data export for German hospital access:
+
+- hospital sites are imported as a complete dated snapshot with source URL and dataset date;
+- a snapshot receives `coverage_status=ok` only after the complete export parses and publishes successfully;
+- source-backed site identity, address, exact supplied coordinates and operator type are preserved;
+- emergency capability is read only from explicit `StandortNotfallversorgung` fields;
+- G-BA emergency levels 1, 2 and 3 are displayed as basis, extended and comprehensive emergency care respectively;
+- explicit source fields for severe-injury care, paediatric emergency level, specialist care, Stroke Unit and Chest Pain Unit are displayed without inferring capability from a hospital name;
+- nearest emergency access uses PostGIS Luftlinie to a site with an explicitly agreed emergency level 1–3;
+- a profile-scoped maximum hospital distance can place a house in `Abgelehnt` without changing source lifecycle/provenance;
+- missing dataset, house coordinates or confirmed emergency capability remain unknown and fail open by default;
+- the operator may explicitly enable fail-closed handling for unknown hospital access;
+- the Bundes-Klinik-Atlas source is Germany-only; Austria behavior is unchanged.
+
 ## Germany jobs
 
 Germany job acquisition is **fully paused by operator decision as of 2026-09-26**.

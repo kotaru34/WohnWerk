@@ -26,9 +26,15 @@ from app.catalog import (
 )
 from app.catalog import templates as catalog_templates
 from app.country_scope import DEFAULT_COUNTRY, selected_country
+from app.hospital_access import (
+    hospital_dataset_ready,
+    load_confirmed_emergency_access,
+    load_nearest_hospital_access,
+)
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.house_suitability import (
     active_de_plz_blacklist,
+    active_hospital_distance_policy,
     format_de_plz_blacklist,
     load_house_suitability_policy,
     load_property_rejection_reasons,
@@ -244,17 +250,28 @@ def houses_page(
     country_code = selected_country() or DEFAULT_COUNTRY
     suitability_policy = load_house_suitability_policy(db, profile.id)
     plz_blacklist = active_de_plz_blacklist(suitability_policy)
+    hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(
+        suitability_policy
+    )
 
     if ansicht == "abgelehnt":
         conditions = [
             Property.status == ListingStatus.ACTIVE,
-            rejected_property_condition(plz_blacklist),
+            rejected_property_condition(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             *_property_filter_conditions(filters, radius_filter=radius_filter),
         ]
     else:
         curation_view = "alle" if ansicht == "neu" else ansicht
         conditions = [
-            *_product_property_conditions(plz_blacklist),
+            *_product_property_conditions(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             property_curation_condition(profile.id, curation_view),
             *_property_filter_conditions(filters, radius_filter=radius_filter),
         ]
@@ -277,12 +294,30 @@ def houses_page(
     )
     states, new_ids, image_urls = _property_ui_state(db, profile, rows)
     workplace = load_candidate_workplace(db, profile.id)
+    property_ids = {row.id for row in rows}
     workplace_distances = load_workplace_distances_for_ui(
         db,
         profile.id,
-        {row.id for row in rows},
+        property_ids,
     )
-    accepted_conditions = _product_property_conditions(plz_blacklist)
+    nearest_hospitals = load_nearest_hospital_access(
+        db,
+        property_ids,
+        country_code=country_code,
+    )
+    emergency_access = load_confirmed_emergency_access(
+        db,
+        property_ids,
+        country_code=country_code,
+    )
+    hospital_data_ready = (
+        hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    accepted_conditions = _product_property_conditions(
+        plz_blacklist,
+        max_hospital_distance_km=hospital_max_distance_km,
+        hospital_fail_closed=hospital_fail_closed,
+    )
     new_conditions = [
         *accepted_conditions,
         property_curation_condition(profile.id, "alle"),
@@ -320,14 +355,24 @@ def houses_page(
                 .select_from(Property)
                 .where(
                     Property.status == ListingStatus.ACTIVE,
-                    rejected_property_condition(plz_blacklist),
+                    rejected_property_condition(
+                        plz_blacklist,
+                        max_hospital_distance_km=hospital_max_distance_km,
+                        hospital_fail_closed=hospital_fail_closed,
+                    ),
                 )
             )
             or 0
         ),
     }
     rejection_reasons = (
-        load_property_rejection_reasons(db, rows, plz_blacklist)
+        load_property_rejection_reasons(
+            db,
+            rows,
+            plz_blacklist,
+            max_hospital_distance_km=hospital_max_distance_km,
+            hospital_fail_closed=hospital_fail_closed,
+        )
         if ansicht == "abgelehnt"
         else {}
     )
@@ -358,6 +403,11 @@ def houses_page(
             "rejection_reasons": rejection_reasons,
             "workplace": workplace,
             "workplace_distances": workplace_distances,
+            "nearest_hospitals": nearest_hospitals,
+            "emergency_access": emergency_access,
+            "hospital_data_ready": hospital_data_ready,
+            "hospital_max_distance_km": suitability_policy.max_hospital_distance_km,
+            "hospital_fail_closed": suitability_policy.hospital_distance_fail_closed,
             "system_price_min": system_price_min,
             "system_price_max": system_price_max,
             "eur_label": _eur_label,

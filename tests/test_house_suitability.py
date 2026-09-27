@@ -102,3 +102,102 @@ def test_austria_does_not_apply_german_plz_blacklist() -> None:
     )
 
     assert all(reason.code != "plz_blacklist" for reason in reasons)
+
+
+def test_hospital_distance_policy_uses_confirmed_emergency_and_complete_dataset() -> None:
+    accepted = select(Property.id).where(
+        accepted_property_condition(
+            max_hospital_distance_km=Decimal(30),
+            hospital_fail_closed=False,
+        )
+    )
+    rejected = select(Property.id).where(
+        rejected_property_condition(
+            max_hospital_distance_km=Decimal(30),
+            hospital_fail_closed=False,
+        )
+    )
+    accepted_sql = str(accepted.compile(dialect=postgresql.dialect()))
+    rejected_sql = str(rejected.compile(dialect=postgresql.dialect()))
+
+    for sql in (accepted_sql, rejected_sql):
+        assert "hospital_dataset_states" in sql
+        assert "hospital_facilities" in sql
+        assert "ST_DWithin" in sql
+        assert "coverage_status" in sql
+        assert "emergency_level" in sql
+        assert "emergency_level_not_agreed" in sql
+
+
+def test_hospital_rejection_reason_is_explainable_without_inventing_capability() -> None:
+    row = Property(
+        id=9,
+        title="Haus",
+        postal_code="10115",
+        price_eur=Decimal(120000),
+    )
+
+    reasons = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        max_hospital_distance_km=Decimal(30),
+        hospital_distance_km=42.25,
+    )
+
+    assert [reason.code for reason in reasons] == ["hospital_too_far"]
+    assert "42.2 km" in reasons[0].label_de
+    assert "30 km" in reasons[0].label_de
+
+
+def test_hospital_unknown_is_fail_open_unless_explicitly_requested() -> None:
+    row = Property(
+        id=10,
+        title="Haus",
+        postal_code="10115",
+        price_eur=Decimal(120000),
+    )
+
+    fail_open = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        max_hospital_distance_km=Decimal(30),
+        hospital_fail_closed=False,
+        hospital_distance_km=None,
+    )
+    fail_closed = rejection_reasons_for_property(
+        row,
+        country_code="DE",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        max_hospital_distance_km=Decimal(30),
+        hospital_fail_closed=True,
+        hospital_distance_km=None,
+    )
+
+    assert all(reason.code != "hospital_unknown" for reason in fail_open)
+    assert [reason.code for reason in fail_closed] == ["hospital_unknown"]
+
+
+def test_austria_rejection_explanations_ignore_german_hospital_policy() -> None:
+    row = Property(
+        id=11,
+        title="Haus",
+        postal_code="5020",
+        price_eur=Decimal(120000),
+    )
+
+    reasons = rejection_reasons_for_property(
+        row,
+        country_code="AT",
+        plz_blacklist=(),
+        source_payloads=({"product_visible": True},),
+        max_hospital_distance_km=Decimal(1),
+        hospital_fail_closed=True,
+        hospital_distance_km=None,
+    )
+
+    assert all(not reason.code.startswith("hospital_") for reason in reasons)

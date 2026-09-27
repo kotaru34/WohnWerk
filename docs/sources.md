@@ -218,3 +218,21 @@ normal browser automation where appropriate
 ```
 
 External request concurrency remains conservative. Extra local CPU is spent on parsing, normalization, deduplication and reconciliation rather than increasing request pressure.
+
+
+## German hospital access
+
+WohnWerk uses the official Bundes-Klinik-Atlas Open Data export as the authoritative
+Germany hospital-access dataset. The imported TVERZ snapshot supplies hospital-site identity,
+address, coordinates and explicit emergency-care fields. WohnWerk does not infer emergency
+capability from a generic hospital name or category.
+
+The current v0.4.5 importer is pinned to the 2026-09-01 export and records the dataset date and
+source URL. Publication is snapshot-atomic: stale rows are reconciled only after the complete
+archive has parsed successfully, and only a complete published snapshot receives
+`coverage_status=ok`.
+
+For suitability, a usable emergency site must have an explicitly agreed Notfallstufe 1, 2 or 3.
+Additional fields such as Schwerverletztenversorgung, Kinder-Notfallstufe, Spezialversorgung,
+Stroke Unit and Chest Pain Unit remain separate source-backed facts. Missing capability stays
+unknown.

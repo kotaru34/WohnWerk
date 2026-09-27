@@ -103,6 +103,18 @@
         {% elif workplace %}
           <span class="fact">Arbeitsplatz: Entfernung unbekannt</span>
         {% endif %}
+        {% if nearest_hospital %}
+          <span class="fact">Klinik {{ '%.1f'|format(nearest_hospital.air_distance_km) }} km Luftlinie</span>
+        {% elif selected_country == 'DE' and hospital_data_ready %}
+          <span class="fact">Klinik: Entfernung unbekannt</span>
+        {% elif selected_country == 'DE' %}
+          <span class="fact">Klinik: Daten unbekannt</span>
+        {% endif %}
+        {% if emergency_access %}
+          <span class="fact">Notfall {{ '%.1f'|format(emergency_access.air_distance_km) }} km Luftlinie · Stufe {{ emergency_access.emergency_level }}</span>
+        {% elif selected_country == 'DE' and hospital_data_ready %}
+          <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
+        {% endif %}
       </div>
       <div class="actions">
         <form method="post" action="/houses/{{ house.property.id }}/favorite">
@@ -120,6 +132,28 @@
       </div>
       {% if workplace %}
         <div class="semantics">Arbeitsplatz: {{ workplace.input_text }}{% if workplace.location is none %} · nicht belastbar aufgelöst{% elif workplace.resolution_method %} · {{ workplace.resolution_method }}{% endif %}. Die Entfernung ist nur Entscheidungshilfe und kein Ausschlusskriterium.</div>
+      {% endif %}
+      {% if nearest_hospital %}
+        <div class="semantics">
+          Nächster offizieller Klinikstandort:
+          <strong>{{ nearest_hospital.name }}</strong> · {{ nearest_hospital.facility_type_label_de }}
+          {% if nearest_hospital.carrier_type %} · Träger {{ nearest_hospital.carrier_type }}{% endif %}
+          {% if nearest_hospital.postal_code or nearest_hospital.city %} · {{ nearest_hospital.postal_code or '' }} {{ nearest_hospital.city or '' }}{% endif %}.
+          Quelle: Bundes-Klinik-Atlas; Entfernung als Luftlinie.
+          {% if nearest_hospital.facility_url %}<a href="{{ nearest_hospital.facility_url }}" target="_blank" rel="noopener noreferrer">Klinik-Webseite</a>{% endif %}
+        </div>
+      {% endif %}
+      {% if emergency_access %}
+        <div class="semantics">
+          Nächste ausdrücklich bestätigte Notfallversorgung:
+          <strong>{{ emergency_access.name }}</strong>
+          · {{ emergency_access.capability_labels_de|join(' · ') }}.
+          Entfernung {{ '%.1f'|format(emergency_access.air_distance_km) }} km Luftlinie.
+          Capability wird ausschließlich aus den Feldern des Bundes-Klinik-Atlas übernommen.
+          {% if emergency_access.facility_url %}<a href="{{ emergency_access.facility_url }}" target="_blank" rel="noopener noreferrer">Klinik-Webseite</a>{% endif %}
+        </div>
+      {% elif selected_country == 'DE' %}
+        <div class="semantics">Keine belastbare Entfernung zu einer ausdrücklich bestätigten G-BA-Notfallstufe 1–3 verfügbar. WohnWerk erfindet dafür keine Capability oder Koordinate.</div>
       {% endif %}
       {% if house.sources %}
         <div class="sources">

@@ -26,8 +26,14 @@ from app.candidate_activity import (
     set_property_hidden,
 )
 from app.config import get_settings
+from app.country_scope import DEFAULT_COUNTRY, selected_country
 from app.database import get_db
 from app.geo import radius_metres
+from app.hospital_access import (
+    hospital_dataset_ready,
+    load_confirmed_emergency_access,
+    load_nearest_hospital_access,
+)
 from app.house_filters import (
     HouseFilters,
     house_filter_summary,
@@ -38,8 +44,10 @@ from app.house_filters import (
 from app.house_suitability import (
     accepted_property_condition,
     active_de_plz_blacklist,
+    active_hospital_distance_policy,
     load_house_suitability_policy,
     save_de_plz_blacklist,
+    save_hospital_distance_policy,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
@@ -282,10 +290,19 @@ def _property_filter_conditions(
     return conditions
 
 
-def _product_property_conditions(plz_blacklist: tuple[str, ...] = ()) -> list:
+def _product_property_conditions(
+    plz_blacklist: tuple[str, ...] = (),
+    *,
+    max_hospital_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
+) -> list:
     return [
         Property.status == ListingStatus.ACTIVE,
-        accepted_property_condition(plz_blacklist),
+        accepted_property_condition(
+            plz_blacklist,
+            max_hospital_distance_km=max_hospital_distance_km,
+            hospital_fail_closed=hospital_fail_closed,
+        ),
     ]
 
 
@@ -307,10 +324,12 @@ def _properties_within_radius_for_job_stmt(
         radius_filter = resolve_property_radius_filter(db, filters)
     curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
     plz_blacklist: tuple[str, ...] = ()
+    hospital_max_distance_km: Decimal | None = None
+    hospital_fail_closed = False
     if profile_id is not None and db is not None:
-        plz_blacklist = active_de_plz_blacklist(
-            load_house_suitability_policy(db, profile_id)
-        )
+        policy = load_house_suitability_policy(db, profile_id)
+        plz_blacklist = active_de_plz_blacklist(policy)
+        hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(policy)
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -347,7 +366,11 @@ def _properties_within_radius_for_job_stmt(
             ),
         )
         .where(
-            *_product_property_conditions(plz_blacklist),
+            *_product_property_conditions(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             *curation,
             Property.location.is_not(None),
             *_property_filter_conditions(filters, radius_filter=radius_filter),
@@ -668,6 +691,28 @@ def update_house_plz_blacklist(
     return RedirectResponse(_safe_return_to(return_to), status_code=303)
 
 
+@router.post("/houses/hospital-policy", include_in_schema=False)
+def update_hospital_policy(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    hospital_max_distance_km: Annotated[str, Form()] = "",
+    hospital_fail_closed: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_hospital_distance_policy(
+            db,
+            profile.id,
+            hospital_max_distance_km,
+            fail_closed=hospital_fail_closed == "1",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/workplace", include_in_schema=False)
 def update_candidate_workplace(
     _: AdminDependency,
@@ -733,13 +778,19 @@ def house_detail(
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
 ):
     profile = _profile_or_503(db)
-    plz_blacklist = active_de_plz_blacklist(
-        load_house_suitability_policy(db, profile.id)
+    suitability_policy = load_house_suitability_policy(db, profile.id)
+    plz_blacklist = active_de_plz_blacklist(suitability_policy)
+    hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(
+        suitability_policy
     )
     property_row = db.scalar(
         select(Property).where(
             Property.id == property_id,
-            *_product_property_conditions(plz_blacklist),
+            *_product_property_conditions(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             property_curation_condition(profile.id, "alle"),
         )
     )
@@ -755,6 +806,20 @@ def house_detail(
         profile.id,
         {property_id},
     ).get(property_id)
+    country_code = selected_country() or DEFAULT_COUNTRY
+    nearest_hospital = load_nearest_hospital_access(
+        db,
+        {property_id},
+        country_code=country_code,
+    ).get(property_id)
+    emergency_access = load_confirmed_emergency_access(
+        db,
+        {property_id},
+        country_code=country_code,
+    ).get(property_id)
+    hospital_data_ready = (
+        hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
     return templates.TemplateResponse(
         request=request,
         name="house_detail.html",
@@ -765,6 +830,10 @@ def house_detail(
             "jobs": jobs,
             "workplace": workplace,
             "workplace_distance": workplace_distance,
+            "nearest_hospital": nearest_hospital,
+            "emergency_access": emergency_access,
+            "hospital_data_ready": hospital_data_ready,
+            "selected_country": country_code,
             "radius_km": radius_km,
             "eur_label": _eur_label,
             "area_label": _area_label,
