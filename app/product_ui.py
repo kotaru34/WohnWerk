@@ -31,6 +31,12 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
+from app.internet_access import (
+    STARLINK_RESIDENTIAL_URL,
+    internet_dataset_ready,
+    load_property_internet_evidence,
+    starlink_fallback_recommended,
+)
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.house_suitability import (
     active_de_plz_blacklist,
@@ -313,6 +319,21 @@ def houses_page(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
+    internet_evidence = load_property_internet_evidence(
+        db,
+        property_ids,
+        country_code=country_code,
+    )
+    internet_data_ready = (
+        internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    starlink_fallback = {
+        property_id: starlink_fallback_recommended(
+            internet_evidence.get(property_id),
+            minimum_fixed_mbps=suitability_policy.minimum_fixed_internet_mbps,
+        )
+        for property_id in property_ids
+    } if country_code == "DE" else {}
     accepted_conditions = _product_property_conditions(
         plz_blacklist,
         max_hospital_distance_km=hospital_max_distance_km,
@@ -408,6 +429,11 @@ def houses_page(
             "hospital_data_ready": hospital_data_ready,
             "hospital_max_distance_km": suitability_policy.max_hospital_distance_km,
             "hospital_fail_closed": suitability_policy.hospital_distance_fail_closed,
+            "internet_evidence": internet_evidence,
+            "internet_data_ready": internet_data_ready,
+            "minimum_fixed_internet_mbps": suitability_policy.minimum_fixed_internet_mbps,
+            "starlink_fallback": starlink_fallback,
+            "starlink_url": STARLINK_RESIDENTIAL_URL,
             "system_price_min": system_price_min,
             "system_price_max": system_price_max,
             "eur_label": _eur_label,
