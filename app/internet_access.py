@@ -7,7 +7,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
 
 from geoalchemy2 import Geometry
 from pyproj import Transformer
@@ -322,6 +321,8 @@ def publish_breitbandatlas_cache(
     try:
         shutil.copyfile(source, temporary)
         validate_breitbandatlas_gpkg(temporary)
+        if _sha256_file(temporary) != source_sha256:
+            raise ValueError("Breitbandatlas cache copy failed SHA-256 verification")
         os.replace(temporary, destination)
         destination.chmod(0o644)
     finally:
