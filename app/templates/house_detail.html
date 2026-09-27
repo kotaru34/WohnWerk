@@ -115,6 +115,18 @@
         {% elif selected_country == 'DE' and hospital_data_ready %}
           <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
         {% endif %}
+        {% if selected_country == 'DE' %}
+          {% if internet_access and internet_access.max_full_download_mbps %}
+            <span class="fact">Festnetz ≥ {{ internet_access.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
+          {% elif internet_access and internet_access.max_any_download_mbps %}
+            <span class="fact">Festnetz bis {{ internet_access.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(internet_access.max_any_coverage_percent) }} % der 100-m-Zelle · nicht hausgenau</span>
+          {% elif internet_data_ready %}
+            <span class="fact">Festnetz hausgenau unbekannt</span>
+          {% else %}
+            <span class="fact">Festnetz: Daten unbekannt</span>
+          {% endif %}
+          {% if internet_fallback_reason %}<span class="fact">Starlink-Fallback prüfen</span>{% endif %}
+        {% endif %}
       </div>
       <div class="actions">
         <form method="post" action="/houses/{{ house.property.id }}/favorite">
@@ -154,6 +166,50 @@
         </div>
       {% elif selected_country == 'DE' %}
         <div class="semantics">Keine belastbare Entfernung zu einer ausdrücklich bestätigten G-BA-Notfallstufe 1–3 verfügbar. WohnWerk erfindet dafür keine Capability oder Koordinate.</div>
+      {% endif %}
+      {% if selected_country == 'DE' %}
+        {% if internet_access %}
+          <div class="semantics">
+            <strong>Festnetz:</strong>
+            Offizielle Breitbandatlas-Zelle {{ internet_access.source_cell_id }} (100×100 m, Stand {{ internet_access.dataset_date.strftime('%d.%m.%Y') }}).
+            {% if internet_access.max_full_download_mbps %}
+              Mindestens {{ internet_access.max_full_download_mbps }} Mbit/s sind für 100 % der Haushalte dieser Zelle gemeldet.
+            {% else %}
+              Für keine veröffentlichte Geschwindigkeitsklasse sind 100 % der Haushalte dieser Zelle gemeldet.
+            {% endif %}
+            {% if internet_access.max_any_download_mbps %}
+              Die höchste Klasse mit irgendeiner gemeldeten Versorgung ist {{ internet_access.max_any_download_mbps }} Mbit/s bei {{ '%.1f'|format(internet_access.max_any_coverage_percent) }} % der Haushalte.
+            {% endif %}
+            {% if internet_access.technology_labels_de %}
+              Technologieanteile bei dieser höchsten Klasse: {{ internet_access.technology_labels_de|join(' · ') }}.
+            {% endif %}
+            Diese Prozentwerte sind Zellstatistik, keine Provider-Zusage für die einzelne Adresse.
+            Quelle: <a href="{{ internet_source_url }}" target="_blank" rel="noopener noreferrer">{{ internet_attribution }}</a>.
+          </div>
+        {% elif internet_data_ready %}
+          <div class="semantics">
+            <strong>Festnetz hausgenau unbekannt.</strong>
+            Der offizielle Breitbandatlas-Snapshot ist geladen, aber die gespeicherte Objektposition
+            {% if house.property.location_method %}({{ house.property.location_method }}){% endif %}
+            ist nicht präzise genug für eine belastbare Zuordnung zu einer 100×100-m-Zelle oder es gibt dort keine eindeutige Zelle. Ein PLZ-Mittelpunkt wird dafür bewusst nicht verwendet.
+          </div>
+        {% else %}
+          <div class="semantics"><strong>Festnetz:</strong> Der offizielle Breitbandatlas-Snapshot ist noch nicht vollständig geladen; WohnWerk behauptet daher keine Verfügbarkeit.</div>
+        {% endif %}
+        {% if internet_fallback_reason %}
+          <div class="semantics">
+            <strong>Starlink als Fallback prüfen.</strong>
+            {% if internet_fallback_reason == 'fixed_unknown' %}
+              Die terrestrische Hausverfügbarkeit ist derzeit nicht belastbar feststellbar.
+            {% else %}
+              Das konfigurierte Ziel von {{ internet_minimum_mbps }} Mbit/s ist nicht für 100 % der Haushalte der zugeordneten Festnetzzelle belegt.
+            {% endif %}
+            Aktueller WohnWerk-Referenzstand {{ starlink_snapshot_date.strftime('%d.%m.%Y') }}:
+            ab € {{ starlink_from_eur_month }}/Monat, {{ starlink_max_label }}.
+            Das ist keine Zusage für diese Adresse; Preis, Kapazität und Verfügbarkeit müssen bei Starlink mit der konkreten Adresse geprüft werden.
+            <a href="{{ starlink_source_url }}" target="_blank" rel="noopener noreferrer">Starlink Residential prüfen</a>.
+          </div>
+        {% endif %}
       {% endif %}
       {% if house.sources %}
         <div class="sources">
