@@ -240,7 +240,7 @@ class InternetSourceEvidence:
 
 
 class _VisibleHtml(HTMLParser):
-    _BLOCKS = {
+    _BLOCKS = frozenset({
         "address",
         "article",
         "br",
@@ -256,7 +256,7 @@ class _VisibleHtml(HTMLParser):
         "p",
         "section",
         "tr",
-    }
+    })
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -349,7 +349,7 @@ def _localized_speed(value: str | None) -> int | None:
         return None
     if speed <= 0 or speed > 100_000:
         return None
-    return int(round(speed))
+    return round(speed)
 
 
 def _json_scalar(text: str, key: str) -> str | bool | None:
@@ -552,7 +552,7 @@ def _immowelt_claims_from_line(line: str) -> list[ParsedInternetClaim]:
         seen.add(key)
         semantics = (
             "availability_check"
-            if re.search(r"Verfügbarkeits(?:check|prüfung)|laut\s+Verfügbarkeit", line, re.I)
+            if re.search(r"Verfügbarkeits(?:check|prüfung)|laut\s+Verfügbarkeit", line, re.IGNORECASE)
             else "listing_statement"
         )
         claims.append(
@@ -608,7 +608,7 @@ def parse_immowelt_de_internet_evidence(url: str, body: str) -> ParsedInternetDe
     claim_keys: set[str] = set()
     internet_lines: list[str] = []
     for line in parser.lines:
-        if not re.search(r"Internet|DSL|VDSL|Kabel|Glasfaser|MBit/s", line, re.I):
+        if not re.search(r"Internet|DSL|VDSL|Kabel|Glasfaser|MBit/s", line, re.IGNORECASE):
             continue
         internet_lines.append(line)
         for claim in _immowelt_claims_from_line(line):
@@ -773,7 +773,7 @@ def primary_property_internet_source_evidence(
 @dataclass(frozen=True, slots=True)
 class InternetEvidenceBundle:
     source_claims: tuple[InternetSourceEvidence, ...]
-    official_grid: "InternetAccess | None"
+    official_grid: InternetAccess | None
 
     @property
     def primary_source(self) -> InternetSourceEvidence | None:
