@@ -159,6 +159,30 @@
   </section>
   {% endif %}
 
+  {% if selected_country == 'DE' %}
+  <section class="policy-box">
+    <h2>Krankenhaus / Notfallversorgung</h2>
+    <div class="subtle">Die Entfernung basiert auf den offiziellen Standortkoordinaten des Bundes-Klinik-Atlas. Für die Ausschlussregel zählen nur Standorte mit aktuell bestätigter Notfallstufe 1–3. Ein leeres Distanzfeld deaktiviert die Regel; unbekannte Daten bleiben standardmäßig akzeptiert.</div>
+    <form method="post" action="/houses/hospital-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_to" value="/houses?country=DE&ansicht={{ selected_view }}">
+      <div class="policy-row">
+        <label>Max. Luftlinie (km)
+          <input type="number" min="1" max="250" step="1" name="hospital_max_distance_km" value="{{ hospital_max_distance_km if hospital_max_distance_km is not none else '' }}" placeholder="z. B. 30">
+        </label>
+        <label>Wenn Entfernung unbekannt
+          <select name="hospital_fail_closed">
+            <option value="0" {% if not hospital_fail_closed %}selected{% endif %}>Nicht ablehnen</option>
+            <option value="1" {% if hospital_fail_closed %}selected{% endif %}>Ablehnen</option>
+          </select>
+        </label>
+        <button type="submit">Krankenhausregel speichern</button>
+      </div>
+    </form>
+    <div class="resolved">Capability wird nicht aus dem Kliniknamen geraten: WohnWerk zeigt gemeldete Notfallstufe und Spezialmodule separat.</div>
+  </section>
+  {% endif %}
+
   <section class="policy-box">
     <h2>Arbeitsplatz</h2>
     <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
@@ -254,6 +278,17 @@
                 <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
               {% endif %}
               <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
+            {% endif %}
+            {% set hospital = hospital_access.get(house.id) if hospital_access is defined else none %}
+            {% if selected_country == 'DE' %}
+              {% if hospital and hospital.nearest_emergency %}
+                <span class="fact">Notfall {{ '%.1f'|format(hospital.nearest_emergency.air_distance_km) }} km Luftlinie · {{ hospital.nearest_emergency.emergency_level_label }}</span>
+              {% else %}
+                <span class="fact">Notfallversorgung unbekannt</span>
+              {% endif %}
+              {% if hospital and hospital.nearest_advanced %}
+                <span class="fact">Stufe 2/3 {{ '%.1f'|format(hospital.nearest_advanced.air_distance_km) }} km Luftlinie</span>
+              {% endif %}
             {% endif %}
           </div>
           {% if not hidden and not rejected %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
