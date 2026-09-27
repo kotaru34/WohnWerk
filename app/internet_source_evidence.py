@@ -161,7 +161,6 @@ class ParsedInternetClaim:
                 "technology": self.technology,
                 "download": self.max_download_mbps,
                 "upload": self.max_upload_mbps,
-                "text": self.evidence_text,
             },
             ensure_ascii=False,
             sort_keys=True,
