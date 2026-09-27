@@ -95,6 +95,14 @@
         {% endif %}
         {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
         {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
+        {% if workplace_distance %}
+          {% if workplace_distance.road_duration_minutes is not none %}
+            <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
+          {% endif %}
+          <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
+        {% elif workplace %}
+          <span class="fact">Arbeitsplatz: Entfernung unbekannt</span>
+        {% endif %}
       </div>
       <div class="actions">
         <form method="post" action="/houses/{{ house.property.id }}/favorite">
@@ -110,6 +118,9 @@
           <button type="submit">Ausblenden</button>
         </form>
       </div>
+      {% if workplace %}
+        <div class="semantics">Arbeitsplatz: {{ workplace.input_text }}{% if workplace.location is none %} · nicht belastbar aufgelöst{% elif workplace.resolution_method %} · {{ workplace.resolution_method }}{% endif %}. Die Entfernung ist nur Entscheidungshilfe und kein Ausschlusskriterium.</div>
+      {% endif %}
       {% if house.sources %}
         <div class="sources">
           <strong>Originalanzeigen</strong><br>

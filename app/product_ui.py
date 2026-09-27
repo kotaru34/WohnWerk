@@ -40,6 +40,10 @@ from app.models import Job, ListingStatus, Property
 from app.property_acquisition import property_budget_limits
 from app.property_location_filter import resolve_property_radius_filter
 from app.templates_runtime import templates as product_templates
+from app.workplace import (
+    load_candidate_workplace,
+    load_workplace_distances_for_ui,
+)
 
 router = APIRouter(tags=["site"])
 
@@ -272,6 +276,12 @@ def houses_page(
         )
     )
     states, new_ids, image_urls = _property_ui_state(db, profile, rows)
+    workplace = load_candidate_workplace(db, profile.id)
+    workplace_distances = load_workplace_distances_for_ui(
+        db,
+        profile.id,
+        {row.id for row in rows},
+    )
     accepted_conditions = _product_property_conditions(plz_blacklist)
     new_conditions = [
         *accepted_conditions,
@@ -346,6 +356,8 @@ def houses_page(
                 suitability_policy.de_plz_blacklist
             ),
             "rejection_reasons": rejection_reasons,
+            "workplace": workplace,
+            "workplace_distances": workplace_distances,
             "system_price_min": system_price_min,
             "system_price_max": system_price_max,
             "eur_label": _eur_label,

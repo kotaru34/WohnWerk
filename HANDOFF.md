@@ -28,14 +28,14 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.2**.
+Production is now deployed on **v0.4.3**.
 
-- deployed application version: **v0.4.2**
-- deployed Git SHA: `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`
-- previous production Git SHA / rollback point: `0890f0283e217b84a9de37e418a6fb6677391c66`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.1-pre-v0.4.2`
-- previous production application version: **v0.4.1**
-- database migration: `0012_de_postal_codes`
+- deployed application version: **v0.4.3**
+- deployed Git SHA: `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`
+- previous production Git SHA / rollback point: `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.2-pre-v0.4.3`
+- previous production application version: **v0.4.2**
+- database migration: `0013_candidate_house_policy`
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
 - database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
@@ -48,7 +48,7 @@ Production is now deployed on **v0.4.2**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.2 is deployed. The current development target is **v0.4.3**, implementing the broader local house suitability/rejection layer: multi-reason rejected view plus user-managed DE PLZ blacklist while reusing the existing country-aware PLZ/Ort radius path and preserving the Austria baseline.
+v0.4.3 is deployed. The current development target is **v0.4.4**, implementing profile-scoped workplace configuration and house-to-workplace distance as an informational enrichment. Hospital and Internet enrichment remain the following slices.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -108,6 +108,35 @@ Deployment proof:
 - temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action;
 - the external Immowelt challenge handler was not modified or invoked;
 - Run #990 was not resumed.
+
+### v0.4.3 production proof
+
+The deployed v0.4.3 release SHA is
+`f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`.
+
+GitHub Actions CI #1246 passed on that exact atomic release commit:
+- Install: passed;
+- Ruff: passed;
+- Compile: passed;
+- Tests: **609 passed, 2 warnings**.
+
+Production deployment proof:
+- pre-deploy production SHA was exactly `88d578ca191071eba6bc2ab0ccbe466f9f966b3a` and the tree was clean;
+- rollback ref `refs/wohnwerk/rollback-v0.4.2-pre-v0.4.3` points to that v0.4.2 SHA;
+- production-host Ruff and Python compile gates passed on an isolated exact-release worktree;
+- pre-migration DB revision was `0012_de_postal_codes`;
+- migration `0012_de_postal_codes -> 0013_candidate_house_policy` completed successfully under PostgreSQL transactional DDL;
+- post-migration DB revision is `0013_candidate_house_policy (head)`;
+- local `/health`: `status=ok`, `version=0.4.3`, `country=AT`;
+- live checkout SHA exactly `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`: all active after cleanup;
+- temporary v0.4.3 candidate worktree and validation venv were removed;
+- temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action;
+- the external Immowelt challenge handler was not modified or invoked;
+- Run #990 was not resumed.
+
+A production-host full pytest execution reported **609 passed, 2 warnings**, but that historical relay response did not pass later local MAC re-verification, so it is intentionally not treated as trusted deployment proof. The exact atomic release CI #1246 is the trusted full-suite proof.
 
 The active development branch may move beyond the deployed SHA with documentation-only handoff commits. Production remains pinned to the deployed code SHA above until a later explicitly gated deployment.
 
@@ -311,9 +340,9 @@ but the v0.4.2 launcher treats that paused run as shard-contract-incompatible an
 auto-resume it. This satisfies the earlier rule to resume it only if persisted state remains
 compatible; the new price policy deliberately makes that condition false.
 
-## Local suitability/rejection — v0.4.3 candidate
+## Local suitability/rejection — v0.4.3 deployed
 
-The v0.4.3 candidate introduces migration `0013_candidate_house_policy` and keeps suitability separate from source lifecycle:
+The deployed v0.4.3 release introduces migration `0013_candidate_house_policy` and keeps suitability separate from source lifecycle:
 
 - one profile-scoped persisted Germany PLZ blacklist;
 - exact five-digit PLZ and `x`/ `X` masks, with one wildcard digit per `x`;
@@ -325,15 +354,30 @@ The v0.4.3 candidate introduces migration `0013_candidate_house_policy` and keep
 - DE PLZ blacklist does not apply to Austria;
 - the already implemented `PLZ/Ort + N km` PostGIS/GeoNames path remains the radius browse mechanism and is regression-covered rather than duplicated.
 
+## Workplace distance — v0.4.4 candidate
+
+The v0.4.4 candidate introduces migration `0014_candidate_workplace`:
+
+- one workplace row per candidate profile, independent of German job acquisition;
+- explicit workplace country `DE` or `AT` plus preserved operator input;
+- an address containing a compatible PLZ resolves only to the imported PLZ centroid and is labelled `explicit_postal_centroid`; no street-precision claim is made;
+- locality-only input uses the existing country-scoped locality resolution path;
+- unresolved input remains stored with no coordinate and an explicit error; no coordinate is invented;
+- catalogue cards and accepted house details show workplace Luftlinie when defensible;
+- road distance/driving time are optional refinements from the existing OSRM table service and fall back cleanly to Luftlinie when routing has no coverage;
+- workplace distance is not part of `accepted_property_condition` / `rejected_property_condition` and therefore is not a hard reject by default;
+- Germany job acquisition stays paused and no job listing is used as the workplace source.
+
 ## Near-term roadmap
 
 1. **DONE:** v0.4.1 scheduler/docs/handler-boundary hardening deployed and production-verified at `0890f0283e217b84a9de37e418a6fb6677391c66`.
 2. **DONE:** v0.4.2 Germany EUR 30,000..200,000 + non-auction policy deployed and production-verified at `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`.
-3. **CURRENT:** finish v0.4.3 local suitability/rejection implementation, migration, exact-head CI and production deployment.
-4. Add workplace-distance, hospital and Internet enrichment in evidence-backed slices.
-5. Improve dedupe and heating-type extraction/ranking.
-6. Keep Germany jobs paused until an explicit operator decision reopens them.
-7. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
+3. **DONE:** v0.4.3 local suitability/rejection layer deployed and production-verified at `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`, DB head `0013_candidate_house_policy`.
+4. **CURRENT:** finish v0.4.4 workplace configuration/distance, exact-head CI and production deployment.
+5. Then add hospital and Internet enrichment in evidence-backed slices.
+6. Improve dedupe and heating-type extraction/ranking.
+7. Keep Germany jobs paused until an explicit operator decision reopens them.
+8. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
 
 ## Fresh-context recovery order
 

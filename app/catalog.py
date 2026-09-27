@@ -53,6 +53,11 @@ from app.property_location_filter import PropertyRadiusFilter, resolve_property_
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
+from app.workplace import (
+    load_candidate_workplace,
+    load_workplace_distances_for_ui,
+    save_candidate_workplace,
+)
 
 router = APIRouter(tags=["site"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -663,6 +668,28 @@ def update_house_plz_blacklist(
     return RedirectResponse(_safe_return_to(return_to), status_code=303)
 
 
+@router.post("/houses/workplace", include_in_schema=False)
+def update_candidate_workplace(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    workplace_country: Annotated[str, Form()] = "DE",
+    workplace_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_candidate_workplace(
+            db,
+            profile.id,
+            country_code=workplace_country,
+            input_text=workplace_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/{property_id}/favorite", include_in_schema=False)
 def update_property_favorite(
     property_id: int,
@@ -722,6 +749,12 @@ def house_detail(
     states, _new_ids, image_urls = _property_ui_state(db, profile, [property_row])
     view = _property_views(db, [property_row])[0]
     jobs = _nearby_jobs(db, property_id, radius_km)
+    workplace = load_candidate_workplace(db, profile.id)
+    workplace_distance = load_workplace_distances_for_ui(
+        db,
+        profile.id,
+        {property_id},
+    ).get(property_id)
     return templates.TemplateResponse(
         request=request,
         name="house_detail.html",
@@ -730,6 +763,8 @@ def house_detail(
             "house_state": states.get(property_id, CandidatePropertyState()),
             "image_url": image_urls.get(property_id),
             "jobs": jobs,
+            "workplace": workplace,
+            "workplace_distance": workplace_distance,
             "radius_km": radius_km,
             "eur_label": _eur_label,
             "area_label": _area_label,

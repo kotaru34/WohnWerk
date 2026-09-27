@@ -296,3 +296,19 @@ The v0.4.3 candidate keeps source acquisition/lifecycle truth separate from loca
 - rejected cards keep original-source links so a rejected property remains inspectable without pretending it is an accepted recommendation;
 - the existing country-aware `PLZ/Ort + N km` PostGIS radius path is retained as the geographic browse mechanism; German postal and locality centers continue to come from imported GeoNames evidence;
 - favorite/hidden/viewed curation remains independent of rejection state.
+
+
+## v0.4.4 workplace-distance layer
+
+The v0.4.4 candidate adds a profile-scoped workplace independently of German job acquisition:
+
+- one explicit workplace setting is persisted per candidate profile in `candidate_workplaces`;
+- the operator chooses the workplace country (`DE` or `AT`) and enters an address, postal code or locality;
+- the raw operator input is always retained;
+- if an input contains an explicit country-compatible PLZ, WohnWerk resolves only to the corresponding imported postal centroid and records method `explicit_postal_centroid`; it does not claim street-level coordinates;
+- otherwise a locality is resolved through the existing country-specific locality path and recorded as `locality_centroid`;
+- unresolved input remains persisted with no coordinate and an explicit resolution error; distances remain unknown rather than invented;
+- house cards and accepted house details show workplace Luftlinie whenever both coordinates are defensible;
+- when the configured OSRM backend can return a route, road distance and driving time are shown in addition to Luftlinie; routing failure falls back to Luftlinie;
+- workplace distance is informational only and is not referenced by the local accepted/rejected suitability predicates;
+- the existing DE/AT `PLZ/Ort + N km` filter is reused and its active-country behavior is unchanged.

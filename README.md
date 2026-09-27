@@ -22,7 +22,10 @@ the original listing. Current Germany house acquisition/product target is EUR 30
 Immowelt requests ordinary `Buy` listings only; explicit auction evidence is retained but locally
 rejected instead of being silently discarded. Local Germany suitability can additionally reject
 profile-managed PLZ values/masks (for example `01067` or `0xxxx`) while keeping those houses
-inspectable in an explicit rejected view with reason tags. Incremental scans request the newest
+inspectable in an explicit rejected view with reason tags. A profile-scoped workplace can be
+configured independently of job acquisition; cards/details show defensible air distance and,
+when the configured router has coverage, road distance/time without making commute a hard reject.
+Incremental scans request the newest
 pages; disappearance is accepted only after every applicable shard completes a full authoritative
 scan below its safety cap.
 

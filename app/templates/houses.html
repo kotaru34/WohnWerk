@@ -26,6 +26,11 @@
     .policy-box { margin: -6px 0 20px; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
     .policy-box h2 { margin: 0 0 7px; font-size: 1rem; }
     .policy-box .subtle { margin-bottom: 10px; }
+    .policy-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    .policy-row label { display: grid; gap: 4px; font-size: .8rem; }
+    .policy-row input, .policy-row select { width: 100%; box-sizing: border-box; }
+    .resolved { font-size: .82rem; margin-top: 8px; opacity: .72; }
+    .resolved.error { opacity: 1; }
     .reason { opacity: 1; border-color: color-mix(in srgb, #b14d42 55%, transparent); background: color-mix(in srgb, #b14d42 10%, Canvas); }
     .filter-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
     button, .button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; text-decoration: none; }
@@ -154,6 +159,36 @@
   </section>
   {% endif %}
 
+  <section class="policy-box">
+    <h2>Arbeitsplatz</h2>
+    <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
+    <form method="post" action="/houses/workplace">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_to" value="/houses?country={{ selected_country }}&ansicht={{ selected_view }}">
+      <div class="policy-row">
+        <label>Land
+          <select name="workplace_country">
+            <option value="DE" {% if not workplace or workplace.country_code == 'DE' %}selected{% endif %}>Deutschland</option>
+            <option value="AT" {% if workplace and workplace.country_code == 'AT' %}selected{% endif %}>Österreich</option>
+          </select>
+        </label>
+        <label>Adresse, PLZ oder Ort
+          <input name="workplace_text" value="{{ workplace.input_text if workplace else '' }}" placeholder="z. B. Musterstraße 1, 01067 Dresden">
+        </label>
+        <button type="submit">Arbeitsplatz speichern</button>
+      </div>
+    </form>
+    {% if workplace %}
+      {% if workplace.location is not none %}
+        <div class="resolved">Aufgelöst als {{ workplace.postal_code or workplace.city or workplace.input_text }} · {{ workplace.resolution_method }}</div>
+      {% else %}
+        <div class="resolved error">Nicht aufgelöst: {{ workplace.resolution_error or 'Entfernung unbekannt.' }}</div>
+      {% endif %}
+    {% else %}
+      <div class="resolved">Noch kein Arbeitsplatz konfiguriert.</div>
+    {% endif %}
+  </section>
+
   <div class="result-line">
     <strong>{{ total }} Immobilien</strong>
     <div class="result-tools">
@@ -213,6 +248,13 @@
             {% if area_label(house.living_area_m2) %}<span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% elif area_label(item.neutral_area_m2) %}<span class="fact">Fläche {{ area_label(item.neutral_area_m2) }} · Typ nicht eindeutig</span>{% endif %}
             {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+            {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
+            {% if workplace_distance %}
+              {% if workplace_distance.road_duration_minutes is not none %}
+                <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
+              {% endif %}
+              <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
+            {% endif %}
           </div>
           {% if not hidden and not rejected %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
           {% if rejected and item.sources %}
