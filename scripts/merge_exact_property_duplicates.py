@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.candidate_activity import CandidatePropertyPreference
 from app.database import SessionLocal
+from app.internet_access import property_location_precise_enough
 from app.models import ListingStatus, Property, PropertyListing, Source
 from app.property_dedupe import (
     PropertyDuplicateKey,
@@ -52,11 +53,22 @@ def _merge_metadata(target: Property, duplicate: Property) -> None:
         target.plot_area_m2 = duplicate.plot_area_m2
     if target.postal_code is None and duplicate.postal_code is not None:
         target.postal_code = duplicate.postal_code
-        target.location = duplicate.location
     if target.city is None and duplicate.city:
         target.city = duplicate.city
-    if target.location is None and duplicate.location is not None:
+    duplicate_location_is_better = (
+        duplicate.location is not None
+        and (
+            target.location is None
+            or (
+                property_location_precise_enough(duplicate.location_method)
+                and not property_location_precise_enough(target.location_method)
+            )
+        )
+    )
+    if duplicate_location_is_better:
         target.location = duplicate.location
+        target.location_source = duplicate.location_source
+        target.location_method = duplicate.location_method
     target.first_seen_at = min(target.first_seen_at, duplicate.first_seen_at)
     target.last_seen_at = max(target.last_seen_at, duplicate.last_seen_at)
     if duplicate.status == ListingStatus.ACTIVE:
