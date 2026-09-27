@@ -34,7 +34,13 @@ def test_active_product_house_route_forwards_radius_to_filter_pipeline(monkeypat
 
     monkeypatch.setattr(product_ui, "_profile_or_503", lambda _db: SimpleNamespace(id=1))
     monkeypatch.setattr(product_ui, "novelty_baseline", lambda *_args: object())
-    monkeypatch.setattr(product_ui, "_product_property_conditions", list)
+    monkeypatch.setattr(
+        product_ui,
+        "load_house_suitability_policy",
+        lambda *_args: SimpleNamespace(de_plz_blacklist=()),
+    )
+    monkeypatch.setattr(product_ui, "active_de_plz_blacklist", lambda _policy: ())
+    monkeypatch.setattr(product_ui, "_product_property_conditions", lambda *_args: [])
     monkeypatch.setattr(product_ui, "property_curation_condition", lambda *_args: True)
 
     def fake_resolve_house_filters(_request, **kwargs):

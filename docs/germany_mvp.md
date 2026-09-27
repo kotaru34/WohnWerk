@@ -281,3 +281,18 @@ price-shard contract. Its persisted state remains retained for audit/diagnostic 
 it is not resume-compatible with the v0.4.2 shard set. The launcher detects this mismatch
 and does not auto-resume that run. This is an intentional contract change, not lifecycle
 data deletion. The operator-owned challenge handler remains untouched.
+
+
+## v0.4.3 local suitability/rejection layer
+
+The v0.4.3 candidate keeps source acquisition/lifecycle truth separate from local suitability:
+
+- profile-scoped German PLZ blacklist is persisted in `candidate_house_policies`;
+- rules accept exact five-digit PLZ values and masks such as `0xxxx`; each `x` / `X` matches exactly one normalized decimal digit;
+- PLZ blacklist evaluation applies only to the DE product scope and does not alter Austria behavior;
+- accepted houses remain governed by source product visibility plus local suitability;
+- rejected houses stay in the canonical/source corpus and are exposed in a separate `Abgelehnt` view;
+- rejection reasons are derived as multiple explainable tags, including source reasons such as auction/budget/liveness and the local PLZ blacklist;
+- rejected cards keep original-source links so a rejected property remains inspectable without pretending it is an accepted recommendation;
+- the existing country-aware `PLZ/Ort + N km` PostGIS radius path is retained as the geographic browse mechanism; German postal and locality centers continue to come from imported GeoNames evidence;
+- favorite/hidden/viewed curation remains independent of rejection state.

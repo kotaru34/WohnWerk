@@ -25,11 +25,19 @@ from app.catalog import (
     _property_views,
 )
 from app.catalog import templates as catalog_templates
+from app.country_scope import DEFAULT_COUNTRY, selected_country
 from app.house_filters import resolve_house_filters, save_house_filters
+from app.house_suitability import (
+    active_de_plz_blacklist,
+    format_de_plz_blacklist,
+    load_house_suitability_policy,
+    load_property_rejection_reasons,
+    rejected_property_condition,
+)
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
-from app.models import Job, Property
-from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
+from app.models import Job, ListingStatus, Property
+from app.property_acquisition import property_budget_limits
 from app.property_location_filter import resolve_property_radius_filter
 from app.templates_runtime import templates as product_templates
 
@@ -38,6 +46,7 @@ router = APIRouter(tags=["site"])
 HOUSE_VIEWS = {
     "alle": "Alle",
     "neu": "Neu",
+    "abgelehnt": "Abgelehnt",
     "favoriten": "Favoriten",
     "ausgeblendet": "Ausgeblendet",
 }
@@ -228,14 +237,25 @@ def houses_page(
     )
     radius_filter = resolve_property_radius_filter(db, filters)
     baseline = novelty_baseline(db, profile)
-    curation_view = "alle" if ansicht == "neu" else ansicht
-    conditions = [
-        *_product_property_conditions(),
-        property_curation_condition(profile.id, curation_view),
-        *_property_filter_conditions(filters, radius_filter=radius_filter),
-    ]
-    if ansicht == "neu":
-        conditions.extend(_new_property_condition(profile.id, baseline))
+    country_code = selected_country() or DEFAULT_COUNTRY
+    suitability_policy = load_house_suitability_policy(db, profile.id)
+    plz_blacklist = active_de_plz_blacklist(suitability_policy)
+
+    if ansicht == "abgelehnt":
+        conditions = [
+            Property.status == ListingStatus.ACTIVE,
+            rejected_property_condition(plz_blacklist),
+            *_property_filter_conditions(filters, radius_filter=radius_filter),
+        ]
+    else:
+        curation_view = "alle" if ansicht == "neu" else ansicht
+        conditions = [
+            *_product_property_conditions(plz_blacklist),
+            property_curation_condition(profile.id, curation_view),
+            *_property_filter_conditions(filters, radius_filter=radius_filter),
+        ]
+        if ansicht == "neu":
+            conditions.extend(_new_property_condition(profile.id, baseline))
 
     total = int(db.scalar(select(func.count()).select_from(Property).where(*conditions)) or 0)
     page_count = max(1, math.ceil(total / HOUSE_PAGE_SIZE))
@@ -252,8 +272,9 @@ def houses_page(
         )
     )
     states, new_ids, image_urls = _property_ui_state(db, profile, rows)
+    accepted_conditions = _product_property_conditions(plz_blacklist)
     new_conditions = [
-        *_product_property_conditions(),
+        *accepted_conditions,
         property_curation_condition(profile.id, "alle"),
         *_new_property_condition(profile.id, baseline),
     ]
@@ -266,7 +287,7 @@ def houses_page(
                 select(func.count())
                 .select_from(Property)
                 .where(
-                    *_product_property_conditions(),
+                    *accepted_conditions,
                     property_curation_condition(profile.id, "favoriten"),
                 )
             )
@@ -277,13 +298,30 @@ def houses_page(
                 select(func.count())
                 .select_from(Property)
                 .where(
-                    *_product_property_conditions(),
+                    *accepted_conditions,
                     property_curation_condition(profile.id, "ausgeblendet"),
                 )
             )
             or 0
         ),
+        "abgelehnt": int(
+            db.scalar(
+                select(func.count())
+                .select_from(Property)
+                .where(
+                    Property.status == ListingStatus.ACTIVE,
+                    rejected_property_condition(plz_blacklist),
+                )
+            )
+            or 0
+        ),
     }
+    rejection_reasons = (
+        load_property_rejection_reasons(db, rows, plz_blacklist)
+        if ansicht == "abgelehnt"
+        else {}
+    )
+    system_price_min, system_price_max = property_budget_limits(country_code)
     response = catalog_templates.TemplateResponse(
         request=request,
         name="houses.html",
@@ -303,8 +341,13 @@ def houses_page(
             "selected_sort": sortierung,
             "sort_direction": richtung,
             "stats": stats,
-            "system_price_min": PROPERTY_MIN_PRICE_EUR,
-            "system_price_max": PROPERTY_MAX_PRICE_EUR,
+            "selected_country": country_code,
+            "de_plz_blacklist_text": format_de_plz_blacklist(
+                suitability_policy.de_plz_blacklist
+            ),
+            "rejection_reasons": rejection_reasons,
+            "system_price_min": system_price_min,
+            "system_price_max": system_price_max,
             "eur_label": _eur_label,
             "area_label": _area_label,
             "csrf_token": _csrf_token(),

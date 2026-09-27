@@ -20,7 +20,9 @@ records the Germany product/UI/acquisition contract and legal/operational guardr
 The German portal adapters retain only the source-backed data needed by WohnWerk and link back to
 the original listing. Current Germany house acquisition/product target is EUR 30,000..200,000.
 Immowelt requests ordinary `Buy` listings only; explicit auction evidence is retained but locally
-rejected instead of being silently discarded. Incremental scans request the newest
+rejected instead of being silently discarded. Local Germany suitability can additionally reject
+profile-managed PLZ values/masks (for example `01067` or `0xxxx`) while keeping those houses
+inspectable in an explicit rejected view with reason tags. Incremental scans request the newest
 pages; disappearance is accepted only after every applicable shard completes a full authoritative
 scan below its safety cap.
 

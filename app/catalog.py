@@ -35,6 +35,12 @@ from app.house_filters import (
     resolve_house_filters,
     save_house_filters,
 )
+from app.house_suitability import (
+    accepted_property_condition,
+    active_de_plz_blacklist,
+    load_house_suitability_policy,
+    save_de_plz_blacklist,
+)
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
@@ -271,10 +277,10 @@ def _property_filter_conditions(
     return conditions
 
 
-def _product_property_conditions() -> list:
+def _product_property_conditions(plz_blacklist: tuple[str, ...] = ()) -> list:
     return [
         Property.status == ListingStatus.ACTIVE,
-        product_visible_property_condition(),
+        accepted_property_condition(plz_blacklist),
     ]
 
 
@@ -295,6 +301,11 @@ def _properties_within_radius_for_job_stmt(
             raise ValueError("db session is required for a saved house radius filter")
         radius_filter = resolve_property_radius_filter(db, filters)
     curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
+    plz_blacklist: tuple[str, ...] = ()
+    if profile_id is not None and db is not None:
+        plz_blacklist = active_de_plz_blacklist(
+            load_house_suitability_policy(db, profile_id)
+        )
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -331,7 +342,7 @@ def _properties_within_radius_for_job_stmt(
             ),
         )
         .where(
-            *_product_property_conditions(),
+            *_product_property_conditions(plz_blacklist),
             *curation,
             Property.location.is_not(None),
             *_property_filter_conditions(filters, radius_filter=radius_filter),
@@ -636,6 +647,22 @@ def houses_page(
     return response
 
 
+@router.post("/houses/plz-blacklist", include_in_schema=False)
+def update_house_plz_blacklist(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    plz_blacklist_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_de_plz_blacklist(db, profile.id, plz_blacklist_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/{property_id}/favorite", include_in_schema=False)
 def update_property_favorite(
     property_id: int,
@@ -679,10 +706,13 @@ def house_detail(
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
 ):
     profile = _profile_or_503(db)
+    plz_blacklist = active_de_plz_blacklist(
+        load_house_suitability_policy(db, profile.id)
+    )
     property_row = db.scalar(
         select(Property).where(
             Property.id == property_id,
-            *_product_property_conditions(),
+            *_product_property_conditions(plz_blacklist),
             property_curation_condition(profile.id, "alle"),
         )
     )
