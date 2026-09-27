@@ -74,7 +74,10 @@ def _enrich_property(
         property_row.plot_area_m2 = item.plot_area_m2
     if postal is not None:
         property_row.postal_code = postal.postal_code
-        property_row.location = postal.location
+        if property_row.location_method in {None, "postal_place_mean", "address_mean"}:
+            property_row.location = postal.location
+            property_row.location_source = postal.location_source
+            property_row.location_method = postal.location_method
     if item.city:
         property_row.city = item.city
     property_row.status = ListingStatus.ACTIVE
@@ -304,6 +307,8 @@ def ingest_properties(
                     postal_code=postal.postal_code if postal else None,
                     city=item.city,
                     location=postal.location if postal else None,
+                    location_source=postal.location_source if postal else None,
+                    location_method=postal.location_method if postal else None,
                     status=ListingStatus.ACTIVE,
                     first_seen_at=now,
                     last_seen_at=now,
