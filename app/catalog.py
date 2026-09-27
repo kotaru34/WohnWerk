@@ -34,17 +34,6 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
-from app.internet_access import (
-    BBA_ATTRIBUTION,
-    BBA_SOURCE_URL,
-    STARLINK_DE_FROM_EUR_MONTH,
-    STARLINK_DE_MAX_LABEL,
-    STARLINK_DE_SNAPSHOT_DATE,
-    STARLINK_DE_SOURCE_URL,
-    internet_dataset_ready,
-    load_property_internet_access,
-    starlink_fallback_reason,
-)
 from app.house_filters import (
     HouseFilters,
     house_filter_summary,
@@ -61,6 +50,17 @@ from app.house_suitability import (
     save_de_plz_blacklist,
     save_hospital_distance_policy,
     save_internet_policy,
+)
+from app.internet_access import (
+    BBA_ATTRIBUTION,
+    BBA_SOURCE_URL,
+    STARLINK_DE_FROM_EUR_MONTH,
+    STARLINK_DE_MAX_LABEL,
+    STARLINK_DE_SNAPSHOT_DATE,
+    STARLINK_DE_SOURCE_URL,
+    internet_dataset_ready,
+    load_property_internet_access,
+    starlink_fallback_reason,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
