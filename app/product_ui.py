@@ -31,11 +31,6 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
-from app.internet_access import (
-    internet_dataset_ready,
-    load_property_internet_access,
-    starlink_fallback_reason,
-)
 from app.house_filters import resolve_house_filters, save_house_filters
 from app.house_suitability import (
     active_de_plz_blacklist,
@@ -45,6 +40,11 @@ from app.house_suitability import (
     load_house_suitability_policy,
     load_property_rejection_reasons,
     rejected_property_condition,
+)
+from app.internet_access import (
+    internet_dataset_ready,
+    load_property_internet_access,
+    starlink_fallback_reason,
 )
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
