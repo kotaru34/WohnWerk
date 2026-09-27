@@ -220,6 +220,37 @@ normal browser automation where appropriate
 External request concurrency remains conservative. Extra local CPU is spent on parsing, normalization, deduplication and reconciliation rather than increasing request pressure.
 
 
+## Fixed Internet reference data
+
+For Germany, WohnWerk v0.4.6 uses the official Bundesnetzagentur
+Breitbandatlas / Gigabit-Grundbuch fixed-network grid export. The pinned candidate
+snapshot is **2025-12-31**. The public dataset is a 100 x 100 m raster and reports
+the percentage of households in each cell covered by each download-speed class
+and technology combination. Those percentages are area evidence, not an
+address-level orderability promise.
+
+WohnWerk therefore never maps the public grid to a house from a PLZ centroid.
+Only an explicitly source-backed/address-backed point with sufficiently precise
+location provenance may enter a 100 m cell lookup. A speed class counts as a
+defensible cell-wide floor only when the source reports 100% household coverage
+for that cell. Partial coverage remains visible as a percentage and is never
+promoted to house availability.
+
+The official Austrian broadband reference remains compatible with the same
+evidence model. Austria's Broadbandatlas/RTR data also publish fixed-network
+availability on a 100 m grid and are updated quarterly; the current researched
+fixed-network distribution is Q4/2025. v0.4.6 does not infer Austrian
+house-level Internet from the existing BEV-derived PLZ centroids.
+
+Starlink is an explicit fallback/check path rather than assumed availability.
+When the configured fixed-network target cannot be established from defensible
+house evidence, WohnWerk may show the current source-backed Starlink reference
+offer and a link for an address-specific check. Price, capacity and availability
+must still be confirmed for the concrete address.
+
+Required German attribution for the imported grid:
+`Breitbandatlas | Gigabit-Grundbuch (https://gigabitgrundbuch.bund.de)`.
+
 ## German hospital access
 
 WohnWerk uses the official Bundes-Klinik-Atlas Open Data export as the authoritative
