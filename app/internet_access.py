@@ -550,6 +550,45 @@ def property_grid_eligible(property_row: Property) -> bool:
     )
 
 
+def assess_internet_evidence(
+    property_id: int,
+    evidence: tuple[InternetEvidenceView, ...],
+    *,
+    minimum_download_mbps: int | None = None,
+) -> InternetAssessment:
+    known_speeds = [
+        item.max_download_mbps
+        for item in evidence
+        if item.availability_state == "available"
+        and item.max_download_mbps is not None
+    ]
+    maximum = max(known_speeds) if known_speeds else None
+    if minimum_download_mbps is not None:
+        if maximum is None:
+            status = "unknown"
+        elif maximum >= minimum_download_mbps:
+            status = "sufficient"
+        else:
+            status = "insufficient"
+    else:
+        status = "available" if maximum is not None else "unknown"
+
+    return InternetAssessment(
+        property_id=property_id,
+        evidence=evidence,
+        max_defensible_download_mbps=maximum,
+        minimum_download_mbps=minimum_download_mbps,
+        status=status,
+        starlink_fallback=(
+            maximum is None
+            or (
+                minimum_download_mbps is not None
+                and maximum < minimum_download_mbps
+            )
+        ),
+    )
+
+
 def load_internet_assessments(
     session: Session,
     property_ids: set[int],
@@ -592,38 +631,14 @@ def load_internet_assessments(
             )
         )
 
-    result: dict[int, InternetAssessment] = {}
-    for property_id, evidence in grouped.items():
-        known_speeds = [
-            item.max_download_mbps
-            for item in evidence
-            if item.availability_state == "available"
-            and item.max_download_mbps is not None
-        ]
-        maximum = max(known_speeds) if known_speeds else None
-        if minimum_download_mbps is not None:
-            if maximum is None:
-                status = "unknown"
-            elif maximum >= minimum_download_mbps:
-                status = "sufficient"
-            else:
-                status = "insufficient"
-        else:
-            status = "available" if maximum is not None else "unknown"
-
-        result[property_id] = InternetAssessment(
-            property_id=property_id,
-            evidence=tuple(evidence),
-            max_defensible_download_mbps=maximum,
+    return {
+        property_id: assess_internet_evidence(
+            property_id,
+            tuple(evidence),
             minimum_download_mbps=minimum_download_mbps,
-            status=status,
-            starlink_fallback=(
-                maximum is None
-                or minimum_download_mbps is not None
-                and maximum < minimum_download_mbps
-            ),
         )
-    return result
+        for property_id, evidence in grouped.items()
+    }
 
 
 async def fetch_immoscout_telekom_evidence(
