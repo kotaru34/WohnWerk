@@ -19,6 +19,7 @@ from app.models import (
     PropertyListing,
     Source,
 )
+from app.property_location import internet_location_is_precise
 from app.sources.base import RawProperty
 
 
@@ -74,7 +75,12 @@ def _enrich_property(
         property_row.plot_area_m2 = item.plot_area_m2
     if postal is not None:
         property_row.postal_code = postal.postal_code
-        property_row.location = postal.location
+        # A later exact/source-backed property point must never be degraded back
+        # to a postal centroid by a sparse discovery refresh.
+        if not internet_location_is_precise(property_row.location_method):
+            property_row.location = postal.location
+            property_row.location_source = postal.location_source
+            property_row.location_method = postal.location_method
     if item.city:
         property_row.city = item.city
     property_row.status = ListingStatus.ACTIVE
@@ -304,6 +310,8 @@ def ingest_properties(
                     postal_code=postal.postal_code if postal else None,
                     city=item.city,
                     location=postal.location if postal else None,
+                    location_source=postal.location_source if postal else None,
+                    location_method=postal.location_method if postal else None,
                     status=ListingStatus.ACTIVE,
                     first_seen_at=now,
                     last_seen_at=now,
