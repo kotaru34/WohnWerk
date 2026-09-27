@@ -35,6 +35,8 @@ from app.hospital_access import (
     load_nearest_hospital_access,
 )
 from app.internet_access import (
+    BBA_ATTRIBUTION,
+    BBA_SOURCE_URL,
     STARLINK_RESIDENTIAL_URL,
     internet_dataset_ready,
     load_property_internet_evidence,
@@ -881,6 +883,8 @@ def house_detail(
             "minimum_fixed_internet_mbps": suitability_policy.minimum_fixed_internet_mbps,
             "starlink_fallback": starlink_fallback,
             "starlink_url": STARLINK_RESIDENTIAL_URL,
+            "internet_source_url": BBA_SOURCE_URL,
+            "internet_attribution": BBA_ATTRIBUTION,
             "selected_country": country_code,
             "radius_km": radius_km,
             "eur_label": _eur_label,
