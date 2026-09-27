@@ -28,14 +28,14 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.3**.
+Production is now deployed on **v0.4.4**.
 
-- deployed application version: **v0.4.3**
-- deployed Git SHA: `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`
-- previous production Git SHA / rollback point: `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.2-pre-v0.4.3`
-- previous production application version: **v0.4.2**
-- database migration: `0013_candidate_house_policy`
+- deployed application version: **v0.4.4**
+- deployed Git SHA: `4472cb160f7f599e5c956d22b03bbcf299c4e556`
+- previous production Git SHA / rollback point: `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.3-pre-v0.4.4`
+- previous production application version: **v0.4.3**
+- database migration: `0014_candidate_workplace`
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
 - database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
@@ -48,7 +48,7 @@ Production is now deployed on **v0.4.3**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.3 is deployed. The current development target is **v0.4.4**, implementing profile-scoped workplace configuration and house-to-workplace distance as an informational enrichment. Hospital and Internet enrichment remain the following slices.
+v0.4.4 is deployed. The next implementation focus is **hospital-access enrichment** with source-backed facility identity/type/capability and defensible distance semantics. Internet enrichment follows after that.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -137,6 +137,36 @@ Production deployment proof:
 - Run #990 was not resumed.
 
 A production-host full pytest execution reported **609 passed, 2 warnings**, but that historical relay response did not pass later local MAC re-verification, so it is intentionally not treated as trusted deployment proof. The exact atomic release CI #1246 is the trusted full-suite proof.
+
+### v0.4.4 production proof
+
+The deployed v0.4.4 release SHA is
+`4472cb160f7f599e5c956d22b03bbcf299c4e556`.
+
+GitHub Actions CI #1265 passed on that exact atomic release commit:
+- Install: passed;
+- Ruff: passed;
+- Compile: passed;
+- Tests: **616 passed, 2 warnings**.
+
+Production deployment proof:
+- pre-deploy production SHA was exactly `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f` and the tree was clean;
+- rollback ref `refs/wohnwerk/rollback-v0.4.3-pre-v0.4.4` points to that v0.4.3 SHA;
+- production-host Ruff and Python compile gates passed on an isolated exact-release worktree;
+- a production-host full pytest rerun completed successfully with HMAC-verified relay proof; the exact test count is taken from CI #1265 rather than inferred from the quiet host rerun;
+- the earlier verbose production-host pytest response reported 616 passed but failed later HMAC re-verification and is intentionally not trusted;
+- pre-migration DB revision was `0013_candidate_house_policy (head)`;
+- migration `0013_candidate_house_policy -> 0014_candidate_workplace` completed successfully under PostgreSQL transactional DDL;
+- post-migration DB revision is `0014_candidate_workplace (head)`;
+- local `/health`: `status=ok`, `version=0.4.4`, `country=AT`;
+- live checkout SHA exactly `4472cb160f7f599e5c956d22b03bbcf299c4e556`;
+- live Git tree clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`: all active after deployment;
+- an actual workplace value was not required or fabricated for deployment smoke;
+- temporary v0.4.4 validation worktree and venv were removed;
+- temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged action;
+- the external Immowelt challenge handler was not modified or invoked;
+- Run #990 was not resumed.
 
 The active development branch may move beyond the deployed SHA with documentation-only handoff commits. Production remains pinned to the deployed code SHA above until a later explicitly gated deployment.
 
@@ -354,9 +384,9 @@ The deployed v0.4.3 release introduces migration `0013_candidate_house_policy` a
 - DE PLZ blacklist does not apply to Austria;
 - the already implemented `PLZ/Ort + N km` PostGIS/GeoNames path remains the radius browse mechanism and is regression-covered rather than duplicated.
 
-## Workplace distance — v0.4.4 candidate
+## Workplace distance — v0.4.4 deployed
 
-The v0.4.4 candidate introduces migration `0014_candidate_workplace`:
+The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 
 - one workplace row per candidate profile, independent of German job acquisition;
 - explicit workplace country `DE` or `AT` plus preserved operator input;
@@ -373,11 +403,12 @@ The v0.4.4 candidate introduces migration `0014_candidate_workplace`:
 1. **DONE:** v0.4.1 scheduler/docs/handler-boundary hardening deployed and production-verified at `0890f0283e217b84a9de37e418a6fb6677391c66`.
 2. **DONE:** v0.4.2 Germany EUR 30,000..200,000 + non-auction policy deployed and production-verified at `88d578ca191071eba6bc2ab0ccbe466f9f966b3a`.
 3. **DONE:** v0.4.3 local suitability/rejection layer deployed and production-verified at `f9d7e994c6264053c77d9e06c0f4eb586e92ea8f`, DB head `0013_candidate_house_policy`.
-4. **CURRENT:** finish v0.4.4 workplace configuration/distance, exact-head CI and production deployment.
-5. Then add hospital and Internet enrichment in evidence-backed slices.
-6. Improve dedupe and heating-type extraction/ranking.
-7. Keep Germany jobs paused until an explicit operator decision reopens them.
-8. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
+4. **DONE:** v0.4.4 workplace configuration/distance deployed and production-verified at `4472cb160f7f599e5c956d22b03bbcf299c4e556`, DB head `0014_candidate_workplace`.
+5. **CURRENT:** add hospital-access enrichment with source-backed facility identity/type/capability and defensible distance semantics.
+6. Then add Internet enrichment.
+7. Improve dedupe and heating-type extraction/ranking.
+8. Keep Germany jobs paused until an explicit operator decision reopens them.
+9. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
 
 ## Fresh-context recovery order
 
