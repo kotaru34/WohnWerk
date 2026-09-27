@@ -115,6 +115,16 @@
         {% elif selected_country == 'DE' and hospital_data_ready %}
           <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
         {% endif %}
+        {% if selected_country == 'DE' %}
+          {% if internet_assessment and internet_assessment.max_defensible_download_mbps is not none %}
+            <span class="fact">Internet {{ internet_assessment.max_defensible_download_mbps }} Mbit/s · {{ internet_assessment.status_label_de }}</span>
+          {% else %}
+            <span class="fact">Internet: nicht belastbar bestimmbar</span>
+          {% endif %}
+          {% if internet_assessment and internet_assessment.starlink_fallback %}
+            <span class="fact">Starlink-Fallback</span>
+          {% endif %}
+        {% endif %}
       </div>
       <div class="actions">
         <form method="post" action="/houses/{{ house.property.id }}/favorite">
@@ -154,6 +164,26 @@
         </div>
       {% elif selected_country == 'DE' %}
         <div class="semantics">Keine belastbare Entfernung zu einer ausdrücklich bestätigten G-BA-Notfallstufe 1–3 verfügbar. WohnWerk erfindet dafür keine Capability oder Koordinate.</div>
+      {% endif %}
+      {% if selected_country == 'DE' %}
+        <div class="semantics">
+          <strong>Festnetz-Internet</strong><br>
+          {% if internet_assessment and internet_assessment.evidence %}
+            {% for evidence in internet_assessment.evidence %}
+              {{ evidence.source_label_de }} · {{ evidence.precision_label_de }}
+              {% if evidence.max_download_mbps is not none %} · max. belastbar {{ evidence.max_download_mbps }} Mbit/s{% endif %}
+              {% if evidence.monthly_price_eur is not none %} · {{ evidence.monthly_price_eur }} €/Monat{% else %} · Preis unbekannt{% endif %}
+              {% if evidence.dataset_date %} · Datenstand {{ evidence.dataset_date.strftime('%d.%m.%Y') }}{% endif %}
+              · <a href="{{ evidence.source_url }}" target="_blank" rel="noopener noreferrer">Quelle</a><br>
+            {% endfor %}
+          {% else %}
+            Keine belastbare Festnetzangabe für dieses Haus. Ein PLZ-Mittelpunkt wird nicht in das 100×100-m-Raster des Breitbandatlas projiziert.
+          {% endif %}
+          {% if internet_min_download_mbps is not none %}<br>Mindestanforderung: {{ internet_min_download_mbps }} Mbit/s · {{ internet_assessment.status_label_de if internet_assessment else 'nicht belastbar bestimmbar' }}.{% endif %}
+          {% if internet_assessment and internet_assessment.starlink_fallback %}
+            <br><a href="{{ starlink_url }}" target="_blank" rel="noopener noreferrer">Starlink als expliziten Fallback prüfen</a>. WohnWerk behauptet dabei weder Standortverfügbarkeit noch Preis.
+          {% endif %}
+        </div>
       {% endif %}
       {% if house.sources %}
         <div class="sources">
