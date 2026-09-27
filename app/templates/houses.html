@@ -180,6 +180,29 @@
   </section>
   {% endif %}
 
+  {% if selected_country == 'DE' %}
+  <section class="policy-box">
+    <h2>Festnetz-Internet</h2>
+    <div class="subtle">Entscheidungshilfe, kein Ausschlusskriterium. WohnWerk übernimmt nur anzeigenspezifische Provider-Angaben oder 100×100-m-Rasterdaten des Breitbandatlas. Ein PLZ-Mittelpunkt wird niemals als Hausposition für den Raster-Lookup benutzt.</div>
+    <form method="post" action="/houses/internet-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_to" value="/houses?country=DE&ansicht={{ selected_view }}">
+      <div class="policy-row">
+        <label>Mindest-Download
+          <select name="internet_min_download_mbps">
+            <option value="" {% if internet_min_download_mbps is none %}selected{% endif %}>Keine feste Mindestanforderung</option>
+            {% for speed in [10, 16, 30, 50, 100, 200, 400, 1000] %}
+              <option value="{{ speed }}" {% if internet_min_download_mbps == speed %}selected{% endif %}>{{ speed }} Mbit/s</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">Internetregel speichern</button>
+      </div>
+    </form>
+    <div class="resolved">Wenn terrestrische Versorgung unbekannt oder unter der konfigurierten Mindestanforderung liegt, zeigt WohnWerk Starlink ausdrücklich nur als Fallback.</div>
+  </section>
+  {% endif %}
+
   <section class="policy-box">
     <h2>Arbeitsplatz</h2>
     <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
@@ -283,6 +306,17 @@
                 <span class="fact">Notfall {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie · Stufe {{ emergency.emergency_level }}</span>
               {% elif hospital_data_ready %}
                 <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
+              {% endif %}
+            {% endif %}
+            {% set internet = internet_assessments.get(house.id) if internet_assessments is defined else none %}
+            {% if selected_country == 'DE' %}
+              {% if internet and internet.max_defensible_download_mbps is not none %}
+                <span class="fact">Internet {{ internet.max_defensible_download_mbps }} Mbit/s · {{ internet.status_label_de }}</span>
+              {% else %}
+                <span class="fact">Internet: nicht belastbar bestimmbar</span>
+              {% endif %}
+              {% if internet and internet.starlink_fallback %}
+                <span class="fact">Starlink-Fallback</span>
               {% endif %}
             {% endif %}
             {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
