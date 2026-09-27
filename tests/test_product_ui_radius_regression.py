@@ -41,6 +41,7 @@ def test_active_product_house_route_forwards_radius_to_filter_pipeline(monkeypat
             de_plz_blacklist=(),
             max_hospital_distance_km=None,
             hospital_distance_fail_closed=False,
+            min_fixed_internet_mbps=None,
         ),
     )
     monkeypatch.setattr(product_ui, "active_de_plz_blacklist", lambda _policy: ())
@@ -49,6 +50,7 @@ def test_active_product_house_route_forwards_radius_to_filter_pipeline(monkeypat
         "active_hospital_distance_policy",
         lambda _policy: (None, False),
     )
+    monkeypatch.setattr(product_ui, "active_internet_policy", lambda _policy: None)
     monkeypatch.setattr(
         product_ui,
         "_product_property_conditions",
