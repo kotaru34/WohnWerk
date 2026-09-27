@@ -134,3 +134,24 @@ def test_de_postal_query_is_scoped_to_geonames_source() -> None:
     compiled = session.statement.compile()
     assert "postal_codes.source" in str(compiled)
     assert GEONAMES_SOURCE in compiled.params.values()
+
+
+
+def test_explicit_country_override_does_not_depend_on_active_ui_country(monkeypatch) -> None:
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(plf, "selected_country", lambda: "AT")
+
+    def fake_postal_center(_session, postal_code: str, *, country_code: str):
+        seen.append((postal_code, country_code))
+        return plf.PropertyFilterCenter(longitude=13.7373, latitude=51.0504)
+
+    monkeypatch.setattr(plf, "_postal_center", fake_postal_center)
+
+    resolved = plf.resolve_property_filter_center(
+        object(),
+        "01067",
+        country_code="DE",
+    )
+
+    assert resolved == plf.PropertyFilterCenter(longitude=13.7373, latitude=51.0504)
+    assert seen == [("01067", "DE")]

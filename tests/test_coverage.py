@@ -1,4 +1,9 @@
-from app.crawling.coverage import ShardOutcome, summarize_shards
+from app.crawling.coverage import (
+    RUN_STATUS_PAUSED,
+    SHARD_STATUS_SKIPPED,
+    ShardOutcome,
+    summarize_shards,
+)
 from app.models import CoverageStatus, RunStatus
 
 
@@ -74,6 +79,37 @@ def test_one_failed_shard_prevents_complete_reconciliation() -> None:
     assert summary.run_status == RunStatus.PARTIAL
     assert summary.coverage_status == CoverageStatus.DEGRADED
     assert summary.shards_failed == 1
+
+
+def test_source_halt_counts_actual_failure_separately_from_skipped_shards() -> None:
+    summary = summarize_shards(
+        [
+            ShardOutcome(status=RunStatus.SUCCESS, coverage_complete=False),
+            ShardOutcome(status=RunStatus.FAILED, coverage_complete=False),
+            ShardOutcome(status=SHARD_STATUS_SKIPPED, coverage_complete=False),
+            ShardOutcome(status=SHARD_STATUS_SKIPPED, coverage_complete=False),
+        ]
+    )
+
+    assert summary.run_status == RunStatus.PARTIAL
+    assert summary.coverage_status == CoverageStatus.DEGRADED
+    assert summary.shards_failed == 1
+    assert summary.shards_skipped == 2
+
+
+def test_paused_run_can_never_claim_authoritative_coverage() -> None:
+    summary = summarize_shards(
+        [
+            ShardOutcome(status=RunStatus.SUCCESS, coverage_complete=True),
+            ShardOutcome(status=RUN_STATUS_PAUSED, coverage_complete=False),
+            ShardOutcome(status=RunStatus.RUNNING, coverage_complete=False),
+        ]
+    )
+
+    assert summary.run_status == RUN_STATUS_PAUSED
+    assert summary.coverage_status == CoverageStatus.DEGRADED
+    assert summary.shards_paused == 1
+    assert summary.shards_failed == 0
 
 
 def test_empty_source_is_failure_not_false_success() -> None:

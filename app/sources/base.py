@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 
@@ -102,6 +103,37 @@ class SourceFetchError(RuntimeError):
         self.halt_source = halt_source
 
 
+class SourceChallenge(SourceFetchError):
+    """Explicit browser challenge handoff point.
+
+    The adapter detects and describes the gate; orchestration persists the exact state and
+    may pass control to a user-provided handler. No challenge-solving behavior belongs in
+    this exception or in the generic runner.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        challenge: dict[str, Any] | None = None,
+        pages_fetched: int = 0,
+        items_seen: int = 0,
+        source_reported_count: int | None = None,
+        next_cursor: dict[str, Any] | None = None,
+        partial_items: list[Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            pages_fetched=pages_fetched,
+            items_seen=items_seen,
+            source_reported_count=source_reported_count,
+            next_cursor=next_cursor,
+            partial_items=partial_items,
+            halt_source=True,
+        )
+        self.challenge = challenge or {}
+
+
 class PropertySource(ABC):
     """Contract implemented by every property source adapter."""
 
@@ -120,6 +152,20 @@ class PropertySource(ABC):
         reconciliation: bool = False,
     ) -> SourceBatch[RawProperty]:
         """Fetch one shard and report whether coverage is actually complete."""
+
+    async def prepare_challenge_handoff(
+        self,
+        *,
+        state_dir: Path,
+        challenge: SourceChallenge,
+    ) -> dict[str, Any]:
+        """Persist adapter-owned browser/session state needed by an external handler."""
+        del state_dir, challenge
+        return {}
+
+    async def restore_challenge_handoff(self, handoff_state: dict[str, Any]) -> None:
+        """Restore user-updated browser/session state before retrying a navigation point."""
+        del handoff_state
 
     async def check_active(self, source_listing_id: str) -> bool | None:
         """Return True/False when status can be checked safely, otherwise None."""

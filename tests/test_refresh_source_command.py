@@ -12,6 +12,7 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 _runtime_release_gate = MODULE._runtime_release_gate
 _source_command = MODULE._source_command
+_source_result_class = MODULE._source_result_class
 
 
 class _HealthResponse:
@@ -25,12 +26,18 @@ class _HealthResponse:
         return self._payload
 
 
-def _run(source_name: str, *, reconciliation: bool) -> DueSourceRun:
+def _run(
+    source_name: str,
+    *,
+    reconciliation: bool,
+    failure_isolated: bool = False,
+) -> DueSourceRun:
     return DueSourceRun(
         plan=SourceRefreshPlan(
             source_name=source_name,
             script=f"scripts/run_{source_name.replace('.', '_')}.py",
             supports_reconciliation=True,
+            failure_isolated=failure_isolated,
         ),
         reconciliation=reconciliation,
     )
@@ -62,6 +69,20 @@ def test_other_reconciliation_sources_do_not_get_sreal_flag() -> None:
 
     assert "--reconcile" in command
     assert "--enrich-details" not in command
+
+
+def test_nonzero_isolated_source_result_does_not_become_global_failure() -> None:
+    run = _run("immowelt-de", reconciliation=False, failure_isolated=True)
+    result = MODULE.CommandResult("source:immowelt-de:incremental", 1)
+
+    assert _source_result_class(run, result) == "isolated_failure"
+
+
+def test_nonzero_normal_source_result_remains_global_failure() -> None:
+    run = _run("immmo.at", reconciliation=False)
+    result = MODULE.CommandResult("source:immmo.at:incremental", 1)
+
+    assert _source_result_class(run, result) == "failure"
 
 
 def test_runtime_release_gate_accepts_matching_web_reader(monkeypatch) -> None:

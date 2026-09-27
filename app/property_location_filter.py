@@ -126,12 +126,14 @@ def _german_locality_center(session: Session, city: str) -> PropertyFilterCenter
 def resolve_property_filter_center(
     session: Session,
     value: str,
+    *,
+    country_code: str | None = None,
 ) -> PropertyFilterCenter | None:
     query = value.strip()
     if not query:
         return None
 
-    country_code = _active_country()
+    country_code = (country_code or _active_country()).upper()
     postal_pattern = _POSTAL_CODE_RE.get(country_code)
     if postal_pattern is not None and postal_pattern.fullmatch(query):
         postal = _postal_center(session, query, country_code=country_code)

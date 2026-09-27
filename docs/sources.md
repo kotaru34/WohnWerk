@@ -218,3 +218,82 @@ normal browser automation where appropriate
 ```
 
 External request concurrency remains conservative. Extra local CPU is spent on parsing, normalization, deduplication and reconciliation rather than increasing request pressure.
+
+
+## Fixed Internet reference data
+
+For Germany, WohnWerk v0.4.6 uses the official Bundesnetzagentur
+Breitbandatlas / Gigabit-Grundbuch fixed-network grid export. The pinned candidate
+snapshot is **2025-12-31**. The public dataset is a 100 x 100 m raster and reports
+the percentage of households in each cell covered by each download-speed class
+and technology combination. Those percentages are area evidence, not an
+address-level orderability promise.
+
+WohnWerk therefore never maps the public grid to a house from a PLZ centroid.
+Only an explicitly source-backed/address-backed point with sufficiently precise
+location provenance may enter a 100 m cell lookup. A speed class counts as a
+defensible cell-wide floor only when the source reports 100% household coverage
+for that cell. Partial coverage remains visible as a percentage and is never
+promoted to house availability.
+
+Starlink is an explicit fallback/check path rather than assumed availability.
+When the configured fixed-network target cannot be established from defensible
+house evidence, WohnWerk may show the current source-backed Starlink reference
+offer and a link for an address-specific check. Price, capacity and availability
+must still be confirmed for the concrete address.
+
+Required German attribution for the imported grid:
+`Breitbandatlas | Gigabit-Grundbuch (https://gigabitgrundbuch.bund.de)`.
+
+### DE portal/detail Internet evidence
+
+WohnWerk v0.4.8 adds a second, deliberately separate evidence layer from German
+listing/detail pages. It never replaces the official Breitbandatlas grid and it is
+not promoted to a contractual line-speed claim.
+
+Observed ImmoScout24 DE detail pages expose a structured Telekom-backed Internet
+availability/speed estimate and describe the displayed speed as a non-binding
+estimate based on the listing's Standortadresse; binding availability is deferred
+to an actual order/check. Some details also expose explicit street + house number
+metadata. WohnWerk stores those values as `portal_address_estimate` and
+`street_house_number` source evidence respectively. A source address is still
+not a coordinate and must not enter a 100 m Breitbandatlas lookup until a separate
+geocoding step establishes defensible coordinate provenance.
+
+Observed Immowelt DE exposés may state provider/technology/speed facts directly in
+the listing text, for example Telekom DSL, Vodafone Kabel or M-Net Glasfaser with
+an explicit Mbit/s value. WohnWerk stores those statements as `listing_claim`.
+They remain "Angabe im Exposé": useful source evidence, but not an independent
+provider orderability test. Explicit "connected", "at property" or "planned"
+Glasfaser statements can also be retained without inventing a speed.
+
+The UI must preserve the evidence class visibly:
+- `Portal-Schätzung` for address-based portal estimates;
+- `Angabe im Exposé` for listing statements;
+- `Amtliches Raster` for the official 100 x 100 m Bundesnetzagentur cell.
+
+The bounded Immowelt detail worker uses the normal project browser transport and
+existing challenge detection only. It stops on a detected challenge and never
+invokes the operator-owned external challenge handler. It is deliberately not
+wired into the automatic refresh loop in v0.4.8; deployment/maintenance runs it
+in bounded batches so source pressure and challenge behaviour can be observed
+before any recurring cadence is introduced. ImmoScout24 DE detail fetching
+remains dormant while that source is paused; only parser/schema support is
+present in v0.4.8.
+
+## German hospital access
+
+WohnWerk uses the official Bundes-Klinik-Atlas Open Data export as the authoritative
+Germany hospital-access dataset. The imported TVERZ snapshot supplies hospital-site identity,
+address, coordinates and explicit emergency-care fields. WohnWerk does not infer emergency
+capability from a generic hospital name or category.
+
+The current v0.4.5 importer is pinned to the 2026-09-01 export and records the dataset date and
+source URL. Publication is snapshot-atomic: stale rows are reconciled only after the complete
+archive has parsed successfully, and only a complete published snapshot receives
+`coverage_status=ok`.
+
+For suitability, a usable emergency site must have an explicitly agreed Notfallstufe 1, 2 or 3.
+Additional fields such as Schwerverletztenversorgung, Kinder-Notfallstufe, Spezialversorgung,
+Stroke Unit and Chest Pain Unit remain separate source-backed facts. Missing capability stays
+unknown.

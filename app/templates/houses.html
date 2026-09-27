@@ -11,6 +11,9 @@
     a { color: inherit; }
     h1 { margin: 0 0 4px; }
     .subtle { opacity: .7; }
+    .page-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+    .settings-trigger { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; flex: 0 0 auto; }
+    .settings-trigger svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .topnav, .viewnav { display: flex; flex-wrap: wrap; gap: 8px; }
     .topnav { margin-bottom: 20px; }
     .viewnav { margin: 16px 0 0; }
@@ -21,7 +24,38 @@
     .filter-error { margin: 12px 0 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, #b18a42 55%, transparent); border-radius: 8px; background: color-mix(in srgb, #b18a42 8%, Canvas); font-size: .84rem; }
     .filter-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 10px; }
     label { display: grid; gap: 4px; font-size: .8rem; opacity: .82; }
-    input { min-width: 0; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
+    input, textarea, select { min-width: 0; font: inherit; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 8px; padding: 8px 10px; background: Field; color: FieldText; }
+    textarea { width: 100%; min-height: 78px; resize: vertical; }
+    .policy-box { margin: -6px 0 20px; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .policy-box h2 { margin: 0 0 7px; font-size: 1rem; }
+    .policy-box .subtle { margin-bottom: 10px; }
+    .policy-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    .policy-row label { display: grid; gap: 4px; font-size: .8rem; }
+    .policy-row input, .policy-row select { width: 100%; box-sizing: border-box; }
+    .settings-dialog { width: min(920px, calc(100vw - 32px)); max-height: 90vh; padding: 0; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 14px; background: Canvas; color: CanvasText; }
+    .settings-dialog::backdrop { background: color-mix(in srgb, #000 58%, transparent); backdrop-filter: blur(2px); }
+    .settings-form { margin: 0; display: flex; flex-direction: column; max-height: 90vh; }
+    .settings-head, .settings-footer { padding: 14px 18px; display: flex; gap: 10px; align-items: center; border-color: color-mix(in srgb, CanvasText 16%, transparent); }
+    .settings-head { justify-content: space-between; border-bottom: 1px solid; }
+    .settings-head h2 { margin: 0; font-size: 1.12rem; }
+    .settings-footer { justify-content: flex-end; border-top: 1px solid; }
+    .dialog-close { width: 34px; height: 34px; padding: 0; font-size: 1.35rem; }
+    .settings-body { padding: 16px 18px; overflow: auto; display: grid; gap: 14px; }
+    .settings-section { padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .settings-section h3 { margin: 0 0 7px; font-size: 1rem; }
+    .settings-section > .subtle { margin: 0 0 12px; }
+    .settings-section textarea { box-sizing: border-box; }
+    .settings-grid { display: grid; gap: 12px; align-items: start; }
+    .settings-grid.two { grid-template-columns: minmax(170px, .45fr) minmax(0, 1fr); }
+    .settings-grid.workplace { grid-template-columns: minmax(150px, .28fr) minmax(0, 1fr); }
+    .checkbox-field { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); border-radius: 8px; opacity: 1; cursor: pointer; }
+    .checkbox-field input { width: auto; min-width: auto; margin: 3px 0 0; padding: 0; flex: 0 0 auto; }
+    .checkbox-copy { display: grid; gap: 3px; min-width: 0; }
+    .checkbox-copy strong { font-size: .82rem; }
+    .checkbox-copy small, .settings-help { font-size: .76rem; opacity: .68; line-height: 1.4; }
+    .resolved { font-size: .82rem; margin-top: 8px; opacity: .72; }
+    .resolved.error { opacity: 1; }
+    .reason { opacity: 1; border-color: color-mix(in srgb, #b14d42 55%, transparent); background: color-mix(in srgb, #b14d42 10%, Canvas); }
     .filter-actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
     button, .button { font: inherit; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); border-radius: 8px; padding: 8px 12px; background: ButtonFace; color: ButtonText; cursor: pointer; text-decoration: none; }
     .result-line { margin: 16px 0; display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; }
@@ -65,7 +99,11 @@
     @media (max-width: 1150px) { .filter-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); } }
     @media (max-width: 1050px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 700px) { .filter-grid { grid-template-columns: repeat(2, minmax(130px, 1fr)); } }
-    @media (max-width: 650px) { .grid, .filter-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 650px) {
+      .grid, .filter-grid, .settings-grid.two, .settings-grid.workplace { grid-template-columns: 1fr; }
+      .settings-dialog { width: calc(100vw - 20px); max-height: 94vh; }
+      .settings-form { max-height: 94vh; }
+    }
   </style>
 </head>
 <body>
@@ -75,13 +113,20 @@
     <a href="/jobs">Stellen</a>
   </nav>
 
-  <h1>Häuser</h1>
-  <div class="subtle">Aktuelle Angebote mit eindeutigem Kaufpreis im WohnWerk-Auswahlbereich</div>
+  <div class="page-heading">
+    <div>
+      <h1>Häuser</h1>
+      <div class="subtle">Aktuelle Angebote mit eindeutigem Kaufpreis im WohnWerk-Auswahlbereich</div>
+    </div>
+    <button class="settings-trigger" type="button" title="Einstellungen" aria-label="Einstellungen öffnen" data-settings-open>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1A8 8 0 0 0 15 6l-.4-2.6h-4L10 6a8 8 0 0 0-1.6 1L6 6 4 9.4 6.1 11a7 7 0 0 0 0 2L4 14.6 6 18l2.4-1A8 8 0 0 0 10 18l.5 2.6h4L15 18a8 8 0 0 0 1.6-1l2.4 1 2-3.4-2.1-1.6a7 7 0 0 0 .1-1Z"/></svg>
+    </button>
+  </div>
 
   <nav class="viewnav" aria-label="Häuseransicht">
     {% for value, label in house_views.items() %}
       <a href="/houses?ansicht={{ value }}&sortierung={{ selected_sort }}&richtung={{ sort_direction }}" class="{% if selected_view == value %}active{% endif %}">
-        {{ label }}{% if value == 'neu' and stats.neu %} ({{ stats.neu }}){% elif value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
+        {{ label }}{% if value == 'neu' and stats.neu %} ({{ stats.neu }}){% elif value == 'abgelehnt' and stats.abgelehnt %} ({{ stats.abgelehnt }}){% elif value == 'favoriten' and stats.favoriten %} ({{ stats.favoriten }}){% elif value == 'ausgeblendet' and stats.ausgeblendet %} ({{ stats.ausgeblendet }}){% endif %}
       </a>
     {% endfor %}
   </nav>
@@ -91,11 +136,15 @@
     <input type="hidden" name="sortierung" value="{{ selected_sort }}">
     <input type="hidden" name="richtung" value="{{ sort_direction }}">
     <div class="filter-note">
-      WohnWerk hält den vollständigen Quellenbestand für die Aktualitätsprüfung im Hintergrund. Im Katalog erscheinen nur aktuelle Angebote mit bestätigtem Preis zwischen {{ eur_label(system_price_min) }} und {{ eur_label(system_price_max) }}. Die Felder unten sind zusätzliche, frei wählbare und gespeicherte Filter.
+      {% if selected_view == 'abgelehnt' %}
+        Hier bleiben aktuell bekannte Häuser sichtbar, die mindestens eine lokale oder Quellen-Auswahlregel nicht erfüllen. Die Gründe stehen direkt auf der Karte. Die Felder unten grenzen diese Ansicht nur zusätzlich ein.
+      {% else %}
+        WohnWerk hält den vollständigen Quellenbestand für die Aktualitätsprüfung im Hintergrund. Im normalen Katalog erscheinen nur aktuelle, lokal akzeptierte Angebote im Systembereich {{ eur_label(system_price_min) }} bis {{ eur_label(system_price_max) }}. Die Felder unten sind zusätzliche, frei wählbare und gespeicherte Filter.
+      {% endif %}
     </div>
     <div class="filter-grid">
       <label>Ort oder PLZ
-        <input name="ort" value="{{ filters.ort }}" placeholder="z. B. Salzburg oder 5020">
+        <input name="ort" value="{{ filters.ort }}" placeholder="{{ 'z. B. Berlin oder 10115' if selected_country == 'DE' else 'z. B. Salzburg oder 5020' }}">
       </label>
       <label>Umkreis (km)
         <input type="number" min="1" max="250" step="1" name="radius_km" value="{{ filters.radius_km if filters.radius_km is not none else '' }}" placeholder="z. B. 50">
@@ -131,6 +180,8 @@
       <a class="button" href="/houses?filter_reset=1&ansicht={{ selected_view }}&sortierung={{ selected_sort }}&richtung={{ sort_direction }}">Filter löschen</a>
     </div>
   </form>
+
+  {% include "_house_settings_dialog.html" %}
 
   <div class="result-line">
     <strong>{{ total }} Immobilien</strong>
@@ -169,27 +220,88 @@
       {% set state = states.get(house.id) %}
       {% set viewed = state and state.viewed %}
       {% set hidden = state and state.hidden %}
+      {% set rejected = selected_view == 'abgelehnt' %}
       <article class="house {{ 'viewed' if viewed else 'unviewed' }}" id="house-{{ house.id }}">
-        {% if not hidden %}<a class="media" href="/houses/{{ house.id }}" aria-label="{{ house.title }} öffnen">{% else %}<div class="media">{% endif %}
+        {% if not hidden and not rejected %}<a class="media" href="/houses/{{ house.id }}" aria-label="{{ house.title }} öffnen">{% else %}<div class="media">{% endif %}
           {% if image_urls.get(house.id) %}<img src="{{ image_urls.get(house.id) }}" alt="" loading="lazy">{% else %}<span class="placeholder">Vorschaubild wird im Hintergrund geladen</span>{% endif %}
-        {% if not hidden %}</a>{% else %}</div>{% endif %}
+        {% if not hidden and not rejected %}</a>{% else %}</div>{% endif %}
         <div class="body">
           <div class="status-line">
             {% if house.id in new_ids %}<span class="status new">Neu</span>{% endif %}
             <span class="status">{{ 'Gesehen' if viewed else 'Noch nicht angesehen' }}</span>
             {% if state and state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
             {% if hidden %}<span class="status">Ausgeblendet</span>{% endif %}
+            {% if rejected %}<span class="status reason">Abgelehnt</span>{% endif %}
+            {% if rejected %}{% for reason in rejection_reasons.get(house.id, ()) %}<span class="status reason">{{ reason.label_de }}</span>{% endfor %}{% endif %}
           </div>
           <div class="location">{{ house.postal_code or '' }} {{ house.city or 'Ort unbekannt' }}</div>
           <div class="listed-date">Bei WohnWerk seit {{ house.first_seen_at.strftime('%d.%m.%Y') }}</div>
-          <h2>{% if not hidden %}<a href="/houses/{{ house.id }}">{{ house.title }}</a>{% else %}{{ house.title }}{% endif %}</h2>
+          <h2>{% if not hidden and not rejected %}<a href="/houses/{{ house.id }}">{{ house.title }}</a>{% else %}{{ house.title }}{% endif %}</h2>
           <div class="price">{{ eur_label(house.price_eur) }}</div>
           <div class="facts">
             {% if area_label(house.living_area_m2) %}<span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% elif area_label(item.neutral_area_m2) %}<span class="fact">Fläche {{ area_label(item.neutral_area_m2) }} · Typ nicht eindeutig</span>{% endif %}
             {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+            {% set nearest_hospital = nearest_hospitals.get(house.id) if nearest_hospitals is defined else none %}
+            {% set emergency = emergency_access.get(house.id) if emergency_access is defined else none %}
+            {% if selected_country == 'DE' %}
+              {% if nearest_hospital %}
+                <span class="fact">Klinik {{ '%.1f'|format(nearest_hospital.air_distance_km) }} km Luftlinie · {{ nearest_hospital.name }}</span>
+              {% elif hospital_data_ready %}
+                <span class="fact">Klinik: Entfernung unbekannt</span>
+              {% else %}
+                <span class="fact">Klinik: Daten unbekannt</span>
+              {% endif %}
+              {% if emergency %}
+                <span class="fact">Notfall {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie · Stufe {{ emergency.emergency_level }}</span>
+              {% elif hospital_data_ready %}
+                <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
+              {% endif %}
+            {% endif %}
+            {% if selected_country == 'DE' %}
+              {% set source_net = internet_source_primary.get(house.id) if internet_source_primary is defined else none %}
+              {% set fixed = internet_access.get(house.id) if internet_access is defined else none %}
+              {% if source_net %}
+                {% if source_net.max_download_mbps %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {% if source_net.provider_name %}{{ source_net.provider_name }} · {% endif %}{% if source_net.technology %}{{ source_net.technology }} {% endif %}bis {{ source_net.max_download_mbps }} Mbit/s</span>
+                {% elif source_net.availability_status == 'connected' %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} angeschlossen</span>
+                {% elif source_net.availability_status == 'at_property' %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} am Grundstück</span>
+                {% endif %}
+              {% endif %}
+              {% if fixed and fixed.max_full_download_mbps %}
+                <span class="fact">Amtliches Raster ≥ {{ fixed.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
+                {% if fixed.max_any_download_mbps and fixed.max_any_download_mbps > fixed.max_full_download_mbps %}
+                  <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der Zelle</span>
+                {% endif %}
+              {% elif fixed and fixed.max_any_download_mbps %}
+                <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der 100-m-Zelle</span>
+              {% elif not source_net and internet_data_ready %}
+                <span class="fact">Festnetz hausgenau unbekannt</span>
+              {% elif not source_net %}
+                <span class="fact">Festnetz: Daten unbekannt</span>
+              {% endif %}
+              {% if internet_fallback_reasons.get(house.id) %}
+                <span class="fact">Starlink-Fallback prüfen</span>
+              {% endif %}
+            {% endif %}
+            {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
+            {% if workplace_distance %}
+              {% if workplace_distance.road_duration_minutes is not none %}
+                <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
+              {% endif %}
+              <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
+            {% endif %}
           </div>
-          {% if not hidden %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
+          {% if not hidden and not rejected %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
+          {% if rejected and item.sources %}
+            <div class="open">Originalanzeigen:
+              {% for source in item.sources %}
+                {% if '/wohnwerk-fallback/' not in source.url %}<a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.label }}</a>{% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
           <div class="actions">
             <form method="post" action="/houses/{{ house.id }}/favorite">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="favorite" value="{{ '0' if state and state.favorite else '1' }}">
@@ -215,5 +327,11 @@
     </nav>
   {% endif %}
 </main>
+<script>
+  const settingsDialog = document.getElementById("house-settings-dialog");
+  document.querySelectorAll("[data-settings-open]").forEach((button) => button.addEventListener("click", () => settingsDialog.showModal()));
+  document.querySelectorAll("[data-settings-close]").forEach((button) => button.addEventListener("click", () => settingsDialog.close()));
+  settingsDialog.addEventListener("click", (event) => { if (event.target === settingsDialog) settingsDialog.close(); });
+</script>
 </body>
 </html>

@@ -238,6 +238,8 @@ class Property(Base):
     location: Mapped[object | None] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=True)
     )
+    location_source: Mapped[str | None] = mapped_column(String(160))
+    location_method: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(20), default=ListingStatus.ACTIVE, nullable=False)
     canonical_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     first_seen_at: Mapped[datetime] = mapped_column(

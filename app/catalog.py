@@ -26,14 +26,43 @@ from app.candidate_activity import (
     set_property_hidden,
 )
 from app.config import get_settings
+from app.country_scope import DEFAULT_COUNTRY, selected_country
 from app.database import get_db
 from app.geo import radius_metres
+from app.hospital_access import (
+    hospital_dataset_ready,
+    load_confirmed_emergency_access,
+    load_nearest_hospital_access,
+)
 from app.house_filters import (
     HouseFilters,
     house_filter_summary,
     load_house_filters,
     resolve_house_filters,
     save_house_filters,
+)
+from app.house_suitability import (
+    accepted_property_condition,
+    active_de_plz_blacklist,
+    active_hospital_distance_policy,
+    active_internet_policy,
+    load_house_suitability_policy,
+    save_de_plz_blacklist,
+    save_hospital_distance_policy,
+    save_internet_policy,
+)
+from app.internet_access import (
+    BBA_ATTRIBUTION,
+    BBA_SOURCE_URL,
+    STARLINK_DE_FROM_EUR_MONTH,
+    STARLINK_DE_MAX_LABEL,
+    STARLINK_DE_SNAPSHOT_DATE,
+    STARLINK_DE_SOURCE_URL,
+    internet_dataset_ready,
+)
+from app.internet_source_evidence import (
+    load_property_internet_evidence_bundles,
+    starlink_fallback_reason_for_bundle,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
@@ -47,6 +76,11 @@ from app.property_location_filter import PropertyRadiusFilter, resolve_property_
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
+from app.workplace import (
+    load_candidate_workplace,
+    load_workplace_distances_for_ui,
+    save_candidate_workplace,
+)
 
 router = APIRouter(tags=["site"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -271,10 +305,19 @@ def _property_filter_conditions(
     return conditions
 
 
-def _product_property_conditions() -> list:
+def _product_property_conditions(
+    plz_blacklist: tuple[str, ...] = (),
+    *,
+    max_hospital_distance_km: Decimal | None = None,
+    hospital_fail_closed: bool = False,
+) -> list:
     return [
         Property.status == ListingStatus.ACTIVE,
-        product_visible_property_condition(),
+        accepted_property_condition(
+            plz_blacklist,
+            max_hospital_distance_km=max_hospital_distance_km,
+            hospital_fail_closed=hospital_fail_closed,
+        ),
     ]
 
 
@@ -295,6 +338,13 @@ def _properties_within_radius_for_job_stmt(
             raise ValueError("db session is required for a saved house radius filter")
         radius_filter = resolve_property_radius_filter(db, filters)
     curation = [property_curation_condition(profile_id, "alle")] if profile_id else []
+    plz_blacklist: tuple[str, ...] = ()
+    hospital_max_distance_km: Decimal | None = None
+    hospital_fail_closed = False
+    if profile_id is not None and db is not None:
+        policy = load_house_suitability_policy(db, profile_id)
+        plz_blacklist = active_de_plz_blacklist(policy)
+        hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(policy)
     distance_m = func.ST_Distance(Property.location, JobLocation.location)
     candidates = (
         select(
@@ -331,7 +381,11 @@ def _properties_within_radius_for_job_stmt(
             ),
         )
         .where(
-            *_product_property_conditions(),
+            *_product_property_conditions(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             *curation,
             Property.location.is_not(None),
             *_property_filter_conditions(filters, radius_filter=radius_filter),
@@ -636,6 +690,132 @@ def houses_page(
     return response
 
 
+@router.post("/houses/settings", include_in_schema=False)
+def update_house_settings(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    plz_blacklist_text: Annotated[str, Form()] = "",
+    hospital_max_distance_km: Annotated[str, Form()] = "",
+    hospital_fail_closed: Annotated[str, Form()] = "",
+    internet_minimum_mbps: Annotated[str, Form()] = "",
+    workplace_country: Annotated[str, Form()] = "DE",
+    workplace_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    country_code = selected_country() or DEFAULT_COUNTRY
+    try:
+        if country_code == "DE":
+            save_de_plz_blacklist(
+                db,
+                profile.id,
+                plz_blacklist_text,
+                commit=False,
+            )
+            save_hospital_distance_policy(
+                db,
+                profile.id,
+                hospital_max_distance_km,
+                fail_closed=hospital_fail_closed == "1",
+                commit=False,
+            )
+            save_internet_policy(
+                db,
+                profile.id,
+                internet_minimum_mbps,
+                commit=False,
+            )
+        save_candidate_workplace(
+            db,
+            profile.id,
+            country_code=workplace_country,
+            input_text=workplace_text,
+            commit=False,
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
+@router.post("/houses/plz-blacklist", include_in_schema=False)
+def update_house_plz_blacklist(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    plz_blacklist_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_de_plz_blacklist(db, profile.id, plz_blacklist_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
+@router.post("/houses/hospital-policy", include_in_schema=False)
+def update_hospital_policy(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    hospital_max_distance_km: Annotated[str, Form()] = "",
+    hospital_fail_closed: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_hospital_distance_policy(
+            db,
+            profile.id,
+            hospital_max_distance_km,
+            fail_closed=hospital_fail_closed == "1",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
+@router.post("/houses/internet-policy", include_in_schema=False)
+def update_internet_policy(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    internet_minimum_mbps: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_internet_policy(db, profile.id, internet_minimum_mbps)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
+@router.post("/houses/workplace", include_in_schema=False)
+def update_candidate_workplace(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    workplace_country: Annotated[str, Form()] = "DE",
+    workplace_text: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_candidate_workplace(
+            db,
+            profile.id,
+            country_code=workplace_country,
+            input_text=workplace_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/{property_id}/favorite", include_in_schema=False)
 def update_property_favorite(
     property_id: int,
@@ -679,10 +859,19 @@ def house_detail(
     radius_km: Annotated[float, Query(ge=5, le=100)] = 50.0,
 ):
     profile = _profile_or_503(db)
+    suitability_policy = load_house_suitability_policy(db, profile.id)
+    plz_blacklist = active_de_plz_blacklist(suitability_policy)
+    hospital_max_distance_km, hospital_fail_closed = active_hospital_distance_policy(
+        suitability_policy
+    )
     property_row = db.scalar(
         select(Property).where(
             Property.id == property_id,
-            *_product_property_conditions(),
+            *_product_property_conditions(
+                plz_blacklist,
+                max_hospital_distance_km=hospital_max_distance_km,
+                hospital_fail_closed=hospital_fail_closed,
+            ),
             property_curation_condition(profile.id, "alle"),
         )
     )
@@ -692,6 +881,50 @@ def house_detail(
     states, _new_ids, image_urls = _property_ui_state(db, profile, [property_row])
     view = _property_views(db, [property_row])[0]
     jobs = _nearby_jobs(db, property_id, radius_km)
+    workplace = load_candidate_workplace(db, profile.id)
+    workplace_distance = load_workplace_distances_for_ui(
+        db,
+        profile.id,
+        {property_id},
+    ).get(property_id)
+    country_code = selected_country() or DEFAULT_COUNTRY
+    nearest_hospital = load_nearest_hospital_access(
+        db,
+        {property_id},
+        country_code=country_code,
+    ).get(property_id)
+    emergency_access = load_confirmed_emergency_access(
+        db,
+        {property_id},
+        country_code=country_code,
+    ).get(property_id)
+    hospital_data_ready = (
+        hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    internet_bundle = (
+        load_property_internet_evidence_bundles(db, {property_id}).get(property_id)
+        if country_code == "DE"
+        else None
+    )
+    internet_access = internet_bundle.official_grid if internet_bundle is not None else None
+    internet_source_evidence = (
+        internet_bundle.source_claims if internet_bundle is not None else ()
+    )
+    internet_source_primary = (
+        internet_bundle.primary_source if internet_bundle is not None else None
+    )
+    internet_data_ready = (
+        internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    internet_minimum_mbps = active_internet_policy(suitability_policy)
+    internet_fallback_reason = (
+        starlink_fallback_reason_for_bundle(
+            internet_bundle,
+            minimum_download_mbps=internet_minimum_mbps,
+        )
+        if country_code == "DE"
+        else None
+    )
     return templates.TemplateResponse(
         request=request,
         name="house_detail.html",
@@ -700,6 +933,24 @@ def house_detail(
             "house_state": states.get(property_id, CandidatePropertyState()),
             "image_url": image_urls.get(property_id),
             "jobs": jobs,
+            "workplace": workplace,
+            "workplace_distance": workplace_distance,
+            "nearest_hospital": nearest_hospital,
+            "emergency_access": emergency_access,
+            "hospital_data_ready": hospital_data_ready,
+            "internet_access": internet_access,
+            "internet_source_evidence": internet_source_evidence,
+            "internet_source_primary": internet_source_primary,
+            "internet_data_ready": internet_data_ready,
+            "internet_minimum_mbps": internet_minimum_mbps,
+            "internet_fallback_reason": internet_fallback_reason,
+            "internet_source_url": BBA_SOURCE_URL,
+            "internet_attribution": BBA_ATTRIBUTION,
+            "starlink_source_url": STARLINK_DE_SOURCE_URL,
+            "starlink_snapshot_date": STARLINK_DE_SNAPSHOT_DATE,
+            "starlink_from_eur_month": STARLINK_DE_FROM_EUR_MONTH,
+            "starlink_max_label": STARLINK_DE_MAX_LABEL,
+            "selected_country": country_code,
             "radius_km": radius_km,
             "eur_label": _eur_label,
             "area_label": _area_label,

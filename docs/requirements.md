@@ -2,11 +2,13 @@
 
 ## Product goal
 
-Provide one local web application that helps evaluate where to live and work in Austria by combining:
+Provide one local web application that helps evaluate housing choices across Austria and Germany while preserving the proven Austrian job workflow by combining:
 
 - houses for sale that satisfy explicit property criteria;
-- job vacancies that are plausibly suitable for an experienced mechanical-engineering professional with a broad work history;
-- configurable geographic matching between the two.
+- Austrian job vacancies that are plausibly suitable for an experienced mechanical-engineering professional with a broad work history;
+- configurable geographic matching and explicit workplace-distance context.
+
+Germany job acquisition is paused by operator decision and is not a current product/development target.
 
 The application is intended to replace repeated manual searches across many portals, not to reproduce or redistribute the portals themselves.
 
@@ -44,6 +46,24 @@ Where available:
 
 Missing optional data must not automatically reject a property.
 
+### Germany house decision requirements
+
+For the current Germany house phase:
+
+- purchase acquisition target is EUR 30,000..200,000;
+- auction / `Versteigerung` houses are unacceptable and must never appear as accepted recommendations;
+- broad acquisition should collect the price-bounded corpus and apply PLZ blacklist, hospital-distance and similar suitability rules locally;
+- rejected houses remain visible in a dedicated rejected/filtered view with explicit reason tags;
+- German PLZ blacklist supports exact five-digit values and wildcard masks such as `0xxxx`;
+- browsing supports distance from a user-entered `PLZ/Ort` plus N km;
+- house details show distance to a configured workplace location independently of job acquisition;
+- hospital enrichment should show defensible distance plus source-backed hospital name/type/capability information useful for emergency-access decisions;
+- Internet enrichment should show best defensible maximum access speed and price where available, with Starlink exposed as an explicit fallback when fixed access is unavailable/insufficient/unknown according to configuration;
+- duplicate detection should conservatively identify likely cross-source duplicates without losing source provenance;
+- source-backed heating type is displayed and can influence preference ranking; wood heating is a positive preference.
+
+Missing enrichment evidence remains unknown unless an explicit user-configured rule says otherwise. Never invent coordinates, hospital capability, Internet availability, price, or heating type.
+
 ### Provenance and history
 
 For every source listing preserve:
@@ -59,6 +79,8 @@ For every source listing preserve:
 Canonical properties must support more than one source listing.
 
 ## Job requirements
+
+The job subsystem remains an Austria compatibility baseline. Germany-specific job acquisition, source expansion and debugging are paused until the operator explicitly reopens that scope.
 
 ### Candidate discovery
 
