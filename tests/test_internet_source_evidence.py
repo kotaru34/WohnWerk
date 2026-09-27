@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.internet_source_evidence import (
     ADDRESS_STREET_HOUSE_NUMBER,
     EVIDENCE_LISTING_CLAIM,
     EVIDENCE_PORTAL_ADDRESS_ESTIMATE,
+    InternetEvidenceBundle,
+    InternetSourceEvidence,
     parse_immoscout_de_internet_evidence,
     parse_immowelt_de_internet_evidence,
+    starlink_fallback_reason_for_bundle,
 )
 
 
@@ -188,4 +193,57 @@ def test_austrian_hosts_are_out_of_scope_for_source_internet_parser() -> None:
             body,
         ).claims
         == ()
+    )
+
+
+
+def _source_evidence(*, speed: int | None, status: str = "available") -> InternetSourceEvidence:
+    return InternetSourceEvidence(
+        property_id=1,
+        property_listing_id=2,
+        source_name="immowelt-de",
+        source_url="https://www.immowelt.de/expose/example123456",
+        evidence_kind=EVIDENCE_LISTING_CLAIM,
+        availability_status=status,
+        claim_semantics="listing_statement",
+        provider_name=None,
+        technology="DSL",
+        max_download_mbps=speed,
+        max_upload_mbps=None,
+        source_address=None,
+        address_precision=None,
+        evidence_text="Internet DSL",
+        observed_at=datetime.now(UTC),
+    )
+
+
+def test_starlink_fallback_accepts_source_speed_without_calling_it_official_grid() -> None:
+    bundle = InternetEvidenceBundle(
+        source_claims=(_source_evidence(speed=250),),
+        official_grid=None,
+    )
+
+    assert (
+        starlink_fallback_reason_for_bundle(bundle, minimum_download_mbps=100)
+        is None
+    )
+    assert (
+        starlink_fallback_reason_for_bundle(bundle, minimum_download_mbps=400)
+        == "minimum_not_established"
+    )
+
+
+def test_connected_fiber_without_speed_does_not_establish_speed_threshold() -> None:
+    bundle = InternetEvidenceBundle(
+        source_claims=(_source_evidence(speed=None, status="connected"),),
+        official_grid=None,
+    )
+
+    assert (
+        starlink_fallback_reason_for_bundle(bundle, minimum_download_mbps=None)
+        is None
+    )
+    assert (
+        starlink_fallback_reason_for_bundle(bundle, minimum_download_mbps=100)
+        == "minimum_not_established"
     )
