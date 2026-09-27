@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Self
 
 from geoalchemy2 import Geometry
 from pyproj import Transformer
@@ -22,7 +23,8 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
@@ -207,7 +209,7 @@ class BroadbandGridLookup:
     def close(self) -> None:
         self.connection.close()
 
-    def __enter__(self) -> BroadbandGridLookup:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_args) -> None:
