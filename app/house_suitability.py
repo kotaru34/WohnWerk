@@ -137,7 +137,7 @@ def save_de_plz_blacklist(
     else:
         row.de_plz_blacklist = list(masks)
     session.commit()
-    return HouseSuitabilityPolicy(de_plz_blacklist=masks)
+    return load_house_suitability_policy(session, profile_id)
 
 
 def save_hospital_policy(
