@@ -41,10 +41,10 @@ from app.house_suitability import (
     load_property_rejection_reasons,
     rejected_property_condition,
 )
-from app.internet_access import (
-    internet_dataset_ready,
-    load_property_internet_access,
-    starlink_fallback_reason,
+from app.internet_access import internet_dataset_ready
+from app.internet_source_evidence import (
+    load_property_internet_evidence_bundles,
+    starlink_fallback_reason_for_bundle,
 )
 from app.jobs.candidate_profile_store import get_seed_profile
 from app.jobs.fit_store import JobFitView, annual_salary_label, load_live_job_fit
@@ -319,20 +319,41 @@ def houses_page(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
-    internet_access = (
-        load_property_internet_access(db, property_ids) if country_code == "DE" else {}
+    internet_bundles = (
+        load_property_internet_evidence_bundles(db, property_ids)
+        if country_code == "DE"
+        else {}
     )
+    internet_access = {
+        property_id: bundle.official_grid
+        for property_id, bundle in internet_bundles.items()
+        if bundle.official_grid is not None
+    }
+    internet_source_primary = {
+        property_id: bundle.primary_source
+        for property_id, bundle in internet_bundles.items()
+        if bundle.primary_source is not None
+    }
+    internet_source_evidence = {
+        property_id: bundle.source_claims
+        for property_id, bundle in internet_bundles.items()
+        if bundle.source_claims
+    }
     internet_data_ready = (
         internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
     internet_minimum_mbps = active_internet_policy(suitability_policy)
-    internet_fallback_reasons = {
-        property_id: starlink_fallback_reason(
-            internet_access.get(property_id),
-            minimum_download_mbps=internet_minimum_mbps,
-        )
-        for property_id in property_ids
-    } if country_code == "DE" else {}
+    internet_fallback_reasons = (
+        {
+            property_id: starlink_fallback_reason_for_bundle(
+                internet_bundles.get(property_id),
+                minimum_download_mbps=internet_minimum_mbps,
+            )
+            for property_id in property_ids
+        }
+        if country_code == "DE"
+        else {}
+    )
     accepted_conditions = _product_property_conditions(
         plz_blacklist,
         max_hospital_distance_km=hospital_max_distance_km,
@@ -429,6 +450,8 @@ def houses_page(
             "hospital_max_distance_km": suitability_policy.max_hospital_distance_km,
             "hospital_fail_closed": suitability_policy.hospital_distance_fail_closed,
             "internet_access": internet_access,
+            "internet_source_primary": internet_source_primary,
+            "internet_source_evidence": internet_source_evidence,
             "internet_data_ready": internet_data_ready,
             "internet_minimum_mbps": internet_minimum_mbps,
             "internet_fallback_reasons": internet_fallback_reasons,

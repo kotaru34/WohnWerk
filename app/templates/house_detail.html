@@ -116,13 +116,22 @@
           <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
         {% endif %}
         {% if selected_country == 'DE' %}
+          {% if internet_source_primary %}
+            {% if internet_source_primary.max_download_mbps %}
+              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {% if internet_source_primary.provider_name %}{{ internet_source_primary.provider_name }} · {% endif %}{% if internet_source_primary.technology %}{{ internet_source_primary.technology }} {% endif %}bis {{ internet_source_primary.max_download_mbps }} Mbit/s</span>
+            {% elif internet_source_primary.availability_status == 'connected' %}
+              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {{ internet_source_primary.technology or 'Festnetz' }} angeschlossen</span>
+            {% elif internet_source_primary.availability_status == 'at_property' %}
+              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {{ internet_source_primary.technology or 'Festnetz' }} am Grundstück</span>
+            {% endif %}
+          {% endif %}
           {% if internet_access and internet_access.max_full_download_mbps %}
-            <span class="fact">Festnetz ≥ {{ internet_access.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
+            <span class="fact">Amtliches Raster ≥ {{ internet_access.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
           {% elif internet_access and internet_access.max_any_download_mbps %}
-            <span class="fact">Festnetz bis {{ internet_access.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(internet_access.max_any_coverage_percent) }} % der 100-m-Zelle · nicht hausgenau</span>
-          {% elif internet_data_ready %}
+            <span class="fact">Amtliches Raster bis {{ internet_access.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(internet_access.max_any_coverage_percent) }} % der 100-m-Zelle</span>
+          {% elif not internet_source_primary and internet_data_ready %}
             <span class="fact">Festnetz hausgenau unbekannt</span>
-          {% else %}
+          {% elif not internet_source_primary %}
             <span class="fact">Festnetz: Daten unbekannt</span>
           {% endif %}
           {% if internet_fallback_reason %}<span class="fact">Starlink-Fallback prüfen</span>{% endif %}
@@ -168,6 +177,35 @@
         <div class="semantics">Keine belastbare Entfernung zu einer ausdrücklich bestätigten G-BA-Notfallstufe 1–3 verfügbar. WohnWerk erfindet dafür keine Capability oder Koordinate.</div>
       {% endif %}
       {% if selected_country == 'DE' %}
+        {% if internet_source_evidence %}
+          {% for evidence in internet_source_evidence %}
+            {% if evidence.evidence_kind != 'source_address' %}
+              <div class="semantics">
+                <strong>{{ evidence.kind_label_de }}:</strong>
+                {% if evidence.provider_name %}{{ evidence.provider_name }} · {% endif %}
+                {% if evidence.technology %}{{ evidence.technology }}{% if evidence.max_download_mbps %} {% endif %}{% endif %}
+                {% if evidence.max_download_mbps %}bis {{ evidence.max_download_mbps }} Mbit/s Download{% endif %}
+                {% if evidence.max_upload_mbps %} · bis {{ evidence.max_upload_mbps }} Mbit/s Upload{% endif %}
+                {% if not evidence.max_download_mbps and evidence.availability_status == 'connected' %}Anschluss laut Quelle vorhanden{% endif %}
+                {% if not evidence.max_download_mbps and evidence.availability_status == 'at_property' %}laut Quelle am Grundstück{% endif %}
+                {% if evidence.availability_status == 'planned' %} · Ausbau/Planung laut Quelle{% endif %}.
+                Quelle: <a href="{{ evidence.source_url }}" target="_blank" rel="noopener noreferrer">{{ evidence.source_name }}</a>.
+                {% if evidence.evidence_kind == 'portal_address_estimate' %}
+                  Das ist eine unverbindliche Portal-Schätzung auf Basis der Standortadresse, keine verbindliche Verfügbarkeits- oder Tarifzusage.
+                {% else %}
+                  Das ist eine Angabe im Exposé und keine unabhängige Leitungsprüfung durch WohnWerk.
+                {% endif %}
+              </div>
+            {% endif %}
+          {% endfor %}
+          {% if internet_source_primary and internet_source_primary.source_address %}
+            <div class="semantics">
+              <strong>Quelladresse:</strong> {{ internet_source_primary.source_address }}
+              · Präzision {{ internet_source_primary.address_precision or 'unbekannt' }}.
+              Diese Adresse ist Quellenbeleg, aber noch keine geokodierte Hauskoordinate und wird daher nicht automatisch für das amtliche 100-m-Raster verwendet.
+            </div>
+          {% endif %}
+        {% endif %}
         {% if internet_access %}
           <div class="semantics">
             <strong>Festnetz:</strong>
@@ -202,7 +240,7 @@
             {% if internet_fallback_reason == 'fixed_unknown' %}
               Die terrestrische Hausverfügbarkeit ist derzeit nicht belastbar feststellbar.
             {% else %}
-              Das konfigurierte Ziel von {{ internet_minimum_mbps }} Mbit/s ist nicht für 100 % der Haushalte der zugeordneten Festnetzzelle belegt.
+              Das konfigurierte Ziel von {{ internet_minimum_mbps }} Mbit/s ist durch die vorhandenen Quellen nicht belastbar belegt.
             {% endif %}
             Aktueller WohnWerk-Referenzstand {{ starlink_snapshot_date.strftime('%d.%m.%Y') }}:
             ab € {{ starlink_from_eur_month }}/Monat, {{ starlink_max_label }}.

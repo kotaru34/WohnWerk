@@ -8,6 +8,7 @@ import app.candidate_activity
 import app.hospital_access
 import app.house_suitability
 import app.internet_access
+import app.internet_source_evidence
 import app.jobs.candidate_fit
 import app.jobs.concepts
 import app.live_events

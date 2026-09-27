@@ -59,8 +59,10 @@ from app.internet_access import (
     STARLINK_DE_SNAPSHOT_DATE,
     STARLINK_DE_SOURCE_URL,
     internet_dataset_ready,
-    load_property_internet_access,
-    starlink_fallback_reason,
+)
+from app.internet_source_evidence import (
+    load_property_internet_evidence_bundles,
+    starlink_fallback_reason_for_bundle,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
@@ -899,18 +901,25 @@ def house_detail(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
-    internet_access = (
-        load_property_internet_access(db, {property_id}).get(property_id)
+    internet_bundle = (
+        load_property_internet_evidence_bundles(db, {property_id}).get(property_id)
         if country_code == "DE"
         else None
+    )
+    internet_access = internet_bundle.official_grid if internet_bundle is not None else None
+    internet_source_evidence = (
+        internet_bundle.source_claims if internet_bundle is not None else ()
+    )
+    internet_source_primary = (
+        internet_bundle.primary_source if internet_bundle is not None else None
     )
     internet_data_ready = (
         internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
     internet_minimum_mbps = active_internet_policy(suitability_policy)
     internet_fallback_reason = (
-        starlink_fallback_reason(
-            internet_access,
+        starlink_fallback_reason_for_bundle(
+            internet_bundle,
             minimum_download_mbps=internet_minimum_mbps,
         )
         if country_code == "DE"
@@ -930,6 +939,8 @@ def house_detail(
             "emergency_access": emergency_access,
             "hospital_data_ready": hospital_data_ready,
             "internet_access": internet_access,
+            "internet_source_evidence": internet_source_evidence,
+            "internet_source_primary": internet_source_primary,
             "internet_data_ready": internet_data_ready,
             "internet_minimum_mbps": internet_minimum_mbps,
             "internet_fallback_reason": internet_fallback_reason,
