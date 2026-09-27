@@ -442,6 +442,8 @@ def parse_immoscout_de_internet_evidence(url: str, body: str) -> ParsedInternetD
         return ParsedInternetDetail()
 
     available_raw = _json_scalar(body, "obj_telekomInternetAvailable")
+    if isinstance(available_raw, str) and available_raw.casefold() in {"true", "false"}:
+        available_raw = available_raw.casefold() == "true"
     speed_raw = _clean_token(
         str(_json_scalar(body, "obj_telekomInternetSpeed") or "")
     )
