@@ -107,13 +107,13 @@ def test_austria_does_not_apply_german_plz_blacklist() -> None:
 def test_hospital_distance_policy_uses_confirmed_emergency_and_complete_dataset() -> None:
     accepted = select(Property.id).where(
         accepted_property_condition(
-            max_hospital_distance_km=Decimal("30"),
+            max_hospital_distance_km=Decimal(30),
             hospital_fail_closed=False,
         )
     )
     rejected = select(Property.id).where(
         rejected_property_condition(
-            max_hospital_distance_km=Decimal("30"),
+            max_hospital_distance_km=Decimal(30),
             hospital_fail_closed=False,
         )
     )
@@ -142,7 +142,7 @@ def test_hospital_rejection_reason_is_explainable_without_inventing_capability()
         country_code="DE",
         plz_blacklist=(),
         source_payloads=({"product_visible": True},),
-        max_hospital_distance_km=Decimal("30"),
+        max_hospital_distance_km=Decimal(30),
         hospital_distance_km=42.25,
     )
 
@@ -164,7 +164,7 @@ def test_hospital_unknown_is_fail_open_unless_explicitly_requested() -> None:
         country_code="DE",
         plz_blacklist=(),
         source_payloads=({"product_visible": True},),
-        max_hospital_distance_km=Decimal("30"),
+        max_hospital_distance_km=Decimal(30),
         hospital_fail_closed=False,
         hospital_distance_km=None,
     )
@@ -173,7 +173,7 @@ def test_hospital_unknown_is_fail_open_unless_explicitly_requested() -> None:
         country_code="DE",
         plz_blacklist=(),
         source_payloads=({"product_visible": True},),
-        max_hospital_distance_km=Decimal("30"),
+        max_hospital_distance_km=Decimal(30),
         hospital_fail_closed=True,
         hospital_distance_km=None,
     )
@@ -195,7 +195,7 @@ def test_austria_rejection_explanations_ignore_german_hospital_policy() -> None:
         country_code="AT",
         plz_blacklist=(),
         source_payloads=({"product_visible": True},),
-        max_hospital_distance_km=Decimal("1"),
+        max_hospital_distance_km=Decimal(1),
         hospital_fail_closed=True,
         hospital_distance_km=None,
     )
