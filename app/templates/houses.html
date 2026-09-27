@@ -180,6 +180,30 @@
   </section>
   {% endif %}
 
+  {% if selected_country == 'DE' %}
+  <section class="policy-box">
+    <h2>Festnetz / Internet</h2>
+    <div class="subtle">Quelle: Breitbandatlas | Gigabit-Grundbuch. Öffentliche Festnetzdaten liegen als 100×100-m-Raster und als Anteil versorgter Haushalte vor. WohnWerk wertet eine Zelle nur für ein Haus aus, wenn eine hinreichend genaue Hauskoordinate belegt ist; ein PLZ-Mittelpunkt reicht ausdrücklich nicht. Der Zielwert ist nur Entscheidungshilfe für den Starlink-Fallback und kein Ablehnungsgrund.</div>
+    <form method="post" action="/houses/internet-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="return_to" value="/houses?country=DE&ansicht={{ selected_view }}">
+      <div class="policy-row">
+        <label>Ziel Download
+          <select name="internet_minimum_mbps">
+            <option value="" {% if internet_minimum_mbps is none %}selected{% endif %}>kein Mindestwert</option>
+            {% for speed in [10, 16, 30, 50, 100, 200, 400, 1000] %}
+              <option value="{{ speed }}" {% if internet_minimum_mbps == speed %}selected{% endif %}>{{ speed }} Mbit/s</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="subtle">Starlink wird als Fallback markiert, wenn der Zielwert im Festnetz nicht belastbar für die ganze 100-m-Zelle belegt ist oder die Hauslage zu ungenau ist.</div>
+        <button type="submit">Internetziel speichern</button>
+      </div>
+    </form>
+    <div class="resolved">{% if internet_data_ready %}Offizieller Festnetz-Snapshot geladen.{% else %}Festnetzdaten noch nicht vollständig geladen; Verfügbarkeit bleibt unbekannt.{% endif %}</div>
+  </section>
+  {% endif %}
+
   <section class="policy-box">
     <h2>Arbeitsplatz</h2>
     <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
@@ -283,6 +307,24 @@
                 <span class="fact">Notfall {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie · Stufe {{ emergency.emergency_level }}</span>
               {% elif hospital_data_ready %}
                 <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
+              {% endif %}
+            {% endif %}
+            {% if selected_country == 'DE' %}
+              {% set fixed = internet_access.get(house.id) if internet_access is defined else none %}
+              {% if fixed and fixed.max_full_download_mbps %}
+                <span class="fact">Festnetz ≥ {{ fixed.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
+                {% if fixed.max_any_download_mbps and fixed.max_any_download_mbps > fixed.max_full_download_mbps %}
+                  <span class="fact">Festnetz bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der Zelle</span>
+                {% endif %}
+              {% elif fixed and fixed.max_any_download_mbps %}
+                <span class="fact">Festnetz bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der 100-m-Zelle · nicht hausgenau</span>
+              {% elif internet_data_ready %}
+                <span class="fact">Festnetz hausgenau unbekannt</span>
+              {% else %}
+                <span class="fact">Festnetz: Daten unbekannt</span>
+              {% endif %}
+              {% if internet_fallback_reasons.get(house.id) %}
+                <span class="fact">Starlink-Fallback prüfen</span>
               {% endif %}
             {% endif %}
             {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
