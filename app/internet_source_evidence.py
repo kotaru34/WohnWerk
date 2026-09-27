@@ -322,10 +322,11 @@ class _VisibleHtml(HTMLParser):
 def _clean_token(value: str | None) -> str | None:
     if value is None:
         return None
-    cleaned = " ".join(value.replace("_", " ").split()).strip()
-    if not cleaned or cleaned.casefold() in {"no_information", "null", "none", "unknown"}:
+    raw = " ".join(value.split()).strip()
+    sentinel = re.sub(r"[\s_-]+", "_", raw.casefold())
+    if not raw or sentinel in {"no_information", "null", "none", "unknown"}:
         return None
-    return cleaned
+    return " ".join(raw.replace("_", " ").split()).strip()
 
 
 def _localized_speed(value: str | None) -> int | None:
@@ -520,14 +521,21 @@ def parse_immoscout_de_internet_evidence(url: str, body: str) -> ParsedInternetD
 
 
 def _segment_upload_speed(segment: str, download_speed: int | None) -> int | None:
-    lowered = segment.casefold()
-    upload_pos = lowered.find("upload")
-    if upload_pos < 0:
-        return None
-    for match in _SPEED_RE.finditer(segment[upload_pos:]):
-        speed = _localized_speed(match.group(0))
-        if speed is not None and speed != download_speed:
-            return speed
+    patterns = (
+        re.compile(
+            rf"(?P<speed>{_SPEED_TOKEN})\s*M(?:bit|Bit)/s[^\n,;.()]{{0,28}}?\bUpload\b",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"\bUpload\b[^\n,;.()]{{0,28}}?(?P<speed>{_SPEED_TOKEN})\s*M(?:bit|Bit)/s",
+            re.IGNORECASE,
+        ),
+    )
+    for pattern in patterns:
+        for match in pattern.finditer(segment):
+            speed = _localized_speed(match.group("speed"))
+            if speed is not None and speed != download_speed:
+                return speed
     return None
 
 
