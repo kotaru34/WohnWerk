@@ -29,6 +29,13 @@
     .actions form { margin: 0; }
     .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
     .sources { font-size: .9rem; line-height: 1.6; margin-top: 18px; }
+    .hospital { margin-top: 18px; padding: 14px; border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 12px; }
+    .hospital h2 { margin: 0 0 8px; font-size: 1rem; }
+    .hospital-grid { display: grid; gap: 10px; }
+    .hospital-row { padding-top: 9px; border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+    .hospital-row:first-child { padding-top: 0; border-top: 0; }
+    .hospital-row strong { display: block; }
+    .hospital-meta { font-size: .82rem; opacity: .72; margin-top: 3px; }
     .nearby-head { margin-top: 34px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
     .nearby-head h2 { margin: 0; }
     .radius { display: flex; gap: 8px; align-items: end; }
@@ -121,6 +128,62 @@
       {% if workplace %}
         <div class="semantics">Arbeitsplatz: {{ workplace.input_text }}{% if workplace.location is none %} · nicht belastbar aufgelöst{% elif workplace.resolution_method %} · {{ workplace.resolution_method }}{% endif %}. Die Entfernung ist nur Entscheidungshilfe und kein Ausschlusskriterium.</div>
       {% endif %}
+      {% if selected_country == 'DE' %}
+        <section class="hospital">
+          <h2>Krankenhauszugang</h2>
+          {% if hospital_access and hospital_access.nearest_hospital %}
+            <div class="hospital-grid">
+              {% set nearest = hospital_access.nearest_hospital %}
+              <div class="hospital-row">
+                <strong>Nächster Klinikstandort · {{ '%.1f'|format(nearest.air_distance_km) }} km Luftlinie</strong>
+                <div>{{ nearest.name }}{% if nearest.city %} · {{ nearest.city }}{% endif %}</div>
+                <div class="hospital-meta">
+                  {% if nearest.operator_type %}Trägerart: {{ nearest.operator_type }} · {% endif %}
+                  {{ nearest.emergency_level_label }}
+                </div>
+                <div class="hospital-meta">
+                  <a href="{{ nearest.source_url }}" target="_blank" rel="noopener noreferrer">Bundes-Klinik-Atlas</a>
+                  {% if nearest.website_url %} · <a href="{{ nearest.website_url }}" target="_blank" rel="noopener noreferrer">Klinik-Website</a>{% endif %}
+                </div>
+              </div>
+
+              {% if hospital_access.nearest_emergency %}
+                {% set emergency = hospital_access.nearest_emergency %}
+                <div class="hospital-row">
+                  <strong>Nächste bestätigte Notfallversorgung · {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie</strong>
+                  <div>{{ emergency.name }}{% if emergency.city %} · {{ emergency.city }}{% endif %}</div>
+                  <div class="hospital-meta">{{ emergency.emergency_level_label }}</div>
+                  {% if emergency.capability_labels %}
+                    <div class="badges">
+                      {% for label in emergency.capability_labels %}<span class="badge">{{ label }}</span>{% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% else %}
+                <div class="hospital-row"><strong>Bestätigte Notfallversorgung: unbekannt</strong><div class="hospital-meta">Kein Standort mit belastbar bestätigter Notfallstufe 1–3 in den importierten Daten.</div></div>
+              {% endif %}
+
+              {% if hospital_access.nearest_advanced %}
+                {% set advanced = hospital_access.nearest_advanced %}
+                <div class="hospital-row">
+                  <strong>Nächste Stufe 2/3 · {{ '%.1f'|format(advanced.air_distance_km) }} km Luftlinie</strong>
+                  <div>{{ advanced.name }}{% if advanced.city %} · {{ advanced.city }}{% endif %}</div>
+                  <div class="hospital-meta">{{ advanced.emergency_level_label }}</div>
+                  {% if advanced.capability_labels %}
+                    <div class="badges">
+                      {% for label in advanced.capability_labels %}<span class="badge">{{ label }}</span>{% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+            <div class="semantics">Quelle und Capability stammen aus dem Bundes-Klinik-Atlas. WohnWerk leitet keine Notfall- oder Akutversorgungsfähigkeit aus einem Kliniknamen ab. Entfernung: Luftlinie zwischen den belegten Koordinaten.</div>
+          {% else %}
+            <div class="semantics">Für diesen Standort ist derzeit kein belastbarer Krankenhausabstand aus den importierten Bundes-Klinik-Atlas-Daten ableitbar.</div>
+          {% endif %}
+        </section>
+      {% endif %}
+
       {% if house.sources %}
         <div class="sources">
           <strong>Originalanzeigen</strong><br>
