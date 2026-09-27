@@ -11,6 +11,10 @@ from app.ingestion.property_continuity import (
     continuity_area_m2,
     match_property_continuity,
 )
+from app.internet_access import (
+    INTERNET_GRID_ELIGIBLE_LOCATION_PRECISIONS,
+    LOCATION_PRECISION_POSTAL_CENTROID,
+)
 from app.models import (
     CrawlRun,
     ListingStatus,
@@ -74,7 +78,9 @@ def _enrich_property(
         property_row.plot_area_m2 = item.plot_area_m2
     if postal is not None:
         property_row.postal_code = postal.postal_code
-        property_row.location = postal.location
+        if property_row.location_precision not in INTERNET_GRID_ELIGIBLE_LOCATION_PRECISIONS:
+            property_row.location = postal.location
+            property_row.location_precision = LOCATION_PRECISION_POSTAL_CENTROID
     if item.city:
         property_row.city = item.city
     property_row.status = ListingStatus.ACTIVE
@@ -304,6 +310,9 @@ def ingest_properties(
                     postal_code=postal.postal_code if postal else None,
                     city=item.city,
                     location=postal.location if postal else None,
+                    location_precision=(
+                        LOCATION_PRECISION_POSTAL_CENTROID if postal else None
+                    ),
                     status=ListingStatus.ACTIVE,
                     first_seen_at=now,
                     last_seen_at=now,
