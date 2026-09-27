@@ -37,9 +37,18 @@ def test_active_product_house_route_forwards_radius_to_filter_pipeline(monkeypat
     monkeypatch.setattr(
         product_ui,
         "load_house_suitability_policy",
-        lambda *_args: SimpleNamespace(de_plz_blacklist=()),
+        lambda *_args: SimpleNamespace(
+            de_plz_blacklist=(),
+            max_hospital_distance_km=None,
+            hospital_distance_fail_closed=False,
+        ),
     )
     monkeypatch.setattr(product_ui, "active_de_plz_blacklist", lambda _policy: ())
+    monkeypatch.setattr(
+        product_ui,
+        "active_hospital_distance_policy",
+        lambda _policy: (None, False),
+    )
     monkeypatch.setattr(product_ui, "_product_property_conditions", lambda *_args: [])
     monkeypatch.setattr(product_ui, "property_curation_condition", lambda *_args: True)
 
