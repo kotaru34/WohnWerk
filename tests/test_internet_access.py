@@ -113,14 +113,18 @@ def test_breitband_grid_lookup_does_not_guess_outside_or_ambiguous_cell(tmp_path
 
     with BroadbandGridLookup(path) as lookup:
         assert lookup.lookup(longitude=0.0, latitude=0.0) is None
-
         x, y = lookup.transformer.transform(longitude, latitude)
-        rtree = f"rtree_{BBA_GPKG_TABLE}_geom"
-        lookup.connection.execute(
-            f'INSERT INTO "{rtree}"(id,minx,maxx,miny,maxy) VALUES(?,?,?,?,?)',
-            (1, x - 1, x + 1, y - 1, y + 1),
-        )
-        lookup.connection.commit()
+
+    rtree = f"rtree_{BBA_GPKG_TABLE}_geom"
+    writable = sqlite3.connect(path)
+    writable.execute(
+        f'INSERT INTO "{rtree}"(id,minx,maxx,miny,maxy) VALUES(?,?,?,?,?)',
+        (1, x - 1, x + 1, y - 1, y + 1),
+    )
+    writable.commit()
+    writable.close()
+
+    with BroadbandGridLookup(path) as lookup:
         assert lookup.lookup(longitude=longitude, latitude=latitude) is None
 
 
