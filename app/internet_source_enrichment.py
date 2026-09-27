@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import DateTime, cast, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -250,7 +251,7 @@ async def enrich_de_internet_source_evidence(
                     )
                     session.commit()
                 break
-            except Exception as exc:
+            except (PlaywrightError, RuntimeError) as exc:
                 counts["failed"] += 1
                 details.append(
                     f"listing={listing.id} state=failed error={type(exc).__name__}"
