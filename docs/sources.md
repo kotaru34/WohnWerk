@@ -236,3 +236,44 @@ For suitability, a usable emergency site must have an explicitly agreed Notfalls
 Additional fields such as Schwerverletztenversorgung, Kinder-Notfallstufe, Spezialversorgung,
 Stroke Unit and Chest Pain Unit remain separate source-backed facts. Missing capability stays
 unknown.
+
+## German fixed Internet access
+
+WohnWerk uses the official Bundesnetzagentur **Breitbandatlas | Gigabit-Grundbuch**
+fixed-network grid export as the public Germany broadband evidence source. The v0.4.6
+implementation is pinned to dataset date **2025-12-31** and uses the published GeoPackage layer
+in EPSG:25832.
+
+The public download is a 100 x 100 metre geographic grid, not an address-level provider
+availability API. Each residential field such as
+`down_fn_hh_<technology>_<speed>` stores the percentage of private households in that grid cell
+covered by the stated fixed-network technology/download class. The speed suffixes
+10, 16, 30, 50, 100, 200, 400 and 1000 are the published Mbit/s class boundaries. Technologies
+include all fixed technologies plus FTTH/FTTB, FTTC, FTTH, FTTB, HFC/cable and other fixed access.
+
+WohnWerk therefore preserves these semantics explicitly:
+
+- grid evidence is labelled `grid_100m` and is never presented as a tariff or connection promise
+  for the exact house;
+- a property may be assigned a grid only when its own stored location provenance is
+  address/parcel-scale; GeoNames/BEV postal centroids are deliberately ineligible;
+- the highest class with non-zero grid coverage may be shown as a raster-level maximum, together
+  with its household percentage;
+- the highest class reported for effectively 100% of households in the grid is kept separately
+  as a stronger but still grid-level fact;
+- provider, exact-address availability, upload speed and price remain unknown unless a separate
+  source explicitly establishes them;
+- a missing/too-coarse property position stays unknown rather than borrowing the broadband state
+  of the postal centroid;
+- Starlink is only exposed as an explicit fallback to check separately. WohnWerk does not infer
+  satellite availability or price from the presence of that fallback.
+
+The official GeoPackage is kept as a versioned local source cache instead of copying the complete
+national grid into PostgreSQL. Its schema, EPSG:25832 geometry, approximately 100 m cell size,
+required residential columns and GeoPackage RTree are validated before publication. The cache copy
+is SHA-256 verified. Only per-property evidence and provenance are persisted in WohnWerk.
+
+The source usage notice permits free commercial and non-commercial use with attribution. WohnWerk
+uses the attribution **Breitbandatlas | Gigabit-Grundbuch** and retains the dataset date/source
+metadata. The geographic grid also carries the referenced BKG usage conditions.
+
