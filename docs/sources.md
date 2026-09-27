@@ -245,6 +245,42 @@ must still be confirmed for the concrete address.
 Required German attribution for the imported grid:
 `Breitbandatlas | Gigabit-Grundbuch (https://gigabitgrundbuch.bund.de)`.
 
+### DE portal/detail Internet evidence
+
+WohnWerk v0.4.8 adds a second, deliberately separate evidence layer from German
+listing/detail pages. It never replaces the official Breitbandatlas grid and it is
+not promoted to a contractual line-speed claim.
+
+Observed ImmoScout24 DE detail pages expose a structured Telekom-backed Internet
+availability/speed estimate and describe the displayed speed as a non-binding
+estimate based on the listing's Standortadresse; binding availability is deferred
+to an actual order/check. Some details also expose explicit street + house number
+metadata. WohnWerk stores those values as `portal_address_estimate` and
+`street_house_number` source evidence respectively. A source address is still
+not a coordinate and must not enter a 100 m Breitbandatlas lookup until a separate
+geocoding step establishes defensible coordinate provenance.
+
+Observed Immowelt DE exposés may state provider/technology/speed facts directly in
+the listing text, for example Telekom DSL, Vodafone Kabel or M-Net Glasfaser with
+an explicit Mbit/s value. WohnWerk stores those statements as `listing_claim`.
+They remain "Angabe im Exposé": useful source evidence, but not an independent
+provider orderability test. Explicit "connected", "at property" or "planned"
+Glasfaser statements can also be retained without inventing a speed.
+
+The UI must preserve the evidence class visibly:
+- `Portal-Schätzung` for address-based portal estimates;
+- `Angabe im Exposé` for listing statements;
+- `Amtliches Raster` for the official 100 x 100 m Bundesnetzagentur cell.
+
+The bounded Immowelt detail worker uses the normal project browser transport and
+existing challenge detection only. It stops on a detected challenge and never
+invokes the operator-owned external challenge handler. It is deliberately not
+wired into the automatic refresh loop in v0.4.8; deployment/maintenance runs it
+in bounded batches so source pressure and challenge behaviour can be observed
+before any recurring cadence is introduced. ImmoScout24 DE detail fetching
+remains dormant while that source is paused; only parser/schema support is
+present in v0.4.8.
+
 ## German hospital access
 
 WohnWerk uses the official Bundes-Klinik-Atlas Open Data export as the authoritative
