@@ -647,6 +647,15 @@ def parse_immowelt_de_internet_evidence(url: str, body: str) -> ParsedInternetDe
     )
 
 
+def parse_de_internet_source_evidence(url: str, body: str) -> ParsedInternetDetail:
+    host = (urlparse(url).hostname or "").casefold()
+    if host in IMMOSCOUT_DE_HOSTS:
+        return parse_immoscout_de_internet_evidence(url, body)
+    if host in IMMOWELT_DE_HOSTS:
+        return parse_immowelt_de_internet_evidence(url, body)
+    return ParsedInternetDetail()
+
+
 def replace_listing_internet_source_evidence(
     session: Session,
     *,
