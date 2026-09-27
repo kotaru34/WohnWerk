@@ -147,7 +147,7 @@ def _parse_hospital_distance(raw: str) -> Decimal | None:
         value = Decimal(normalized)
     except InvalidOperation as exc:
         raise ValueError("Ungültige Krankenhausentfernung.") from exc
-    if value <= 0 or value > Decimal("250"):
+    if value <= 0 or value > Decimal(250):
         raise ValueError("Krankenhausentfernung muss zwischen 0 und 250 km liegen.")
     return value.quantize(Decimal("0.01"))
 
