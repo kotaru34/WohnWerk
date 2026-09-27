@@ -34,6 +34,12 @@ from app.hospital_access import (
     load_confirmed_emergency_access,
     load_nearest_hospital_access,
 )
+from app.internet_access import (
+    STARLINK_RESIDENTIAL_URL,
+    internet_dataset_ready,
+    load_property_internet_evidence,
+    starlink_fallback_recommended,
+)
 from app.house_filters import (
     HouseFilters,
     house_filter_summary,
@@ -48,6 +54,7 @@ from app.house_suitability import (
     load_house_suitability_policy,
     save_de_plz_blacklist,
     save_hospital_distance_policy,
+    save_minimum_fixed_internet_policy,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
@@ -713,6 +720,26 @@ def update_hospital_policy(
     return RedirectResponse(_safe_return_to(return_to), status_code=303)
 
 
+@router.post("/houses/internet-policy", include_in_schema=False)
+def update_internet_policy(
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    minimum_fixed_internet_mbps: Annotated[str, Form()] = "",
+    return_to: Annotated[str, Form()] = "/houses?country=DE",
+):
+    profile = _profile_or_503(db)
+    try:
+        save_minimum_fixed_internet_policy(
+            db,
+            profile.id,
+            minimum_fixed_internet_mbps,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(_safe_return_to(return_to), status_code=303)
+
+
 @router.post("/houses/workplace", include_in_schema=False)
 def update_candidate_workplace(
     _: AdminDependency,
@@ -820,6 +847,22 @@ def house_detail(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
+    internet_evidence = load_property_internet_evidence(
+        db,
+        {property_id},
+        country_code=country_code,
+    ).get(property_id)
+    internet_data_ready = (
+        internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
+    )
+    starlink_fallback = (
+        starlink_fallback_recommended(
+            internet_evidence,
+            minimum_fixed_mbps=suitability_policy.minimum_fixed_internet_mbps,
+        )
+        if country_code == "DE"
+        else False
+    )
     return templates.TemplateResponse(
         request=request,
         name="house_detail.html",
@@ -833,6 +876,11 @@ def house_detail(
             "nearest_hospital": nearest_hospital,
             "emergency_access": emergency_access,
             "hospital_data_ready": hospital_data_ready,
+            "internet_evidence": internet_evidence,
+            "internet_data_ready": internet_data_ready,
+            "minimum_fixed_internet_mbps": suitability_policy.minimum_fixed_internet_mbps,
+            "starlink_fallback": starlink_fallback,
+            "starlink_url": STARLINK_RESIDENTIAL_URL,
             "selected_country": country_code,
             "radius_km": radius_km,
             "eur_label": _eur_label,
