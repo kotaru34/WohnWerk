@@ -98,3 +98,51 @@ def test_failed_job_postprocess_does_not_publish_intermediate_invalidation(monke
     assert exc.value.code == 1
     assert published == []
     assert lock.closed is True
+
+
+
+def test_successful_de_property_source_runs_failure_isolated_internet_enrichment(
+    monkeypatch,
+) -> None:
+    run = DueSourceRun(
+        plan=SourceRefreshPlan("immowelt-de", "scripts/run_immowelt_de.py", False),
+        reconciliation=False,
+    )
+    lock = _Lock()
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        refresh_sources,
+        "parse_args",
+        lambda: SimpleNamespace(
+            lock_path=None,
+            reconciliation_retry_minutes=180,
+            health_url="http://test/health",
+            dry_run=False,
+        ),
+    )
+    monkeypatch.setattr(refresh_sources, "_acquire_lock", lambda _path: lock)
+    monkeypatch.setattr(refresh_sources, "SessionLocal", lambda: _SessionContext())
+    monkeypatch.setattr(refresh_sources, "due_source_runs", lambda *_args, **_kwargs: [run])
+    monkeypatch.setattr(refresh_sources, "_runtime_release_gate", lambda _url: (True, "ok"))
+    monkeypatch.setattr(
+        refresh_sources,
+        "_source_category",
+        lambda _name: SourceCategory.PROPERTY,
+    )
+    monkeypatch.setattr(refresh_sources, "_source_country", lambda _name: "DE")
+
+    def fake_run_command(label: str, _args: list[str]):
+        calls.append(label)
+        rc = 1 if label == "postprocess:de-internet" else 0
+        return refresh_sources.CommandResult(label=label, returncode=rc)
+
+    monkeypatch.setattr(refresh_sources, "_run_command", fake_run_command)
+
+    refresh_sources.main()
+
+    assert calls == [
+        "source:immowelt-de:incremental",
+        "postprocess:de-internet",
+    ]
+    assert lock.closed is True
