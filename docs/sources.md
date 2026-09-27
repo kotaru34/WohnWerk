@@ -274,9 +274,12 @@ The UI must preserve the evidence class visibly:
 
 The bounded Immowelt detail worker uses the normal project browser transport and
 existing challenge detection only. It stops on a detected challenge and never
-invokes the operator-owned external challenge handler. ImmoScout24 DE detail
-fetching remains dormant while that source is paused; only parser/schema support
-is present in v0.4.8.
+invokes the operator-owned external challenge handler. It is deliberately not
+wired into the automatic refresh loop in v0.4.8; deployment/maintenance runs it
+in bounded batches so source pressure and challenge behaviour can be observed
+before any recurring cadence is introduced. ImmoScout24 DE detail fetching
+remains dormant while that source is paused; only parser/schema support is
+present in v0.4.8.
 
 ## German hospital access
 
