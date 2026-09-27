@@ -64,6 +64,7 @@ class CandidateHousePolicy(Base):
     de_plz_blacklist: Mapped[list[str]] = mapped_column(JSONB, default=list, nullable=False)
     max_hospital_distance_km: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     hospital_distance_fail_closed: Mapped[bool] = mapped_column(default=False, nullable=False)
+    min_fixed_internet_mbps: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -77,6 +78,7 @@ class HouseSuitabilityPolicy:
     de_plz_blacklist: tuple[str, ...] = ()
     max_hospital_distance_km: Decimal | None = None
     hospital_distance_fail_closed: bool = False
+    min_fixed_internet_mbps: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +120,7 @@ def load_house_suitability_policy(session: Session, profile_id: int) -> HouseSui
         de_plz_blacklist=tuple(str(value).casefold() for value in (row.de_plz_blacklist or [])),
         max_hospital_distance_km=row.max_hospital_distance_km,
         hospital_distance_fail_closed=bool(row.hospital_distance_fail_closed),
+        min_fixed_internet_mbps=row.min_fixed_internet_mbps,
     )
 
 
@@ -176,6 +179,46 @@ def save_hospital_distance_policy(
         row.hospital_distance_fail_closed = fail_closed
     session.commit()
     return load_house_suitability_policy(session, profile_id)
+
+
+def save_internet_policy(
+    session: Session,
+    profile_id: int,
+    raw_min_download_mbps: str,
+) -> HouseSuitabilityPolicy:
+    normalized = raw_min_download_mbps.strip()
+    if normalized:
+        try:
+            minimum = int(normalized)
+        except ValueError as exc:
+            raise ValueError("Ungültige Internet-Mindestgeschwindigkeit.") from exc
+        if minimum not in {10, 16, 30, 50, 100, 200, 400, 1000}:
+            raise ValueError(
+                "Internet-Mindestgeschwindigkeit muss einer Breitbandatlas-Klasse entsprechen."
+            )
+    else:
+        minimum = None
+
+    row = session.scalar(
+        select(CandidateHousePolicy).where(CandidateHousePolicy.profile_id == profile_id)
+    )
+    if row is None:
+        row = CandidateHousePolicy(
+            profile_id=profile_id,
+            de_plz_blacklist=[],
+            min_fixed_internet_mbps=minimum,
+        )
+        session.add(row)
+    else:
+        row.min_fixed_internet_mbps = minimum
+    session.commit()
+    return load_house_suitability_policy(session, profile_id)
+
+
+def active_internet_policy(policy: HouseSuitabilityPolicy) -> int | None:
+    if (selected_country() or DEFAULT_COUNTRY) != "DE":
+        return None
+    return policy.min_fixed_internet_mbps
 
 
 def active_de_plz_blacklist(policy: HouseSuitabilityPolicy) -> tuple[str, ...]:
