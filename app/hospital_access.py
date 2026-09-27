@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from collections.abc import BinaryIO, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
+from typing import BinaryIO
 from zipfile import ZipFile
 
 import httpx
