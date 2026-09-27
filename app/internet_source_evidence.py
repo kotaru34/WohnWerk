@@ -456,7 +456,6 @@ def parse_immoscout_de_internet_evidence(url: str, body: str) -> ParsedInternetD
     claims: list[ParsedInternetClaim] = []
     if isinstance(available_raw, bool) or speed is not None:
         technology = None
-        visible = " ".join(_VisibleHtml().lines)
         # The structured speed field itself does not consistently name the access
         # technology. Only promote Glasfaser when the rendered Internet block says so.
         parser = _VisibleHtml()
