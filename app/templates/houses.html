@@ -322,7 +322,8 @@
               {% else %}
                 <span class="fact">Festnetz: Daten unbekannt</span>
               {% endif %}
-              {% if starlink_fallback.get(house.id) if starlink_fallback is defined else false %}
+              {% set starlink_needed = starlink_fallback.get(house.id) if starlink_fallback is defined else false %}
+              {% if starlink_needed %}
                 <span class="fact">Starlink-Fallback: separat prüfen</span>
               {% endif %}
             {% endif %}
