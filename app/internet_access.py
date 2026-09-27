@@ -4,10 +4,9 @@ import hashlib
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import BinaryIO
 
 import httpx
 from pyproj import Transformer
@@ -28,7 +27,7 @@ from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.database import Base
-from app.models import Property, PropertyListing, Source
+from app.models import ListingStatus, Property, PropertyListing, Source
 
 BBA_SOURCE_NAME = "breitbandatlas-de-grid"
 BBA_COUNTRY_CODE = "DE"
@@ -376,9 +375,10 @@ def lookup_breitbandatlas_grid(
             for technology in BBA_TECHNOLOGIES
             for speed in BBA_SPEED_CLASSES
         ]
+        quoted_columns = ",".join(f't."{name}"' for name in column_names)
         row = connection.execute(
             (
-                f'SELECT {",".join(f"t.\"{name}\"" for name in column_names)} '
+                f'SELECT {quoted_columns} '
                 f'FROM "{table}" t JOIN "{rtree}" r ON r.id=t.id '
                 "WHERE r.minx <= ? AND r.maxx >= ? AND r.miny <= ? AND r.maxy >= ? "
                 "LIMIT 1"
@@ -669,14 +669,13 @@ def active_immoscout_listings_for_internet(
         .correlate(PropertyListing)
         .scalar_subquery()
     )
-    cutoff = datetime.now(UTC).timestamp() - IMMO_DETAIL_RECHECK_HOURS * 3600
-    cutoff_dt = datetime.fromtimestamp(cutoff, tz=UTC)
+    cutoff_dt = datetime.now(UTC) - timedelta(hours=IMMO_DETAIL_RECHECK_HOURS)
     return list(
         session.scalars(
             select(PropertyListing)
             .where(
                 PropertyListing.source_id == source.id,
-                PropertyListing.status == "active",
+                PropertyListing.status == ListingStatus.ACTIVE,
                 (latest_observation.is_(None)) | (latest_observation < cutoff_dt),
             )
             .order_by(
