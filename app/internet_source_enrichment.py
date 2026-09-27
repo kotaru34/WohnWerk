@@ -283,7 +283,9 @@ async def enrich_de_internet_source_evidence(
                 result.final_url,
                 result.body,
             )
-            evidence_count = len(parsed.claims)
+            evidence_count = len(parsed.claims) + (
+                1 if parsed.source_address and not parsed.claims else 0
+            )
             if parsed.has_evidence:
                 counts["matched"] += 1
                 details.append(
