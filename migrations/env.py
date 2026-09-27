@@ -5,8 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 
 import app.candidate_activity
-import app.house_suitability
 import app.hospital_access
+import app.house_suitability
 import app.jobs.candidate_fit
 import app.jobs.concepts
 import app.live_events
