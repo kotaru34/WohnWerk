@@ -23,6 +23,7 @@ from app.sources.property.germany import (
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
+from app.sources.property.preview import card_thumbnail_url
 
 BASE_URL = "https://www.kleinanzeigen.de"
 SEARCH_ROOT = f"{BASE_URL}/s-haus-kaufen/anzeige:angebote/c208"
@@ -174,6 +175,7 @@ def parse_kleinanzeigen_search_page(
         postal_code, city = location
         price = _price(card)
         living = _living_area(card)
+        thumbnail_url = card_thumbnail_url(card, page_url=page_url)
 
         if price is not None and (
             price < GERMANY_PROPERTY_MIN_PRICE_EUR
@@ -200,6 +202,14 @@ def parse_kleinanzeigen_search_page(
                     "source_postal_code": postal_code,
                     "identity_stable": True,
                     "frontier_only": True,
+                    **(
+                        {
+                            "thumbnail_url": thumbnail_url,
+                            "thumbnail_semantics": "source_search_card",
+                        }
+                        if thumbnail_url
+                        else {}
+                    ),
                 },
             )
         )
