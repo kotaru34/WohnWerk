@@ -66,4 +66,6 @@ def test_sreal_detail_enrichment_preserves_card_fallbacks() -> None:
     assert enriched.plot_area_m2 == Decimal(1649)
     assert enriched.description is not None
     assert enriched.raw_payload["detail_enriched"] is True
+    assert enriched.raw_payload["detail_postal_code"] == "4372"
+    assert enriched.raw_payload["detail_city"] == "St. Georgen am Walde"
     assert enriched.raw_payload["primary_image_url"] == EXPECTED_IMAGE_URL
