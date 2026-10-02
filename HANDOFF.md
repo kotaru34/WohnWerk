@@ -53,6 +53,12 @@ v0.4.10 is the current development candidate. It adds Engel & Völkers as a seco
 independent large-broker frontier, extends heating extraction to its structured
 English energy fields, and adds conservative city-to-PLZ resolution only when the
 local German postal reference has exactly one 5-digit code for that municipality.
+The same candidate also restores Germany house previews by retaining balanced
+search-card thumbnail URLs for Immowelt, Kleinanzeigen and Engel & Völkers so the
+existing local image cache can process them without opening detail pages. House
+cards and house detail now share one semantic fact-group component with a stable
+Objekt → Heizung → Distanzen → Internet order, category icons/colors and explicit
+good/warning/unknown visual states instead of one unordered pill cloud.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -534,7 +540,7 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - source-backed heating is displayed, with Holz marked preferred and unknown preserved;
    - ImmoScout24 has explicit challenge checkpoint/handoff semantics but remains unscheduled;
    - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
-10. **CURRENT:** v0.4.10 adds Engel & Völkers as an independent large-broker Germany frontier, including bounded detail heating enrichment and conservative unique-city PLZ resolution.
+10. **CURRENT:** v0.4.10 adds Engel & Völkers as an independent large-broker Germany frontier, bounded detail heating enrichment, conservative unique-city PLZ resolution, source-card preview extraction for active DE house sources, and a shared categorized/icon-based house fact UI on both catalog cards and detail pages.
 11. After v0.4.10, evaluate additional independent broker networks only where they add inventory rather than alias existing portals.
 12. Keep Germany jobs paused until an explicit operator decision reopens them.
 13. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
