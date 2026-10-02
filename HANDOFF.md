@@ -62,7 +62,7 @@ current public entry redirects into Immowelt.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.7 is deployed. The four house controls (PLZ blacklist, emergency-care policy, fixed-Internet target and workplace) now live in one settings dialog with one transactional save action; the previous checkbox/text alignment problem is removed. The DE fixed-Internet evidence layer from v0.4.6 remains unchanged. The current implementation focus is deeper Internet evidence/address extraction and a clearly separated evidence/estimate ladder.
+v0.4.7 is deployed. The four house controls (PLZ blacklist, emergency-care policy, fixed-Internet target and workplace) live in one settings dialog with one transactional save action. v0.4.8 Internet source-evidence work is complete in Git but not yet deployed. The current release candidate is v0.4.9, which packages that v0.4.8 tree together with the new multi-source house, dedupe and heating work for one gated production release.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -544,7 +544,7 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - ImmoScout24 explicit challenge checkpoint/handoff/resume path;
    - canonical duplicate matching that preserves every source listing;
    - heating type extraction/display with unknown preserved and Holz marked preferred;
-   - production scheduler wiring only after exact-head CI and Sentinel target-host smoke.
+   - scheduler wiring is implemented for Kleinanzeigen and VON POLL, but production activation/source bootstrap remains gated on final exact-release CI and Sentinel target-host live smoke; ImmoScout stays out of the scheduler until its target-host transport is revalidated.
 10. After v0.4.9, continue source expansion with additional high-value broker networks where they add independent inventory rather than aliasing existing portals.
 11. Keep Germany jobs paused until an explicit operator decision reopens them.
 12. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
