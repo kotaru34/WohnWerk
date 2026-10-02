@@ -74,6 +74,7 @@ from app.property_areas import usable_area_property_condition
 from app.property_heating import HEATING_LABELS_DE, heating_evidence_from_payload
 from app.property_images import cached_image_urls, local_image_path
 from app.property_location_filter import PropertyRadiusFilter, resolve_property_radius_filter
+from app.property_source_brand import PropertySourceBrand, property_source_brand
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
@@ -100,6 +101,7 @@ HOUSE_VIEWS = {
 class PropertySourceView:
     label: str
     url: str
+    brand: PropertySourceBrand
     display_area_m2: Decimal | None = None
     usable_area_m2: Decimal | None = None
     heating_types: tuple[str, ...] = ()
@@ -233,6 +235,7 @@ def _property_sources(
             PropertySourceView(
                 label=source_name,
                 url=url,
+                brand=property_source_brand(source_name),
                 display_area_m2=(
                     _payload_decimal(payload.get("display_area_m2"))
                     if source_name == "immmo.at"
