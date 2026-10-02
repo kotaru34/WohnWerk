@@ -186,7 +186,9 @@ def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
 
     display_id = listing_id.replace("-", "/", 1)
     location_re = re.compile(
-        rf"\b(?P<plz>\d{{4}})\s+(?P<city>.{{1,100}}?)\s*-\s*{re.escape(display_id)}\b",
+        rf"\b(?P<plz>\d{{4}})\s+"
+        rf"(?P<city>(?:(?!\b\d{{4}}\b).){{1,100}}?)"
+        rf"\s*-\s*{re.escape(display_id)}\b",
         re.IGNORECASE,
     )
     location = location_re.search(text)
