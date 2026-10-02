@@ -101,10 +101,13 @@ HOUSE_VIEWS = {
 class PropertySourceView:
     label: str
     url: str
-    brand: PropertySourceBrand
     display_area_m2: Decimal | None = None
     usable_area_m2: Decimal | None = None
     heating_types: tuple[str, ...] = ()
+
+    @property
+    def brand(self) -> PropertySourceBrand:
+        return property_source_brand(self.label)
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,7 +250,6 @@ def _property_sources(
             PropertySourceView(
                 label=source_name,
                 url=url,
-                brand=property_source_brand(source_name),
                 display_area_m2=(
                     _payload_decimal(payload.get("display_area_m2"))
                     if source_name == "immmo.at"
