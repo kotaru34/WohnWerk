@@ -242,6 +242,9 @@
             {% if area_label(house.living_area_m2) %}<span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% elif area_label(item.neutral_area_m2) %}<span class="fact">Fläche {{ area_label(item.neutral_area_m2) }} · Typ nicht eindeutig</span>{% endif %}
             {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+            {% if item.heating_labels_de %}
+              <span class="fact">Heizung {{ item.heating_labels_de|join(', ') }}{% if item.wood_heating_preferred %} · bevorzugt{% endif %}</span>
+            {% endif %}
             {% set nearest_hospital = nearest_hospitals.get(house.id) if nearest_hospitals is defined else none %}
             {% set emergency = emergency_access.get(house.id) if emergency_access is defined else none %}
             {% if selected_country == 'DE' %}
@@ -259,17 +262,27 @@
               {% endif %}
             {% endif %}
             {% if selected_country == 'DE' %}
+              {% set source_net = internet_source_primary.get(house.id) if internet_source_primary is defined else none %}
               {% set fixed = internet_access.get(house.id) if internet_access is defined else none %}
+              {% if source_net %}
+                {% if source_net.max_download_mbps %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {% if source_net.provider_name %}{{ source_net.provider_name }} · {% endif %}{% if source_net.technology %}{{ source_net.technology }} {% endif %}bis {{ source_net.max_download_mbps }} Mbit/s</span>
+                {% elif source_net.availability_status == 'connected' %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} angeschlossen</span>
+                {% elif source_net.availability_status == 'at_property' %}
+                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} am Grundstück</span>
+                {% endif %}
+              {% endif %}
               {% if fixed and fixed.max_full_download_mbps %}
-                <span class="fact">Festnetz ≥ {{ fixed.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
+                <span class="fact">Amtliches Raster ≥ {{ fixed.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
                 {% if fixed.max_any_download_mbps and fixed.max_any_download_mbps > fixed.max_full_download_mbps %}
-                  <span class="fact">Festnetz bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der Zelle</span>
+                  <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der Zelle</span>
                 {% endif %}
               {% elif fixed and fixed.max_any_download_mbps %}
-                <span class="fact">Festnetz bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der 100-m-Zelle · nicht hausgenau</span>
-              {% elif internet_data_ready %}
+                <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der 100-m-Zelle</span>
+              {% elif not source_net and internet_data_ready %}
                 <span class="fact">Festnetz hausgenau unbekannt</span>
-              {% else %}
+              {% elif not source_net %}
                 <span class="fact">Festnetz: Daten unbekannt</span>
               {% endif %}
               {% if internet_fallback_reasons.get(house.id) %}

@@ -1,11 +1,11 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-09-27  
+**Checkpoint date:** 2026-10-02  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/immowelt-challenge-resume`  
-**Base Germany branch:** `feature/germany`  
-**Active draft PR:** #5 — `Make Immowelt challenges resumable and source-isolated`  
+**Active development branch:** `feature/v0.4.9-property-sources-heating-dedupe`  
+**Base Germany branch:** `feature/immowelt-challenge-resume`  
+**Active PR:** #12 — `v0.4.9: multi-source houses, cross-source dedupe, heating facts`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,14 +33,23 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.6**.
+Production is now deployed on **v0.4.7**.
 
-- deployed application version: **v0.4.6**
-- deployed Git SHA: `7e636b6edd80a1db0e56c160fc383c5630121008`
-- previous production Git SHA / rollback point: `e1b42a425e469a291298196f25b54a328341da86`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.5-pre-v0.4.6`
-- previous production application version: **v0.4.5**
-- database migration: `0016_internet_access`
+v0.4.9 is the current release candidate under PR #12. It is **not yet production**.
+The candidate builds on the green v0.4.8 DE Internet-evidence head and adds
+Kleinanzeigen newest-frontier discovery, VON POLL direct-broker discovery,
+resumable ImmoScout24 challenge handoff, conservative cross-source canonical
+deduplication, and source-backed heating display/enrichment with Holz marked as a
+positive preference. Immonet is intentionally not a separate source because its
+current public entry redirects into Immowelt.
+
+
+- deployed application version: **v0.4.7**
+- deployed Git SHA: `a1423e7aee4c59c61508f54e74f1cdfc20a9948b`
+- previous production Git SHA / rollback point: `7e636b6edd80a1db0e56c160fc383c5630121008`
+- local rollback ref: `refs/wohnwerk/rollback-v0.4.6-pre-v0.4.7`
+- previous production application version: **v0.4.6**
+- database migration: `0016_internet_access` (unchanged in v0.4.7)
 - production host: migrated Debian 13 VM
 - checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
 - database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
@@ -53,7 +62,7 @@ Production is now deployed on **v0.4.6**.
 - GeoNames DE postal import observed: 10,813 centroids
 - Austria postal reference remained intact at the Germany bootstrap
 
-v0.4.6 is deployed. The official DE fixed-Internet evidence layer is now in production with explicit location-provenance safeguards. Current DE properties still resolve only to PLZ centroids, so property-level 100 m evidence intentionally remains unknown instead of fabricating precision. The current implementation focus is the house-settings UI consolidation; deeper Internet evidence/address extraction and prediction design follows separately.
+v0.4.7 is deployed. The four house controls (PLZ blacklist, emergency-care policy, fixed-Internet target and workplace) live in one settings dialog with one transactional save action. v0.4.8 Internet source-evidence work is complete in Git but not yet deployed. The current release candidate is v0.4.9, which packages that v0.4.8 tree together with the new multi-source house, dedupe and heating work for one gated production release.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -233,6 +242,39 @@ Production deployment proof:
 - temporary validation/staging artifacts were removed;
 - persistent host notes were updated in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`;
 - temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged deployment action.
+
+### v0.4.7 production proof
+
+The deployed v0.4.7 release SHA is
+`a1423e7aee4c59c61508f54e74f1cdfc20a9948b`.
+
+GitHub Actions exact-release CI #36341041240 passed on that exact atomic release commit:
+- Install: passed;
+- Ruff: passed;
+- Compile: passed;
+- Tests: **632 passed, 2 warnings**.
+
+Production deployment proof:
+- pre-deploy production SHA was exactly `7e636b6edd80a1db0e56c160fc383c5630121008` and the tree was clean;
+- rollback ref `refs/wohnwerk/rollback-v0.4.6-pre-v0.4.7` points to that v0.4.6 SHA;
+- an isolated exact-release production-host validation environment passed Ruff, compileall and full pytest: **632 passed, 2 warnings**;
+- v0.4.7 has no database migration and does not modify the imported broadband dataset;
+- local `/health` reported `status=ok`, `version=0.4.7`;
+- live checkout SHA is exactly `a1423e7aee4c59c61508f54e74f1cdfc20a9948b`, detached and clean;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer` and Caddy are all active;
+- the four previous inline house controls are consolidated into one settings dialog with one combined save action;
+- DE-specific PLZ/hospital/Internet policy writes remain DE-only; Austria policy semantics were not changed by the UI release;
+- v0.4.7 validation staging was removed;
+- persistent host notes were updated in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`;
+- temporary `sentinel-ai` passwordless sudo delegation was removed as the final privileged action;
+- final read-only verification after bootstrap removal confirmed that the bootstrap path and all v0.4.7 validation paths are absent, `/health` still reports v0.4.7, all five units remain active, and the production Git tree remains clean on the exact release SHA.
+
+The last directly verified DB/data authority state remains the v0.4.6 state because v0.4.7 contains no DB/data changes:
+- DB head `0016_internet_access`;
+- DE Breitbandatlas / Gigabit-Grundbuch snapshot `2025-12-31`;
+- `coverage_status=ok`;
+- `source_row_count=3590703`;
+- property Internet evidence rows remain 0 while current DE property coordinates are PLZ centroids.
 
 Internet-data authority semantics in production:
 - source evidence is DE-only in this release; Austria broadband behavior was not changed;
@@ -494,11 +536,18 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 4. **DONE:** v0.4.4 workplace configuration/distance deployed and production-verified at `4472cb160f7f599e5c956d22b03bbcf299c4e556`, DB head `0014_candidate_workplace`.
 5. **DONE:** v0.4.5 hospital-access enrichment deployed and production-verified at `e1b42a425e469a291298196f25b54a328341da86`, DB head `0015_hospital_access`, Bundes-Klinik-Atlas snapshot 2026-09-01 with 1,572 facilities and `coverage_status=ok`.
 6. **DONE:** v0.4.6 DE Internet enrichment deployed and production-verified at `7e636b6edd80a1db0e56c160fc383c5630121008`, DB head `0016_internet_access`, Breitbandatlas snapshot 2025-12-31 with 3,590,703 grid cells and `coverage_status=ok`.
-7. **CURRENT:** consolidate the four house policy/workplace controls into one settings modal with one save action and fix the checkbox/text form layout.
-8. Then design/implement deeper Internet evidence: exact address/coordinate extraction where source-backed, listing-description/portal Internet fields, and optionally a clearly labelled predictive estimate layer.
-9. Then improve dedupe and heating-type extraction/ranking.
-10. Keep Germany jobs paused until an explicit operator decision reopens them.
-11. Keep the external handler untouched. Run #990 is retained but no longer resume-compatible with the current shard contract.
+7. **DONE:** v0.4.7 house settings modal/UI cleanup deployed and production-verified at `a1423e7aee4c59c61508f54e74f1cdfc20a9948b`; no DB migration.
+8. **DONE IN CODE / NOT YET DEPLOYED:** v0.4.8 deeper Internet source-evidence layer on the green base SHA `d9d874495d99817cca339c0c6ff92037aa9beb18`.
+9. **CURRENT:** v0.4.9 multi-source Germany houses + conservative cross-source dedupe + source-backed heating:
+   - Kleinanzeigen bounded newest-first frontier without disappearance authority;
+   - VON POLL state-sharded direct-broker source;
+   - ImmoScout24 explicit challenge checkpoint/handoff/resume path;
+   - canonical duplicate matching that preserves every source listing;
+   - heating type extraction/display with unknown preserved and Holz marked preferred;
+   - scheduler wiring is implemented for Kleinanzeigen and VON POLL, but production activation/source bootstrap remains gated on final exact-release CI and Sentinel target-host live smoke; ImmoScout stays out of the scheduler until its target-host transport is revalidated.
+10. After v0.4.9, continue source expansion with additional high-value broker networks where they add independent inventory rather than aliasing existing portals.
+11. Keep Germany jobs paused until an explicit operator decision reopens them.
+12. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 

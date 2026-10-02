@@ -59,8 +59,10 @@ from app.internet_access import (
     STARLINK_DE_SNAPSHOT_DATE,
     STARLINK_DE_SOURCE_URL,
     internet_dataset_ready,
-    load_property_internet_access,
-    starlink_fallback_reason,
+)
+from app.internet_source_evidence import (
+    load_property_internet_evidence_bundles,
+    starlink_fallback_reason_for_bundle,
 )
 from app.jobs.candidate_profile_seed import PROFILE_SLUG
 from app.jobs.candidate_profile_store import get_seed_profile
@@ -69,6 +71,7 @@ from app.matching import PropertyDistanceMatch, SpatialJobMatch
 from app.models import JobLocation, ListingStatus, Property, PropertyListing, Source
 from app.property_acquisition import PROPERTY_MAX_PRICE_EUR, PROPERTY_MIN_PRICE_EUR
 from app.property_areas import usable_area_property_condition
+from app.property_heating import HEATING_LABELS_DE, heating_evidence_from_payload
 from app.property_images import cached_image_urls, local_image_path
 from app.property_location_filter import PropertyRadiusFilter, resolve_property_radius_filter
 from app.property_visibility import product_visible_property_condition
@@ -99,6 +102,7 @@ class PropertySourceView:
     url: str
     display_area_m2: Decimal | None = None
     usable_area_m2: Decimal | None = None
+    heating_types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +147,25 @@ class PropertyView:
             return plot
         tolerance = max(Decimal(1), max(abs(plot), abs(neutral)) * Decimal("0.01"))
         return None if abs(plot - neutral) <= tolerance else plot
+
+
+    @property
+    def heating_types(self) -> tuple[str, ...]:
+        found = {
+            heating_type
+            for source in self.sources
+            for heating_type in source.heating_types
+            if heating_type in HEATING_LABELS_DE
+        }
+        return tuple(key for key in HEATING_LABELS_DE if key in found)
+
+    @property
+    def heating_labels_de(self) -> tuple[str, ...]:
+        return tuple(HEATING_LABELS_DE[key] for key in self.heating_types)
+
+    @property
+    def wood_heating_preferred(self) -> bool:
+        return "wood" in self.heating_types
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +242,7 @@ def _property_sources(
                     _payload_decimal(payload.get("detail_usable_area_m2"))
                     or _payload_decimal(payload.get("explicit_usable_area_m2"))
                 ),
+                heating_types=heating_evidence_from_payload(payload).types,
             )
         )
     return {key: tuple(value) for key, value in output.items()}
@@ -899,18 +923,25 @@ def house_detail(
     hospital_data_ready = (
         hospital_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
-    internet_access = (
-        load_property_internet_access(db, {property_id}).get(property_id)
+    internet_bundle = (
+        load_property_internet_evidence_bundles(db, {property_id}).get(property_id)
         if country_code == "DE"
         else None
+    )
+    internet_access = internet_bundle.official_grid if internet_bundle is not None else None
+    internet_source_evidence = (
+        internet_bundle.source_claims if internet_bundle is not None else ()
+    )
+    internet_source_primary = (
+        internet_bundle.primary_source if internet_bundle is not None else None
     )
     internet_data_ready = (
         internet_dataset_ready(db, country_code=country_code) if country_code == "DE" else False
     )
     internet_minimum_mbps = active_internet_policy(suitability_policy)
     internet_fallback_reason = (
-        starlink_fallback_reason(
-            internet_access,
+        starlink_fallback_reason_for_bundle(
+            internet_bundle,
             minimum_download_mbps=internet_minimum_mbps,
         )
         if country_code == "DE"
@@ -930,6 +961,8 @@ def house_detail(
             "emergency_access": emergency_access,
             "hospital_data_ready": hospital_data_ready,
             "internet_access": internet_access,
+            "internet_source_evidence": internet_source_evidence,
+            "internet_source_primary": internet_source_primary,
             "internet_data_ready": internet_data_ready,
             "internet_minimum_mbps": internet_minimum_mbps,
             "internet_fallback_reason": internet_fallback_reason,
