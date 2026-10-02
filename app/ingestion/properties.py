@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from sqlalchemy import exists, select
@@ -19,6 +20,7 @@ from app.models import (
     PropertyListing,
     Source,
 )
+from app.property_dedupe import cross_source_duplicate_strategy
 from app.sources.base import RawProperty
 
 
@@ -213,11 +215,11 @@ def ingest_properties(
     """Persist property discovery with deterministic cross-source deduplication.
 
     Sparse discovery updates are enrichment-only. Cross-source identity is reused when
-    either the canonical URL is exactly equal or a provider exposes an unambiguous stable
-    object ID (currently s REAL detail IDs). IMMMO additionally gets conservative
+    either the canonical URL is exactly equal, a provider exposes an unambiguous stable
+    object ID (currently s REAL detail IDs), or a single cross-source candidate satisfies
+    the conservative PLZ/price/area/title evidence policy. IMMMO additionally gets
     one-to-one continuity matching during complete scans because its meta-search may rotate
-    the downstream portal for the same house. General fuzzy/content deduplication is never
-    guessed here.
+    the downstream portal for the same house. Ambiguous fuzzy candidates are never merged.
     """
     if not items:
         return 0, 0
@@ -265,6 +267,32 @@ def ingest_properties(
     }
     stable_identity_properties = _stable_identity_candidates(session, incoming_identities)
 
+    cross_candidates_by_postal: dict[str, list[Property]] = defaultdict(list)
+    cross_candidate_source_ids: dict[int, set[int]] = defaultdict(set)
+    if postal_codes:
+        cross_candidates = list(
+            session.scalars(
+                select(Property)
+                .where(
+                    Property.postal_code.in_(postal_codes),
+                    Property.status == ListingStatus.ACTIVE,
+                )
+                .order_by(Property.id)
+            )
+        )
+        candidate_ids = {candidate.id for candidate in cross_candidates}
+        for candidate in cross_candidates:
+            if candidate.postal_code:
+                cross_candidates_by_postal[candidate.postal_code].append(candidate)
+        if candidate_ids:
+            for property_id, source_id in session.execute(
+                select(PropertyListing.property_id, PropertyListing.source_id).where(
+                    PropertyListing.property_id.in_(candidate_ids),
+                    PropertyListing.status == ListingStatus.ACTIVE,
+                )
+            ):
+                cross_candidate_source_ids[int(property_id)].add(int(source_id))
+
     new_count = 0
     updated_count = 0
     orphan_candidates: set[int] = set()
@@ -296,6 +324,32 @@ def ingest_properties(
             property_row = exact_url_properties.get(item.url)
             if property_row is None and stable_identity is not None:
                 property_row = stable_identity_properties.get(stable_identity)
+
+            if property_row is None and item.postal_code:
+                matches: list[tuple[Property, str]] = []
+                for candidate in cross_candidates_by_postal.get(item.postal_code, []):
+                    # A source publishing two ads with similar facts is not cross-source
+                    # syndication evidence. Only candidates backed by other sources qualify.
+                    if source.id in cross_candidate_source_ids.get(candidate.id, set()):
+                        continue
+                    strategy = cross_source_duplicate_strategy(
+                        candidate,
+                        postal_code=item.postal_code,
+                        price_eur=item.price_eur,
+                        title=item.title,
+                        living_area_m2=item.living_area_m2,
+                        plot_area_m2=item.plot_area_m2,
+                    )
+                    if strategy is not None:
+                        matches.append((candidate, strategy))
+
+                if len(matches) == 1:
+                    property_row, strategy = matches[0]
+                    payload["wohnwerk_dedupe"] = {
+                        "strategy": strategy,
+                        "matched_property_id": property_row.id,
+                        "matched_at": now.isoformat(),
+                    }
 
             if property_row is None:
                 property_row = Property(

@@ -7,8 +7,10 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
+from app.sources.base import SourceChallenge
 from app.sources.property.immoscout24_de import (
     ImmoScout24GermanyPropertySource,
+    detect_immoscout24_challenge,
     parse_immoscout24_search_page,
 )
 
@@ -155,3 +157,76 @@ async def test_single_page_reconciliation_is_authoritative(monkeypatch) -> None:
     assert batch.pages_fetched == 1
     assert batch.next_cursor["discovery_count_delta"] == 0
     assert batch.next_cursor["discovery_transport"] == "httpx"
+
+
+
+def test_browser_challenge_marker_is_detected_even_with_http_200() -> None:
+    challenge = detect_immoscout24_challenge(
+        status=200,
+        requested_url="https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen",
+        final_url="https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen",
+        html="<html><body>Ich bin kein Roboter</body></html>",
+    )
+
+    assert challenge is not None
+    assert challenge["kind"] == "browser_challenge"
+    assert challenge["marker"] == "ich bin kein roboter"
+
+
+def test_browser_401_is_explicit_challenge() -> None:
+    challenge = detect_immoscout24_challenge(
+        status=401,
+        requested_url="https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen",
+        final_url="https://www.immobilienscout24.de/Suche/de/sachsen/haus-kaufen",
+        html="<html></html>",
+    )
+
+    assert challenge is not None
+    assert challenge["kind"] == "http_401"
+
+
+@pytest.mark.asyncio
+async def test_challenge_checkpoints_same_run_and_restarts_shard_safely(monkeypatch) -> None:
+    class Challenged(ImmoScout24GermanyPropertySource):
+        async def _get(self, client: httpx.AsyncClient, requested_url: str) -> httpx.Response:
+            del client
+            raise SourceChallenge(
+                "ImmoScout24 access challenge detected (browser_challenge)",
+                challenge={
+                    "kind": "browser_challenge",
+                    "requested_url": requested_url,
+                    "final_url": requested_url,
+                    "http_status": 200,
+                },
+            )
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        "app.sources.property.immoscout24_de.httpx.AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    source = Challenged(request_delay_seconds=1.0)
+    shard = next(
+        shard
+        for shard in source.default_shards()
+        if shard.key == "sachsen:030000-099999"
+    )
+
+    with pytest.raises(SourceChallenge) as caught:
+        await source.fetch_shard(shard)
+
+    exc = caught.value
+    assert exc.challenge["region_key"] == "sachsen"
+    assert exc.challenge["bundesland"] == "Sachsen"
+    assert exc.challenge["price_band_key"] == "030000-099999"
+    assert exc.challenge["page"] == 1
+    assert exc.next_cursor["_resume_same_run"] is True
+    assert exc.next_cursor["resume_strategy"] == "restart_shard"
+    assert exc.next_cursor["resume_page"] == 1
