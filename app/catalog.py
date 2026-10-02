@@ -74,6 +74,7 @@ from app.property_areas import usable_area_property_condition
 from app.property_heating import HEATING_LABELS_DE, heating_evidence_from_payload
 from app.property_images import cached_image_urls, local_image_path
 from app.property_location_filter import PropertyRadiusFilter, resolve_property_radius_filter
+from app.property_source_brand import PropertySourceBrand, property_source_brand
 from app.property_visibility import product_visible_property_condition
 from app.road_matching import refine_spatial_job_with_road_routes
 from app.routing import OSRMClient, RoutingError, RoutingPoint
@@ -104,11 +105,27 @@ class PropertySourceView:
     usable_area_m2: Decimal | None = None
     heating_types: tuple[str, ...] = ()
 
+    @property
+    def brand(self) -> PropertySourceBrand:
+        return property_source_brand(self.label)
+
 
 @dataclass(frozen=True, slots=True)
 class PropertyView:
     property: Property
     sources: tuple[PropertySourceView, ...]
+
+    @property
+    def source_badges(self) -> tuple[PropertySourceView, ...]:
+        output: list[PropertySourceView] = []
+        seen: set[str] = set()
+        for source in self.sources:
+            key = source.brand.key if source.brand.key != "source" else source.label.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            output.append(source)
+        return tuple(output)
 
     @property
     def neutral_area_m2(self) -> Decimal | None:

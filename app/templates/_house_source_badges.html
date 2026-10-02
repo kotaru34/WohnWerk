@@ -1,0 +1,14 @@
+{% for source in source_badges %}
+  <a
+    class="status source-badge source-{{ source.brand.key }}"
+    href="{{ source.url }}"
+    target="_blank"
+    rel="noopener noreferrer"
+    style="--source-color: {{ source.brand.color }}"
+    title="Quelle: {{ source.brand.label }}"
+    aria-label="Quelle {{ source.brand.label }} öffnen"
+  >
+    <span class="source-icon" aria-hidden="true">{{ source.brand.icon_text }}</span>
+    <span>{{ source.brand.label }}</span>
+  </a>
+{% endfor %}
