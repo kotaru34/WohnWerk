@@ -69,3 +69,16 @@ def test_explicit_heating_appliances_are_source_backed_evidence() -> None:
     assert wood.wood_preferred
     assert gas.types == ("gas",)
     assert electric.types == ("electric",)
+
+
+
+def test_english_broker_energy_source_fields_are_normalized() -> None:
+    oil = extract_heating_evidence_from_text(
+        "Energy efficiency information | Energy source | Central heating, Oil heating"
+    )
+    gas = extract_heating_evidence_from_text("Energy source | Gas heating")
+    pump = extract_heating_evidence_from_text("Energy source | Heat pump")
+
+    assert oil.types == ("oil",)
+    assert gas.types == ("gas",)
+    assert pump.types == ("heat_pump",)

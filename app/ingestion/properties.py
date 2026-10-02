@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.ingestion.listing_identity import stable_external_identity
@@ -22,6 +22,66 @@ from app.models import (
 )
 from app.property_dedupe import cross_source_duplicate_strategy
 from app.sources.base import RawProperty
+
+
+def _city_key(value: str | None) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _unique_de_postal_by_city(rows: list[PostalCode]) -> dict[str, PostalCode]:
+    grouped: dict[str, list[PostalCode]] = defaultdict(list)
+    for row in rows:
+        if len(row.postal_code) != 5:
+            continue
+        key = _city_key(row.name)
+        if key:
+            grouped[key].append(row)
+
+    resolved: dict[str, PostalCode] = {}
+    for key, candidates in grouped.items():
+        unique_codes = {candidate.postal_code for candidate in candidates}
+        if len(unique_codes) == 1:
+            resolved[key] = candidates[0]
+    return resolved
+
+
+def _resolve_missing_de_postal_codes(
+    session: Session,
+    items: list[RawProperty],
+) -> None:
+    city_keys = {
+        _city_key(item.city)
+        for item in items
+        if item.postal_code is None
+        and str((item.raw_payload or {}).get("country_code") or "").upper() == "DE"
+        and _city_key(item.city)
+    }
+    if not city_keys:
+        return
+
+    rows = list(
+        session.scalars(
+            select(PostalCode).where(
+                func.length(PostalCode.postal_code) == 5,
+                func.lower(PostalCode.name).in_(city_keys),
+            )
+        )
+    )
+    resolved = _unique_de_postal_by_city(rows)
+    for item in items:
+        if item.postal_code is not None:
+            continue
+        if str((item.raw_payload or {}).get("country_code") or "").upper() != "DE":
+            continue
+        postal = resolved.get(_city_key(item.city))
+        if postal is None:
+            continue
+        item.postal_code = postal.postal_code
+        item.raw_payload = {
+            **(item.raw_payload or {}),
+            "postal_code_inferred_from_unique_city": True,
+            "postal_resolution_city": item.city,
+        }
 
 
 def _listing_payload(item: RawProperty, *, postal_resolved: bool) -> dict:
@@ -225,6 +285,7 @@ def ingest_properties(
         return 0, 0
 
     now = datetime.now(UTC)
+    _resolve_missing_de_postal_codes(session, items)
     postal_codes = {item.postal_code for item in items if item.postal_code}
     known_postal = {
         row.postal_code: row
