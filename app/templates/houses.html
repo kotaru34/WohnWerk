@@ -242,6 +242,9 @@
             {% if area_label(house.living_area_m2) %}<span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% elif area_label(item.neutral_area_m2) %}<span class="fact">Fläche {{ area_label(item.neutral_area_m2) }} · Typ nicht eindeutig</span>{% endif %}
             {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
             {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
+            {% if item.heating_labels_de %}
+              <span class="fact">Heizung {{ item.heating_labels_de|join(', ') }}{% if item.wood_heating_preferred %} · bevorzugt{% endif %}</span>
+            {% endif %}
             {% set nearest_hospital = nearest_hospitals.get(house.id) if nearest_hospitals is defined else none %}
             {% set emergency = emergency_access.get(house.id) if emergency_access is defined else none %}
             {% if selected_country == 'DE' %}
