@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import random
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Iterable
 from urllib.parse import urlparse
 
 import httpx
