@@ -27,6 +27,16 @@ PRICE_RE = re.compile(
     re.IGNORECASE,
 )
 PLZ_RE = re.compile(r"\b(?P<plz>\d{4})\s+")
+CARD_LOCATION_RE = re.compile(
+    r"\b(?P<plz>\d{4})\s+"
+    r"(?P<city>[^\d€]{1,100}?)"
+    r"(?=\s+(?:"
+    r"(?:(?:ab|ca\.)\s+)?[\d.]+(?:,\d+)?\s*m\s*(?:²|2)\s+"
+    r"(?:Wohnfläche|Grundfläche|Nutzfläche)"
+    r"|(?:ab\s+)?[\d.]+(?:,\d+)?\s*€"
+    r"|$))",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,19 +133,24 @@ def _max_page(anchors: list[_Anchor]) -> int:
     return max(pages)
 
 
+def _card_location(text: str) -> re.Match[str] | None:
+    """Return a structured card location, never a bare 4-digit number from the title."""
+    matches = list(CARD_LOCATION_RE.finditer(text))
+    return matches[-1] if matches else None
+
+
 def _parse_card_facts(text: str) -> _CardFacts | None:
     area_match = AREA_RE.search(text)
     if area_match is None:
         return None
 
-    prefix = _clean_text(text[: area_match.start()])
-    plz_matches = list(PLZ_RE.finditer(prefix))
-    if not plz_matches:
+    location = _card_location(text)
+    if location is None:
         return None
-    location = plz_matches[-1]
 
-    title = _clean_text(prefix[: location.start()]).rstrip(" -–") or "Haus zum Kauf"
-    city = _clean_text(prefix[location.end() :]).strip(" ,")
+    title_end = min(area_match.start(), location.start())
+    title = _clean_text(text[:title_end]).rstrip(" -–") or "Haus zum Kauf"
+    city = _clean_text(location.group("city")).strip(" ,")
     if not city:
         return None
 
