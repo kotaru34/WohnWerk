@@ -52,4 +52,4 @@ def test_heating_detail_refresh_is_bounded_by_checked_timestamp() -> None:
 
 
 def test_default_heating_enrichment_skips_von_poll_blocked_details() -> None:
-    assert DEFAULT_SOURCE_NAMES == ("kleinanzeigen-de",)
+    assert DEFAULT_SOURCE_NAMES == ("kleinanzeigen-de", "engel-voelkers-de")

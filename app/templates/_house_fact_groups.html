@@ -1,0 +1,117 @@
+<div class="fact-groups">
+  <div class="fact-group fact-object">
+    <div class="fact-group-label">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5M5.5 10v9h13v-9M9 19v-5h6v5"/></svg>
+      <span>Objekt</span>
+    </div>
+    <div class="fact-values">
+      {% if area_label(fact_property.living_area_m2) %}
+        <span class="fact-chip"><span class="fact-chip-key">Wohnfl.</span>{{ area_label(fact_property.living_area_m2) }}</span>
+      {% elif area_label(fact_row.neutral_area_m2) %}
+        <span class="fact-chip muted"><span class="fact-chip-key">Fläche</span>{{ area_label(fact_row.neutral_area_m2) }} · Typ unklar</span>
+      {% endif %}
+      {% if area_label(fact_row.visible_usable_area_m2) %}
+        <span class="fact-chip"><span class="fact-chip-key">Nutzfl.</span>{{ area_label(fact_row.visible_usable_area_m2) }}</span>
+      {% endif %}
+      {% if area_label(fact_row.visible_plot_area_m2) %}
+        <span class="fact-chip"><span class="fact-chip-key">Grundstück</span>{{ area_label(fact_row.visible_plot_area_m2) }}</span>
+      {% endif %}
+      {% if not area_label(fact_property.living_area_m2) and not area_label(fact_row.neutral_area_m2) and not area_label(fact_row.visible_usable_area_m2) and not area_label(fact_row.visible_plot_area_m2) %}
+        <span class="fact-chip muted">Flächen unbekannt</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="fact-group fact-heating {% if fact_row.wood_heating_preferred %}preferred{% endif %}">
+    <div class="fact-group-label">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3.5c.4 3-1.6 4.2-2.7 5.7-1.1 1.4-1.2 2.8-.3 4.1.5-1.6 1.6-2.5 2.7-3.5.2 2.2 2.8 3.2 2.8 6.1a4.8 4.8 0 0 1-9.6 0c0-3.1 1.7-5.2 4-7.5.1 1.6.5 2.6 1 3.2.1-2.8 1.4-5.2 2.1-8.1Z"/></svg>
+      <span>Heizung</span>
+    </div>
+    <div class="fact-values">
+      {% if fact_row.heating_labels_de %}
+        <span class="fact-chip {% if fact_row.wood_heating_preferred %}good{% endif %}">
+          {{ fact_row.heating_labels_de|join(', ') }}{% if fact_row.wood_heating_preferred %} · bevorzugt{% endif %}
+        </span>
+      {% else %}
+        <span class="fact-chip muted">unbekannt</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if fact_workplace_distance or fact_workplace or fact_selected_country == 'DE' %}
+    <div class="fact-group fact-distance">
+      <div class="fact-group-label">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2.2"/></svg>
+        <span>Distanzen</span>
+      </div>
+      <div class="fact-values">
+        {% if fact_workplace_distance %}
+          {% if fact_workplace_distance.road_duration_minutes is not none %}
+            <span class="fact-chip">
+              <span class="fact-chip-key">Arbeit</span>{{ fact_workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(fact_workplace_distance.road_distance_km) }} km Straße
+            </span>
+          {% else %}
+            <span class="fact-chip"><span class="fact-chip-key">Arbeit</span>{{ '%.1f'|format(fact_workplace_distance.air_distance_km) }} km Luft</span>
+          {% endif %}
+        {% elif fact_workplace %}
+          <span class="fact-chip muted"><span class="fact-chip-key">Arbeit</span>unbekannt</span>
+        {% endif %}
+
+        {% if fact_selected_country == 'DE' %}
+          {% if fact_nearest_hospital %}
+            <span class="fact-chip"><span class="fact-chip-key">Klinik</span>{{ '%.1f'|format(fact_nearest_hospital.air_distance_km) }} km Luft</span>
+          {% elif fact_hospital_data_ready %}
+            <span class="fact-chip muted"><span class="fact-chip-key">Klinik</span>unbekannt</span>
+          {% else %}
+            <span class="fact-chip muted"><span class="fact-chip-key">Klinik</span>Daten fehlen</span>
+          {% endif %}
+
+          {% if fact_emergency %}
+            <span class="fact-chip good"><span class="fact-chip-key">Notfall</span>{{ '%.1f'|format(fact_emergency.air_distance_km) }} km · Stufe {{ fact_emergency.emergency_level }}</span>
+          {% elif fact_hospital_data_ready %}
+            <span class="fact-chip muted"><span class="fact-chip-key">Notfall</span>unbekannt</span>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {% if fact_selected_country == 'DE' %}
+    <div class="fact-group fact-internet">
+      <div class="fact-group-label">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5a12 12 0 0 1 16 0M7 13a7.5 7.5 0 0 1 10 0M10 16.5a3 3 0 0 1 4 0"/><circle cx="12" cy="20" r="1"/></svg>
+        <span>Internet</span>
+      </div>
+      <div class="fact-values">
+        {% if fact_source_net %}
+          {% if fact_source_net.max_download_mbps %}
+            <span class="fact-chip good">
+              <span class="fact-chip-key">Exposé</span>{% if fact_source_net.technology %}{{ fact_source_net.technology }} · {% endif %}bis {{ fact_source_net.max_download_mbps }} Mbit/s{% if fact_source_net.provider_name %} · {{ fact_source_net.provider_name }}{% endif %}
+            </span>
+          {% elif fact_source_net.availability_status == 'connected' %}
+            <span class="fact-chip good"><span class="fact-chip-key">Exposé</span>{{ fact_source_net.technology or 'Festnetz' }} angeschlossen</span>
+          {% elif fact_source_net.availability_status == 'at_property' %}
+            <span class="fact-chip"><span class="fact-chip-key">Exposé</span>{{ fact_source_net.technology or 'Festnetz' }} am Grundstück</span>
+          {% endif %}
+        {% endif %}
+
+        {% if fact_fixed and fact_fixed.max_full_download_mbps %}
+          <span class="fact-chip"><span class="fact-chip-key">Amtlich</span>≥ {{ fact_fixed.max_full_download_mbps }} Mbit/s · 100 % Zelle</span>
+          {% if fact_fixed.max_any_download_mbps and fact_fixed.max_any_download_mbps > fact_fixed.max_full_download_mbps %}
+            <span class="fact-chip"><span class="fact-chip-key">Spitze</span>{{ fact_fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fact_fixed.max_any_coverage_percent) }} % Zelle</span>
+          {% endif %}
+        {% elif fact_fixed and fact_fixed.max_any_download_mbps %}
+          <span class="fact-chip"><span class="fact-chip-key">Amtlich</span>bis {{ fact_fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fact_fixed.max_any_coverage_percent) }} % Zelle</span>
+        {% elif not fact_source_net and fact_internet_data_ready %}
+          <span class="fact-chip muted">hausgenau unbekannt</span>
+        {% elif not fact_source_net %}
+          <span class="fact-chip muted">Daten unbekannt</span>
+        {% endif %}
+
+        {% if fact_internet_fallback_reason %}
+          <span class="fact-chip warn">Starlink-Fallback prüfen</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
