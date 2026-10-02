@@ -11,12 +11,18 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
-from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceFetchError, SourceShardSpec
+from app.sources.base import (
+    PropertySource,
+    RawProperty,
+    SourceBatch,
+    SourceFetchError,
+    SourceShardSpec,
+)
 from app.sources.property.germany import (
     GERMANY_PROPERTY_MAX_PRICE_EUR,
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
-from app.sources.property.immmo import _DOMParser, _Node, _clean_text, _decimal
+from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
 
 BASE_URL = "https://www.kleinanzeigen.de"
 SEARCH_ROOT = f"{BASE_URL}/s-haus-kaufen/anzeige:angebote/c208"
