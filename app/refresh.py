@@ -56,6 +56,12 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         failure_isolated=True,
     ),
     SourceRefreshPlan(
+        "engel-voelkers-de",
+        "scripts/run_engel_voelkers_de.py",
+        False,
+        failure_isolated=True,
+    ),
+    SourceRefreshPlan(
         "von-poll-de",
         "scripts/run_von_poll_de.py",
         True,
