@@ -79,6 +79,9 @@
     .status { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 2px 7px; font-size: .74rem; opacity: .72; }
     .status.new { opacity: 1; font-weight: 750; border-color: color-mix(in srgb, AccentColor 55%, CanvasText 20%); background: color-mix(in srgb, AccentColor 10%, Canvas); }
     .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
+    .source-badge { --source-color: #6f7782; opacity: 1; display: inline-flex; align-items: center; gap: 5px; color: color-mix(in srgb, var(--source-color) 78%, CanvasText); border-color: color-mix(in srgb, var(--source-color) 76%, transparent); background: color-mix(in srgb, var(--source-color) 8%, Canvas); font-weight: 720; text-decoration: none; }
+    .source-badge:hover { background: color-mix(in srgb, var(--source-color) 14%, Canvas); }
+    .source-icon { min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box; border-radius: 4px; display: inline-grid; place-items: center; background: var(--source-color); color: #fff; font-size: .58rem; line-height: 1; font-weight: 850; letter-spacing: -.02em; }
     .location { font-size: .84rem; opacity: .68; margin-bottom: 3px; }
     .listed-date { font-size: .76rem; opacity: .55; margin-bottom: 5px; }
     h2 { margin: 0; font-size: 1rem; line-height: 1.35; }
@@ -240,6 +243,8 @@
         <div class="body">
           <div class="status-line">
             {% if house.id in new_ids %}<span class="status new">Neu</span>{% endif %}
+            {% set source_badges = item.source_badges %}
+            {% include "_house_source_badges.html" %}
             <span class="status">{{ 'Gesehen' if viewed else 'Noch nicht angesehen' }}</span>
             {% if state and state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
             {% if hidden %}<span class="status">Ausgeblendet</span>{% endif %}
