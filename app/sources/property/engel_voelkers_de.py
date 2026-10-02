@@ -63,6 +63,17 @@ class EngelVoelkersPage:
     out_of_budget_cards: int
 
 
+def _english_decimal(value: str | None):
+    """Parse E&V's English-locale numbers: comma thousands, dot decimals."""
+    if not value:
+        return None
+    match = re.search(r"[\d,.]+", value)
+    if match is None:
+        return None
+    raw = match.group(0).replace(",", "")
+    return _decimal(raw)
+
+
 def _canonical_expose_url(value: str, *, page_url: str) -> tuple[str, str] | None:
     absolute = urljoin(page_url, value)
     parsed = urlparse(absolute)
@@ -203,7 +214,7 @@ def parse_engel_voelkers_search_page(
         location = _source_location(card)
         text = card.text()
         price_match = _PRICE_RE.search(text)
-        price = _decimal(price_match.group("price")) if price_match else None
+        price = _english_decimal(price_match.group("price")) if price_match else None
         living_match = _LIVING_RE.search(text)
         plot_match = _PLOT_RE.search(text)
 
@@ -228,9 +239,11 @@ def parse_engel_voelkers_search_page(
             description=None,
             price_eur=price,
             living_area_m2=(
-                _decimal(living_match.group("area")) if living_match else None
+                _english_decimal(living_match.group("area")) if living_match else None
             ),
-            plot_area_m2=_decimal(plot_match.group("area")) if plot_match else None,
+            plot_area_m2=(
+                _english_decimal(plot_match.group("area")) if plot_match else None
+            ),
             postal_code=None,
             city=_city_from_location(location),
             raw_payload={
