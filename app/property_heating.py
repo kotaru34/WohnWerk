@@ -32,7 +32,7 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "wood",
         re.compile(
-            r"\b(?:scheitholz|st(?:ü|ue)ckholz|holzheizung|holzvergaser|holz)\b",
+            r"\b(?:scheitholz|st(?:ü|ue)ckholz|holzheizung|holzvergaser|holzofen|holz)\b",
             re.IGNORECASE,
         ),
     ),
@@ -40,18 +40,18 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "oil",
         re.compile(
-            r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)l)\b",
+            r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)lofen|(?:ö|oe)l)\b",
             re.IGNORECASE,
         ),
     ),
     (
         "electric",
         re.compile(
-            r"\b(?:elektroheizung|elektrisch\w*|strom|nachtspeicher(?:heizung)?)\b",
+            r"\b(?:elektroheizung|elektrisch\w*|strom|nachtspeicher(?:heizung|ofen)?)\b",
             re.IGNORECASE,
         ),
     ),
-    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gas)\b", re.IGNORECASE)),
+    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gastherme|gas)\b", re.IGNORECASE)),
     (
         "heat_pump",
         re.compile(
@@ -69,18 +69,18 @@ _COMPOUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "wood",
         re.compile(
-            r"\b(?:holzheizung|holzvergaser|scheitholzheizung|"
+            r"\b(?:holzheizung|holzvergaser|holzofen|scheitholzheizung|"
             r"st(?:ü|ue)ckholzheizung)\b",
             re.IGNORECASE,
         ),
     ),
-    ("pellet", re.compile(r"\bpelletheizung\b", re.IGNORECASE)),
-    ("oil", re.compile(r"\b(?:ö|oe)lheizung\b", re.IGNORECASE)),
+    ("pellet", re.compile(r"\b(?:pelletheizung|pelletofen)\b", re.IGNORECASE)),
+    ("oil", re.compile(r"\b(?:(?:ö|oe)lheizung|(?:ö|oe)lofen)\b", re.IGNORECASE)),
     (
         "electric",
-        re.compile(r"\b(?:elektroheizung|nachtspeicherheizung)\b", re.IGNORECASE),
+        re.compile(r"\b(?:elektroheizung|nachtspeicher(?:heizung|ofen))\b", re.IGNORECASE),
     ),
-    ("gas", re.compile(r"\bgasheizung\b", re.IGNORECASE)),
+    ("gas", re.compile(r"\b(?:gasheizung|gastherme)\b", re.IGNORECASE)),
     (
         "heat_pump",
         re.compile(r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe)\b", re.IGNORECASE),
