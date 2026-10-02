@@ -80,7 +80,7 @@ class HeatingEvidence:
 
 
 def _types_in_text(value: str) -> set[str]:
-    return {key for key, pattern in _DIRECT_PATTERNS if pattern.search(value)}
+    return {key for key, pattern in _VALUE_PATTERNS if pattern.search(value)}
 
 
 def normalize_heating_types(values: Iterable[str]) -> tuple[str, ...]:
@@ -106,9 +106,10 @@ def extract_heating_evidence_from_text(text: str) -> HeatingEvidence:
         if snippet not in evidence:
             evidence.append(snippet)
 
-    # Explicit compound heating technologies are authoritative enough even when a
-    # provider renders the label/value into separate DOM fragments.
-    for key, pattern in _DIRECT_PATTERNS:
+    # Explicit compound heating technologies are authoritative enough even without a
+    # nearby label. Bare words such as "Gas", "Holz" or "Strom" are deliberately not
+    # scanned globally because they may occur in unrelated prose.
+    for key, pattern in _COMPOUND_PATTERNS:
         direct = pattern.search(normalized)
         if direct is None:
             continue
