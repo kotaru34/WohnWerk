@@ -113,6 +113,18 @@ class PropertyView:
     sources: tuple[PropertySourceView, ...]
 
     @property
+    def source_badges(self) -> tuple[PropertySourceView, ...]:
+        output: list[PropertySourceView] = []
+        seen: set[str] = set()
+        for source in self.sources:
+            key = source.brand.key if source.brand.key != "source" else source.label.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            output.append(source)
+        return tuple(output)
+
+    @property
     def neutral_area_m2(self) -> Decimal | None:
         if self.property.living_area_m2 is not None:
             return None
