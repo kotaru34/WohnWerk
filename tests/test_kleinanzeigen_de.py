@@ -15,6 +15,11 @@ def _page_html() -> str:
       <h1>Häuser zum Kauf 1 - 25 von 200.707 Ergebnissen in Deutschland</h1>
       <article class="aditem" data-adid="3516307594">
         <div class="location">78098 Triberg</div>
+        <img
+          src="https://img.kleinanzeigen.test/house-320.jpg"
+          srcset="https://img.kleinanzeigen.test/house-320.jpg 320w, https://img.kleinanzeigen.test/house-720.jpg 720w, https://img.kleinanzeigen.test/house-1400.jpg 1400w"
+          alt="Tolle Aussicht, ruhige Lage!"
+        >
         <h2><a href="/s-anzeige/tolle-aussicht-ruhige-lage-/3516307594-208-8530">
           Tolle Aussicht, ruhige Lage!
         </a></h2>
@@ -57,6 +62,10 @@ def test_parser_extracts_minimal_public_card_facts_and_budget_filters() -> None:
     assert item.plot_area_m2 is None
     assert item.description is None
     assert item.raw_payload["frontier_only"] is True
+    assert item.raw_payload["thumbnail_url"] == (
+        "https://img.kleinanzeigen.test/house-720.jpg"
+    )
+    assert item.raw_payload["thumbnail_semantics"] == "source_search_card"
 
 
 def test_pagination_uses_current_public_route_shape() -> None:

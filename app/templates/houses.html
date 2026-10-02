@@ -85,8 +85,20 @@
     h2 a { text-decoration: none; }
     h2 a:hover { text-decoration: underline; }
     .price { font-size: 1.25rem; font-weight: 760; margin: 10px 0 7px; }
-    .facts { display: flex; flex-wrap: wrap; gap: 6px; font-size: .82rem; }
-    .fact { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 3px 8px; }
+    .fact-groups { display: grid; gap: 6px; margin-top: 8px; }
+    .fact-group { --fact-accent: #6d87a3; display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 7px; align-items: start; border-left: 3px solid var(--fact-accent); border-radius: 8px; padding: 6px 7px; background: color-mix(in srgb, var(--fact-accent) 6%, Canvas); }
+    .fact-group.fact-heating { --fact-accent: #b77743; }
+    .fact-group.fact-heating.preferred { --fact-accent: #5b9270; }
+    .fact-group.fact-distance { --fact-accent: #7a72a8; }
+    .fact-group.fact-internet { --fact-accent: #4d8d8a; }
+    .fact-group-label { display: flex; gap: 5px; align-items: center; color: var(--fact-accent); font-size: .7rem; font-weight: 760; letter-spacing: .035em; text-transform: uppercase; padding-top: 2px; }
+    .fact-group-label svg { width: 14px; height: 14px; flex: 0 0 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fact-values { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+    .fact-chip { border: 1px solid color-mix(in srgb, var(--fact-accent) 26%, CanvasText 12%); border-radius: 6px; padding: 2px 6px; background: color-mix(in srgb, var(--fact-accent) 4%, Canvas); font-size: .75rem; line-height: 1.35; }
+    .fact-chip-key { font-weight: 760; opacity: .67; margin-right: 4px; }
+    .fact-chip.good { border-color: color-mix(in srgb, #4f8a66 45%, transparent); background: color-mix(in srgb, #4f8a66 10%, Canvas); }
+    .fact-chip.warn { border-color: color-mix(in srgb, #b8873f 52%, transparent); background: color-mix(in srgb, #b8873f 11%, Canvas); }
+    .fact-chip.muted { opacity: .62; border-style: dashed; }
     .open { margin-top: 13px; }
     .open a { font-weight: 650; }
     .actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
@@ -238,65 +250,19 @@
           <div class="listed-date">Bei WohnWerk seit {{ house.first_seen_at.strftime('%d.%m.%Y') }}</div>
           <h2>{% if not hidden and not rejected %}<a href="/houses/{{ house.id }}">{{ house.title }}</a>{% else %}{{ house.title }}{% endif %}</h2>
           <div class="price">{{ eur_label(house.price_eur) }}</div>
-          <div class="facts">
-            {% if area_label(house.living_area_m2) %}<span class="fact">Wohnfläche {{ area_label(house.living_area_m2) }}</span>{% elif area_label(item.neutral_area_m2) %}<span class="fact">Fläche {{ area_label(item.neutral_area_m2) }} · Typ nicht eindeutig</span>{% endif %}
-            {% if area_label(item.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(item.visible_usable_area_m2) }}</span>{% endif %}
-            {% if area_label(item.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(item.visible_plot_area_m2) }}</span>{% endif %}
-            {% if item.heating_labels_de %}
-              <span class="fact">Heizung {{ item.heating_labels_de|join(', ') }}{% if item.wood_heating_preferred %} · bevorzugt{% endif %}</span>
-            {% endif %}
-            {% set nearest_hospital = nearest_hospitals.get(house.id) if nearest_hospitals is defined else none %}
-            {% set emergency = emergency_access.get(house.id) if emergency_access is defined else none %}
-            {% if selected_country == 'DE' %}
-              {% if nearest_hospital %}
-                <span class="fact">Klinik {{ '%.1f'|format(nearest_hospital.air_distance_km) }} km Luftlinie · {{ nearest_hospital.name }}</span>
-              {% elif hospital_data_ready %}
-                <span class="fact">Klinik: Entfernung unbekannt</span>
-              {% else %}
-                <span class="fact">Klinik: Daten unbekannt</span>
-              {% endif %}
-              {% if emergency %}
-                <span class="fact">Notfall {{ '%.1f'|format(emergency.air_distance_km) }} km Luftlinie · Stufe {{ emergency.emergency_level }}</span>
-              {% elif hospital_data_ready %}
-                <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
-              {% endif %}
-            {% endif %}
-            {% if selected_country == 'DE' %}
-              {% set source_net = internet_source_primary.get(house.id) if internet_source_primary is defined else none %}
-              {% set fixed = internet_access.get(house.id) if internet_access is defined else none %}
-              {% if source_net %}
-                {% if source_net.max_download_mbps %}
-                  <span class="fact">Internet {{ source_net.kind_label_de }} · {% if source_net.provider_name %}{{ source_net.provider_name }} · {% endif %}{% if source_net.technology %}{{ source_net.technology }} {% endif %}bis {{ source_net.max_download_mbps }} Mbit/s</span>
-                {% elif source_net.availability_status == 'connected' %}
-                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} angeschlossen</span>
-                {% elif source_net.availability_status == 'at_property' %}
-                  <span class="fact">Internet {{ source_net.kind_label_de }} · {{ source_net.technology or 'Festnetz' }} am Grundstück</span>
-                {% endif %}
-              {% endif %}
-              {% if fixed and fixed.max_full_download_mbps %}
-                <span class="fact">Amtliches Raster ≥ {{ fixed.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
-                {% if fixed.max_any_download_mbps and fixed.max_any_download_mbps > fixed.max_full_download_mbps %}
-                  <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der Zelle</span>
-                {% endif %}
-              {% elif fixed and fixed.max_any_download_mbps %}
-                <span class="fact">Amtliches Raster bis {{ fixed.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(fixed.max_any_coverage_percent) }} % der 100-m-Zelle</span>
-              {% elif not source_net and internet_data_ready %}
-                <span class="fact">Festnetz hausgenau unbekannt</span>
-              {% elif not source_net %}
-                <span class="fact">Festnetz: Daten unbekannt</span>
-              {% endif %}
-              {% if internet_fallback_reasons.get(house.id) %}
-                <span class="fact">Starlink-Fallback prüfen</span>
-              {% endif %}
-            {% endif %}
-            {% set workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
-            {% if workplace_distance %}
-              {% if workplace_distance.road_duration_minutes is not none %}
-                <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
-              {% endif %}
-              <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
-            {% endif %}
-          </div>
+          {% set fact_property = house %}
+          {% set fact_row = item %}
+          {% set fact_nearest_hospital = nearest_hospitals.get(house.id) if nearest_hospitals is defined else none %}
+          {% set fact_emergency = emergency_access.get(house.id) if emergency_access is defined else none %}
+          {% set fact_source_net = internet_source_primary.get(house.id) if internet_source_primary is defined else none %}
+          {% set fact_fixed = internet_access.get(house.id) if internet_access is defined else none %}
+          {% set fact_workplace_distance = workplace_distances.get(house.id) if workplace_distances is defined else none %}
+          {% set fact_workplace = none %}
+          {% set fact_selected_country = selected_country %}
+          {% set fact_hospital_data_ready = hospital_data_ready %}
+          {% set fact_internet_data_ready = internet_data_ready %}
+          {% set fact_internet_fallback_reason = internet_fallback_reasons.get(house.id) if internet_fallback_reasons is defined else none %}
+          {% include "_house_fact_groups.html" %}
           {% if not hidden and not rejected %}<div class="open"><a href="/houses/{{ house.id }}">Details & Stellen im Umkreis</a></div>{% endif %}
           {% if rejected and item.sources %}
             <div class="open">Originalanzeigen:
