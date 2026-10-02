@@ -21,8 +21,8 @@ Cross-source duplicates remain distinct source listings underneath a later canon
 
 ### Germany public portal and broker layer
 
-The v0.4.9 candidate broadens Germany house discovery while keeping each source's
-coverage authority explicit:
+The deployed v0.4.9 release broadens Germany house discovery, and v0.4.10 adds a
+second independent broker frontier while keeping each source's coverage authority explicit:
 
 - `immowelt-de`: existing broad public portal, incremental/frontier-only in the
   automatic scheduler while browser/challenge behavior remains under observation;
@@ -32,9 +32,13 @@ coverage authority explicit:
 - `kleinanzeigen-de`: bounded newest-first public house frontier. Its nationwide
   corpus is much larger than the bounded scan, so it **never** gains disappearance
   authority from that frontier;
-- `von-poll-de`: direct broker-network inventory, sharded by all 16 German
-  states/city-states and capable of authoritative reconciliation only when every
-  public result page parses below its hard cap.
+- `von-poll-de`: adapter retained for diagnostics, but the production source is
+  disabled fail-closed after sequential live access reached HTTP 403; it must not be
+  treated as operational coverage until a supported transport is validated;
+- `engel-voelkers-de`: v0.4.10 bounded newest-first frontier over the public
+  Germany house corpus. Public expose UUIDs provide stable source identity and
+  detail pages expose structured energy-source fields. The frontier never claims
+  disappearance authority.
 
 The active Germany purchase budget is EUR 30,000..200,000. Discovery adapters keep
 source identity/URL, title, asking price, explicit living/plot area, PLZ/city and
@@ -55,6 +59,11 @@ Cross-source duplicate handling is deliberately conservative. Source listings re
 separate provenance records underneath a canonical property; a merge requires
 compatible PLZ, asking price and corroborating area/title evidence, and ambiguous
 multi-candidate matches fail closed.
+
+For sources such as Engel & Völkers whose public result cards expose municipality but
+not PLZ, WohnWerk may resolve a missing German PLZ from the local postal reference
+only when that municipality maps to exactly one five-digit code. Multi-PLZ cities stay
+unresolved; no postcode is guessed.
 
 Heating enrichment stores only normalized source-backed heating types and short
 energy-field evidence snippets. Unknown stays unknown. `Holz` is surfaced as the
