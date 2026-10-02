@@ -60,6 +60,7 @@ class EngelVoelkersPage:
     cards_seen: int
     cards_parsed: int
     unavailable_cards: int
+    price_unknown_cards: int
     out_of_budget_cards: int
 
 
@@ -119,7 +120,10 @@ def _card_for_anchor(anchor: _Node, *, page_url: str) -> _Node | None:
 
         text = node.text()
         has_location = ", Germany" in text
-        has_price = _PRICE_RE.search(text) is not None
+        has_price = (
+            _PRICE_RE.search(text) is not None
+            or _PRICE_ON_REQUEST_RE.search(text) is not None
+        )
         has_area = _LIVING_RE.search(text) is not None or _PLOT_RE.search(text) is not None
         if len(details) == 1 and has_location and has_price:
             fallback = node
@@ -202,6 +206,7 @@ def parse_engel_voelkers_search_page(
 
     cards_parsed = 0
     unavailable_cards = 0
+    price_unknown_cards = 0
     out_of_budget_cards = 0
 
     for listing_id, (anchor, url) in title_exposes.items():
@@ -214,16 +219,20 @@ def parse_engel_voelkers_search_page(
         location = _source_location(card)
         text = card.text()
         price_match = _PRICE_RE.search(text)
+        price_on_request = _PRICE_ON_REQUEST_RE.search(text) is not None
         price = _english_decimal(price_match.group("price")) if price_match else None
         living_match = _LIVING_RE.search(text)
         plot_match = _PLOT_RE.search(text)
 
-        if not title or location is None or price is None:
+        if not title or location is None or (price is None and not price_on_request):
             continue
         cards_parsed += 1
 
         if _UNAVAILABLE_RE.match(title):
             unavailable_cards += 1
+            continue
+        if price is None:
+            price_unknown_cards += 1
             continue
         if (
             price < GERMANY_PROPERTY_MIN_PRICE_EUR
@@ -262,6 +271,7 @@ def parse_engel_voelkers_search_page(
         cards_seen=len(title_exposes),
         cards_parsed=cards_parsed,
         unavailable_cards=unavailable_cards,
+        price_unknown_cards=price_unknown_cards,
         out_of_budget_cards=out_of_budget_cards,
     )
 
@@ -311,7 +321,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
     @staticmethod
     def _page_url(page: int) -> str:
         if page <= 1:
-            return SEARCH_ROOT
+            return f"{SEARCH_ROOT}?sorting=publishedAt"
         return f"{SEARCH_ROOT}?page={page}&sorting=publishedAt"
 
     async def _sleep(self) -> None:
@@ -364,6 +374,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
         cards_seen = 0
         cards_parsed = 0
         unavailable_cards = 0
+        price_unknown_cards = 0
         out_of_budget_cards = 0
         source_reported_count: int | None = None
 
@@ -397,6 +408,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
                     cards_seen += page.cards_seen
                     cards_parsed += page.cards_parsed
                     unavailable_cards += page.unavailable_cards
+                    price_unknown_cards += page.price_unknown_cards
                     out_of_budget_cards += page.out_of_budget_cards
         except Exception as exc:
             if isinstance(exc, SourceFetchError):
@@ -408,6 +420,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
                     "frontier_cards_seen": cards_seen,
                     "frontier_cards_parsed": cards_parsed,
                     "frontier_unavailable_cards": unavailable_cards,
+                    "frontier_price_unknown_cards": price_unknown_cards,
                     "frontier_out_of_budget_cards": out_of_budget_cards,
                     "country_code": "DE",
                 }
@@ -422,6 +435,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
                     "frontier_cards_seen": cards_seen,
                     "frontier_cards_parsed": cards_parsed,
                     "frontier_unavailable_cards": unavailable_cards,
+                    "frontier_price_unknown_cards": price_unknown_cards,
                     "frontier_out_of_budget_cards": out_of_budget_cards,
                     "country_code": "DE",
                 },
@@ -434,6 +448,7 @@ class EngelVoelkersGermanyPropertySource(PropertySource):
                 "frontier_cards_seen": cards_seen,
                 "frontier_cards_parsed": cards_parsed,
                 "frontier_unavailable_cards": unavailable_cards,
+                "frontier_price_unknown_cards": price_unknown_cards,
                 "frontier_out_of_budget_cards": out_of_budget_cards,
                 "country_code": "DE",
             },
