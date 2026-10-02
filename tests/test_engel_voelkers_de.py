@@ -16,6 +16,10 @@ def _page_html() -> str:
       <h1>Houses for sale in Germany – 3,765 results</h1>
       <div class="property-card">
         <div>Add to favorites</div>
+        <picture>
+          <source srcset="https://images.ev.test/house-320.webp 320w, https://images.ev.test/house-720.webp 720w, https://images.ev.test/house-1400.webp 1400w">
+          <img src="https://images.ev.test/house-320.webp" alt="Wohlfühlhaus">
+        </picture>
         <div>Althausen, Münnerstadt, Bavaria, Germany</div>
         <h2>
           <a href="/de/en/exposes/95abd015-01a0-583e-a0e2-22cca215dec5">
@@ -96,6 +100,8 @@ def test_parser_extracts_budget_house_and_skips_unavailable_and_expensive() -> N
     assert item.raw_payload["source_location"] == (
         "Althausen, Münnerstadt, Bavaria, Germany"
     )
+    assert item.raw_payload["thumbnail_url"] == "https://images.ev.test/house-720.webp"
+    assert item.raw_payload["thumbnail_semantics"] == "source_search_card"
 
 
 def test_pagination_is_newest_first_and_source_is_single_frontier() -> None:
