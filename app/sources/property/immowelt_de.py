@@ -36,6 +36,7 @@ from app.sources.property.germany import (
     REGIONS_BY_KEY,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
+from app.sources.property.preview import card_thumbnail_url
 
 BASE_URL = "https://www.immowelt.de"
 SEARCH_URL = f"{BASE_URL}/classified-search"
@@ -312,6 +313,7 @@ def parse_immowelt_search_page(
         living_area, plot_area = _areas(raw_title)
         postal_code = _postal_from_card(card)
         auction_evidence = _auction_evidence(card, raw_title)
+        thumbnail_url = card_thumbnail_url(card, page_url=page_url)
 
         items.append(
             RawProperty(
@@ -335,6 +337,14 @@ def parse_immowelt_search_page(
                     "price_band_key": price_band_key,
                     "source_postal_code": postal_code,
                     "identity_stable": True,
+                    **(
+                        {
+                            "thumbnail_url": thumbnail_url,
+                            "thumbnail_semantics": "source_search_card",
+                        }
+                        if thumbnail_url
+                        else {}
+                    ),
                 },
             )
         )
