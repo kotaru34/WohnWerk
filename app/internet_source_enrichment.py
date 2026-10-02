@@ -17,6 +17,7 @@ from app.internet_source_evidence import (
     replace_listing_internet_source_evidence,
 )
 from app.models import ListingStatus, PropertyListing, Source
+from app.property_heating_enrichment import apply_heating_detail_html
 from app.sources.base import SourceChallenge
 from app.sources.property.immowelt_de import detect_immowelt_challenge
 
@@ -310,6 +311,14 @@ async def enrich_de_internet_source_evidence(
                     final_url=result.final_url,
                     status_code=result.status_code,
                     evidence_count=stored,
+                )
+                # Reuse the already fetched Immowelt detail HTML for heating facts.
+                # This adds no portal request and retains only normalized heating
+                # types plus bounded source-backed evidence, never the full body.
+                listing.raw_payload = apply_heating_detail_html(
+                    listing.raw_payload,
+                    result.body,
+                    checked_at=datetime.now(UTC),
                 )
                 session.commit()
             else:
