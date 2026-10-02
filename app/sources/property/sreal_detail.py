@@ -223,6 +223,8 @@ def enrich_sreal_property(item: RawProperty, detail: SRealDetail) -> RawProperty
     payload.update(
         {
             "detail_enriched": True,
+            "detail_postal_code": detail.postal_code,
+            "detail_city": detail.city,
             "detail_price_eur": str(detail.price_eur) if detail.price_eur is not None else None,
             "detail_living_area_m2": (
                 str(detail.living_area_m2) if detail.living_area_m2 is not None else None
