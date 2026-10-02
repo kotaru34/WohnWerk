@@ -95,6 +95,11 @@
         {% endif %}
         {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
         {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
+        {% if house.heating_labels_de %}
+          <span class="fact">Heizung {{ house.heating_labels_de|join(', ') }}{% if house.wood_heating_preferred %} · bevorzugt{% endif %}</span>
+        {% else %}
+          <span class="fact">Heizung: unbekannt</span>
+        {% endif %}
         {% if workplace_distance %}
           {% if workplace_distance.road_duration_minutes is not none %}
             <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>

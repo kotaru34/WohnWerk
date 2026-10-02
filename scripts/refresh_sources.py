@@ -22,6 +22,7 @@ from app.version import __version__
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOCK_PATH = Path("/run/wohnwerk-refresh/refresh.lock")
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/health"
+HEATING_ENRICHMENT_SOURCES = frozenset({"kleinanzeigen-de", "von-poll-de"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +193,7 @@ def main() -> None:
         failures: list[CommandResult] = []
         isolated_failures: list[CommandResult] = []
         successful_job_sources: list[str] = []
+        successful_property_sources: list[str] = []
         for run in due:
             result = _run_command(
                 f"source:{run.plan.source_name}:{run.mode}",
@@ -204,8 +206,29 @@ def main() -> None:
             if result_class == "isolated_failure":
                 isolated_failures.append(result)
                 continue
-            if _source_category(run.plan.source_name) == SourceCategory.JOB:
+            category = _source_category(run.plan.source_name)
+            if category == SourceCategory.JOB:
                 successful_job_sources.append(run.plan.source_name)
+            elif category == SourceCategory.PROPERTY:
+                successful_property_sources.append(run.plan.source_name)
+
+        heating_sources = sorted(
+            HEATING_ENRICHMENT_SOURCES.intersection(successful_property_sources)
+        )
+        if heating_sources:
+            command = [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts/enrich_property_heating.py"),
+                "--limit",
+                "50",
+            ]
+            for source_name in heating_sources:
+                command.extend(["--source", source_name])
+            result = _run_command("postprocess:property-heating", command)
+            # Heating is optional evidence. A detail-page outage must not turn a
+            # successful acquisition refresh into a global refresh failure.
+            if result.returncode != 0:
+                isolated_failures.append(result)
 
         if successful_job_sources:
             for label, command in (
