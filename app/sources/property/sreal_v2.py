@@ -48,13 +48,13 @@ def _fallback_card_metadata(
         boundaries.append(price.start())
     prefix = _clean_text(text[: min(boundaries)] if boundaries else text)
 
-    locations = list(_base.PLZ_RE.finditer(prefix))
-    if not locations:
+    location = _base._card_location(text)
+    if location is None:
         return prefix[:500] or f"s REAL Immobilie {listing_id}", None, None
 
-    location = locations[-1]
-    title = _clean_text(prefix[: location.start()]).rstrip(" -–")
-    city = _clean_text(prefix[location.end() :]).strip(" ,")
+    title_end = min(location.start(), min(boundaries) if boundaries else len(text))
+    title = _clean_text(text[:title_end]).rstrip(" -–")
+    city = _clean_text(location.group("city")).strip(" ,")
     return (
         title[:500] or f"s REAL Immobilie {listing_id}",
         location.group("plz"),
