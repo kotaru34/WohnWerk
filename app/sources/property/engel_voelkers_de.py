@@ -37,6 +37,7 @@ _COUNT_RE = re.compile(
     re.IGNORECASE,
 )
 _PRICE_RE = re.compile(r"€\s*(?P<price>[\d.,]+)")
+_PRICE_ON_REQUEST_RE = re.compile(r"(?:Price on request|Preis auf Anfrage)", re.IGNORECASE)
 _LIVING_RE = re.compile(
     r"~?\s*(?P<area>[\d.,]+)\s*m(?:²|2)\s+Living\s+area",
     re.IGNORECASE,
