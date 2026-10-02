@@ -5,6 +5,7 @@ import pytest
 
 from app.sources.property.engel_voelkers_de import (
     EngelVoelkersGermanyPropertySource,
+    _english_decimal,
     parse_engel_voelkers_search_page,
 )
 
@@ -133,3 +134,9 @@ async def test_frontier_never_claims_reconciliation_authority(monkeypatch) -> No
     assert batch.result_cap_hit is True
     assert batch.pages_fetched == 1
     assert len(batch.items) == 1
+
+
+
+def test_english_number_parser_treats_comma_as_thousands_separator() -> None:
+    assert _english_decimal("149,000") == Decimal(149000)
+    assert _english_decimal("1,432.5") == Decimal("1432.5")
