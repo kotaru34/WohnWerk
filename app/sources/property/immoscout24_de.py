@@ -387,6 +387,7 @@ class ImmoScout24GermanyPropertySource(PropertySource):
         max_reported_count = 0
         max_page = 1
         result_cap_hit = False
+        current_page_number = 1
 
         try:
             async with httpx.AsyncClient(
@@ -421,6 +422,7 @@ class ImmoScout24GermanyPropertySource(PropertySource):
 
                 page_number = 2
                 while page_number <= target_pages:
+                    current_page_number = page_number
                     page_url = self._page_url(region_key, price_band_key, page_number)
                     response = await self._get(client, page_url)
                     page = parse_immoscout24_search_page(
@@ -448,6 +450,37 @@ class ImmoScout24GermanyPropertySource(PropertySource):
                     cards_parsed += page.cards_parsed
                     page_number += 1
         except Exception as exc:
+            if isinstance(exc, SourceChallenge):
+                exc.pages_fetched = pages_fetched
+                exc.items_seen = len(items_by_id)
+                exc.source_reported_count = source_reported_count
+                exc.partial_items = list(items_by_id.values())
+                exc.challenge.update(
+                    {
+                        "region_key": region_key,
+                        "bundesland": REGIONS_BY_KEY[region_key].label,
+                        "price_band_key": price_band_key,
+                        "page": current_page_number,
+                    }
+                )
+                # ImmoScout resumes the same crawl run and shard, but deliberately
+                # restarts this small price-band shard at page 1 after browser state
+                # is restored. Ingestion is idempotent and a full retry preserves
+                # reconciliation authority instead of pretending partial history is complete.
+                exc.next_cursor = {
+                    "_resume_same_run": True,
+                    "resume_strategy": "restart_shard",
+                    "resume_page": 1,
+                    "challenged_page": current_page_number,
+                    "discovery_cards_seen": cards_seen,
+                    "discovery_cards_parsed": cards_parsed,
+                    "discovery_max_page": max_page,
+                    "discovery_latest_reported_count": latest_reported_count,
+                    "discovery_max_reported_count": max_reported_count,
+                    "discovery_transport": "chromium",
+                    "country_code": "DE",
+                }
+                raise
             if isinstance(exc, SourceFetchError):
                 raise
             raise SourceFetchError(
