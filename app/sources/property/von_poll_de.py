@@ -21,9 +21,9 @@ from app.sources.base import (
     SourceShardSpec,
 )
 from app.sources.property.germany import (
+    GERMAN_REGIONS,
     GERMANY_PROPERTY_MAX_PRICE_EUR,
     GERMANY_PROPERTY_MIN_PRICE_EUR,
-    GERMAN_REGIONS,
     REGIONS_BY_KEY,
 )
 from app.sources.property.immmo import _clean_text, _decimal
