@@ -128,3 +128,27 @@ def test_job_house_radius_query_applies_saved_house_filters() -> None:
     assert "properties.plot_area_m2 >= 300" in sql
     assert "candidate_property_preferences" in sql
     assert "hidden IS true" in sql
+
+
+
+def test_property_view_source_badges_keep_unique_provenance_sources() -> None:
+    view = PropertyView(
+        property=Property(id=10, title="Haus"),
+        sources=(
+            PropertySourceView(label="sreal.at", url="https://sreal.test/a"),
+            PropertySourceView(label="sreal.at", url="https://sreal.test/b"),
+            PropertySourceView(label="immmo.at", url="https://immmo.test/a"),
+            PropertySourceView(label="kleinanzeigen-de", url="https://kleinanzeigen.test/a"),
+        ),
+    )
+
+    assert [source.brand.label for source in view.source_badges] == [
+        "s REAL",
+        "IMMMO",
+        "Kleinanzeigen",
+    ]
+    assert [source.url for source in view.source_badges] == [
+        "https://sreal.test/a",
+        "https://immmo.test/a",
+        "https://kleinanzeigen.test/a",
+    ]

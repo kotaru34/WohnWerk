@@ -70,3 +70,29 @@ def test_sreal_search_parser_uses_stable_detail_ids_and_urls() -> None:
     )
     first = next(item for item in page.items if item.source_listing_id == "2838-2215")
     assert first.url == "https://www.sreal.at/de/immobilie/2838-2215/landhaus-in-idyllischer-lage"
+
+
+
+def test_sreal_search_parser_never_treats_title_year_as_postcode() -> None:
+    html = """
+    <html><body>
+      <a href="/de/immobilie/960-75511/haus-in-loidesthal">
+        Haus in Loidesthal mit Terrasse! Besichtigung am Freitag, 16.10.2026
+        von 14-16 Uhr, Terminreservierung erbeten!
+        <span>375 m² Grundfläche</span>
+        <span>2225 Loidesthal</span>
+        <span>64.888 € Kaufpreis</span>
+      </a>
+    </body></html>
+    """
+
+    item = parse_sreal_search_page(
+        html,
+        page_url="https://www.sreal.at/de/haeuser-kauf/angebot/10?p=3",
+    ).items[0]
+
+    assert item.postal_code == "2225"
+    assert item.city == "Loidesthal"
+    assert item.plot_area_m2 == Decimal(375)
+    assert item.price_eur == Decimal(64888)
+    assert "Terminreservierung" in item.title

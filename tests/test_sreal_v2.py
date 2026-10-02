@@ -130,3 +130,24 @@ async def test_sreal_unknown_price_stays_in_discovery_but_skips_detail_io() -> N
     assert source.enriched_ids == ["111-10000"]
     assert batch.next_cursor["acquisition_budget_accepted"] == 1
     assert batch.next_cursor["acquisition_budget_price_unknown"] == 1
+
+
+
+def test_sreal_v2_fallback_does_not_promote_year_to_postcode() -> None:
+    html = """
+    <html><body>
+      <a href="/de/immobilie/960-75511/haus-in-loidesthal">
+        Haus in Loidesthal! Besichtigung am 16.10.2026 von 14-16 Uhr
+      </a>
+    </body></html>
+    """
+
+    item = parse_sreal_search_page(
+        html,
+        page_url="https://www.sreal.at/de/haeuser-kauf/angebot/10?p=3",
+    ).items[0]
+
+    assert item.postal_code is None
+    assert item.city is None
+    assert "2026" in item.title
+    assert item.raw_payload["search_metadata_complete"] is False

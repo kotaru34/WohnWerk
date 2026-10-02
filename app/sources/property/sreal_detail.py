@@ -186,7 +186,9 @@ def parse_sreal_detail_page(html: str, *, page_url: str) -> SRealDetail:
 
     display_id = listing_id.replace("-", "/", 1)
     location_re = re.compile(
-        rf"\b(?P<plz>\d{{4}})\s+(?P<city>.{{1,100}}?)\s*-\s*{re.escape(display_id)}\b",
+        rf"\b(?P<plz>\d{{4}})\s+"
+        rf"(?P<city>(?:(?!\b\d{{4}}\b).){{1,100}}?)"
+        rf"\s*-\s*{re.escape(display_id)}\b",
         re.IGNORECASE,
     )
     location = location_re.search(text)
@@ -223,6 +225,8 @@ def enrich_sreal_property(item: RawProperty, detail: SRealDetail) -> RawProperty
     payload.update(
         {
             "detail_enriched": True,
+            "detail_postal_code": detail.postal_code,
+            "detail_city": detail.city,
             "detail_price_eur": str(detail.price_eur) if detail.price_eur is not None else None,
             "detail_living_area_m2": (
                 str(detail.living_area_m2) if detail.living_area_m2 is not None else None
