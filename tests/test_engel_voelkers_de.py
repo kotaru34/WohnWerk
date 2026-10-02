@@ -14,6 +14,18 @@ def _page_html() -> str:
     return """
     <html><body>
       <h1>Houses for sale in Germany – 3,765 results</h1>
+      <script type="application/ld+json" id="structured-buyer-data-jsonld">
+        {
+          "@type": "ItemList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "url": "https://www.engelvoelkers.com/de/en/exposes/95abd015-01a0-583e-a0e2-22cca215dec5",
+              "image": "https://uploadcare.engelvoelkers.com/source-backed-preview/"
+            }
+          ]
+        }
+      </script>
       <div class="property-card">
         <div>Add to favorites</div>
         <picture>
@@ -100,7 +112,9 @@ def test_parser_extracts_budget_house_and_skips_unavailable_and_expensive() -> N
     assert item.raw_payload["source_location"] == (
         "Althausen, Münnerstadt, Bavaria, Germany"
     )
-    assert item.raw_payload["thumbnail_url"] == "https://images.ev.test/house-720.webp"
+    assert item.raw_payload["thumbnail_url"] == (
+        "https://uploadcare.engelvoelkers.com/source-backed-preview/"
+    )
     assert item.raw_payload["thumbnail_semantics"] == "source_search_card"
 
 
