@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Iterable
 
 HEATING_LABELS_DE: dict[str, str] = {
     "wood": "Holz",
@@ -21,22 +21,74 @@ HEATING_LABELS_DE: dict[str, str] = {
 WOOD_PREFERRED_TYPES = frozenset({"wood"})
 
 _LABEL_RE = re.compile(
-    r"(?:wesentlicher\s+energietr(?:ä|ae)ger|prim(?:ä|ae)renergietr(?:ä|ae)ger|"
-    r"energietr(?:ä|ae)ger|befeuerung|heizungsart|heizung|w(?:ä|ae)rmeerzeuger)"
+    r"(?:wesentlicher\s+energietr(?:ä|ae)ger|wesentliche\s+energietr(?:ä|ae)ger|"
+    r"prim(?:ä|ae)renergietr(?:ä|ae)ger|energietr(?:ä|ae)ger|befeuerung|"
+    r"heizungsart|heizung|w(?:ä|ae)rmeerzeuger)"
     r"\s*[:\-]?\s*(?P<value>.{0,120})",
     re.IGNORECASE,
 )
-_DIRECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("wood", re.compile(r"\b(?:scheitholz|st(?:ü|ue)ckholz|holzheizung|holzvergaser)\b", re.I)),
-    ("pellet", re.compile(r"\bpellet(?:s|heizung|ofen)?\b", re.I)),
-    ("oil", re.compile(r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)l)\b", re.I)),
-    ("electric", re.compile(r"\b(?:elektroheizung|elektrisch|nachtspeicher(?:heizung)?)\b", re.I)),
-    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gas)\b", re.I)),
-    ("heat_pump", re.compile(r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe|erdw(?:ä|ae)rme)\b", re.I)),
-    ("district", re.compile(r"\bfernw(?:ä|ae)rme\b", re.I)),
-    ("solar", re.compile(r"\b(?:solarthermie|solar)\b", re.I)),
-    ("biomass", re.compile(r"\bbiomasse\b", re.I)),
-    ("coal", re.compile(r"\b(?:kohle|kohleheizung)\b", re.I)),
+
+_VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "wood",
+        re.compile(
+            r"\b(?:scheitholz|st(?:ü|ue)ckholz|holzheizung|holzvergaser|holz)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("pellet", re.compile(r"\bpellet(?:s|heizung|ofen)?\b", re.IGNORECASE)),
+    (
+        "oil",
+        re.compile(
+            r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)l)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "electric",
+        re.compile(
+            r"\b(?:elektroheizung|elektrisch\w*|strom|nachtspeicher(?:heizung)?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gas)\b", re.IGNORECASE)),
+    (
+        "heat_pump",
+        re.compile(
+            r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe|erdw(?:ä|ae)rme)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("district", re.compile(r"\bfernw(?:ä|ae)rme\b", re.IGNORECASE)),
+    ("solar", re.compile(r"\b(?:solarthermie|solar)\b", re.IGNORECASE)),
+    ("biomass", re.compile(r"\bbiomasse\b", re.IGNORECASE)),
+    ("coal", re.compile(r"\b(?:kohle|kohleheizung)\b", re.IGNORECASE)),
+)
+
+_COMPOUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "wood",
+        re.compile(
+            r"\b(?:holzheizung|holzvergaser|scheitholzheizung|"
+            r"st(?:ü|ue)ckholzheizung)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    ("pellet", re.compile(r"\bpelletheizung\b", re.IGNORECASE)),
+    ("oil", re.compile(r"\b(?:ö|oe)lheizung\b", re.IGNORECASE)),
+    (
+        "electric",
+        re.compile(r"\b(?:elektroheizung|nachtspeicherheizung)\b", re.IGNORECASE),
+    ),
+    ("gas", re.compile(r"\bgasheizung\b", re.IGNORECASE)),
+    (
+        "heat_pump",
+        re.compile(r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe)\b", re.IGNORECASE),
+    ),
+    ("district", re.compile(r"\bfernw(?:ä|ae)rme\b", re.IGNORECASE)),
+    ("solar", re.compile(r"\bsolarthermie\b", re.IGNORECASE)),
+    ("biomass", re.compile(r"\bbiomasseheizung\b", re.IGNORECASE)),
+    ("coal", re.compile(r"\bkohleheizung\b", re.IGNORECASE)),
 )
 
 
@@ -56,10 +108,11 @@ class _VisibleTextParser(HTMLParser):
             self._hidden_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        if not self._hidden_depth:
-            value = " ".join(data.split())
-            if value:
-                self.parts.append(value)
+        if self._hidden_depth:
+            return
+        value = " ".join(data.split())
+        if value:
+            self.parts.append(value)
 
     def text(self) -> str:
         return " ".join(self.parts)
@@ -76,7 +129,11 @@ class HeatingEvidence:
 
     @property
     def labels_de(self) -> tuple[str, ...]:
-        return tuple(HEATING_LABELS_DE[item] for item in self.types if item in HEATING_LABELS_DE)
+        return tuple(
+            HEATING_LABELS_DE[item]
+            for item in self.types
+            if item in HEATING_LABELS_DE
+        )
 
 
 def _types_in_text(value: str) -> set[str]:
@@ -106,9 +163,8 @@ def extract_heating_evidence_from_text(text: str) -> HeatingEvidence:
         if snippet not in evidence:
             evidence.append(snippet)
 
-    # Explicit compound heating technologies are authoritative enough even without a
-    # nearby label. Bare words such as "Gas", "Holz" or "Strom" are deliberately not
-    # scanned globally because they may occur in unrelated prose.
+    # Compound technology names are sufficiently specific without a nearby label.
+    # Bare words such as Gas, Holz or Strom are deliberately label-scoped.
     for key, pattern in _COMPOUND_PATTERNS:
         direct = pattern.search(normalized)
         if direct is None:
@@ -154,11 +210,11 @@ def merge_heating_into_payload(payload: dict | None, evidence: HeatingEvidence) 
         )
     if evidence.evidence:
         current_values = result.get("heating_evidence")
-        merged = [
-            str(item)
-            for item in current_values
-            if str(item).strip()
-        ] if isinstance(current_values, list) else []
+        merged = (
+            [str(item) for item in current_values if str(item).strip()]
+            if isinstance(current_values, list)
+            else []
+        )
         for item in evidence.evidence:
             if item not in merged:
                 merged.append(item)
