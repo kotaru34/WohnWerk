@@ -5,7 +5,7 @@
 **Repository:** `kotaru34/WohnWerk`  
 **Active development branch:** `feature/v0.4.11-source-badges-sreal-location`  
 **Production/release base:** `release/v0.4.10-r4` at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`  
-**Active PR:** pending — v0.4.11 source badges + s REAL location correctness  
+**Active PR:** #20 — `v0.4.11: branded source badges and s REAL location repair`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
