@@ -39,6 +39,9 @@
     .fact-chip.muted { opacity: .62; border-style: dashed; }
     .status { font-size: .8rem; opacity: .75; }
     .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
+    .source-badge { --source-color: #6f7782; opacity: 1; display: inline-flex; align-items: center; gap: 5px; color: color-mix(in srgb, var(--source-color) 78%, CanvasText); border-color: color-mix(in srgb, var(--source-color) 76%, transparent); background: color-mix(in srgb, var(--source-color) 8%, Canvas); font-weight: 720; text-decoration: none; }
+    .source-badge:hover { background: color-mix(in srgb, var(--source-color) 14%, Canvas); }
+    .source-icon { min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box; border-radius: 4px; display: inline-grid; place-items: center; background: var(--source-color); color: #fff; font-size: .58rem; line-height: 1; font-weight: 850; letter-spacing: -.02em; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
     .actions form { margin: 0; }
     .actions .favorite.active { border-color: color-mix(in srgb, #b18a42 65%, transparent); background: color-mix(in srgb, #b18a42 13%, ButtonFace); }
@@ -94,6 +97,8 @@
     </div>
     <div>
       <div class="statuses">
+        {% set source_badges = house.source_badges %}
+        {% include "_house_source_badges.html" %}
         <span class="status">Gesehen</span>
         {% if house_state.favorite %}<span class="status favorite">Favorit</span>{% endif %}
       </div>
