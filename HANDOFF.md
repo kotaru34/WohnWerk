@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-02  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/v0.4.9-property-sources-heating-dedupe`  
-**Base Germany branch:** `feature/immowelt-challenge-resume`  
-**Active PR:** #12 — `v0.4.9: multi-source houses, cross-source dedupe, heating facts`  
+**Active development branch:** `feature/v0.4.10-engel-voelkers`  
+**Production/release base:** `release/v0.4.9` at `3debfc67d4a828c418cab35b921f0412cbb2a26b`  
+**Active PR:** #15 — `v0.4.10: add Engel & Völkers Germany house source`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,36 +33,32 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is now deployed on **v0.4.7**.
+Production is deployed on **v0.4.9**.
 
-v0.4.9 is the current release candidate under PR #12. It is **not yet production**.
-The candidate builds on the green v0.4.8 DE Internet-evidence head and adds
-Kleinanzeigen newest-frontier discovery, VON POLL direct-broker discovery,
-resumable ImmoScout24 challenge handoff, conservative cross-source canonical
-deduplication, and source-backed heating display/enrichment with Holz marked as a
-positive preference. Immonet is intentionally not a separate source because its
-current public entry redirects into Immowelt.
+- deployed application version: **v0.4.9**
+- deployed Git SHA: `3debfc67d4a828c418cab35b921f0412cbb2a26b`
+- rollback parent: `a1423e7aee4c59c61508f54e74f1cdfc20a9948b` (v0.4.7)
+- database migration head: `0017_internet_source_evidence`
+- exact v0.4.9 target-host gate: Ruff + compile + **664 passed, 2 warnings**
+- GitHub CI for deployed final SHA: workflow `37061086246`, green
+- post-deploy health reports `version=0.4.9`
+- production refresh/images/liveness timers were restored active+enabled after source bootstrap
+- `kleinanzeigen-de` completed production bootstrap and remains enabled as a bounded newest-first frontier
+- `von-poll-de` was disabled fail-closed after live sequential access hit HTTP 403; no bypass was attempted
+- `immoscout24-de` remains unscheduled because target-host live transport still reaches an explicit HTTP-401/browser challenge boundary
+- `immowelt-de` remains the existing broad Germany portal source
+- `immonet.de` remains intentionally absent as a distinct source because its public entry redirects into Immowelt
 
-
-- deployed application version: **v0.4.7**
-- deployed Git SHA: `a1423e7aee4c59c61508f54e74f1cdfc20a9948b`
-- previous production Git SHA / rollback point: `7e636b6edd80a1db0e56c160fc383c5630121008`
-- local rollback ref: `refs/wohnwerk/rollback-v0.4.6-pre-v0.4.7`
-- previous production application version: **v0.4.6**
-- database migration: `0016_internet_access` (unchanged in v0.4.7)
-- production host: migrated Debian 13 VM
-- checkout/layout: `/opt/wohnwerk`, persistent state under `/var/lib/wohnwerk`
-- database: remote HA PostgreSQL/PostGIS through multi-host libpq/psycopg with `target_session_attrs=read-write`
-- PostGIS observed: 3.5.6
-- local OSRM present
-- Xvfb present for headed Immowelt Chromium
-- public hostname: `wohnwerk.lainlounge.org`
-- Caddy serves that explicit site
-- production timers for refresh/images/liveness are intended to stay enabled during source experiments
-- GeoNames DE postal import observed: 10,813 centroids
-- Austria postal reference remained intact at the Germany bootstrap
-
-v0.4.7 is deployed. The four house controls (PLZ blacklist, emergency-care policy, fixed-Internet target and workplace) live in one settings dialog with one transactional save action. v0.4.8 Internet source-evidence work is complete in Git but not yet deployed. The current release candidate is v0.4.9, which packages that v0.4.8 tree together with the new multi-source house, dedupe and heating work for one gated production release.
+v0.4.10 is the current development candidate. It adds Engel & Völkers as a second
+independent large-broker frontier, extends heating extraction to its structured
+English energy fields, and adds conservative city-to-PLZ resolution only when the
+local German postal reference has exactly one 5-digit code for that municipality.
+The same candidate also restores Germany house previews by retaining balanced
+search-card thumbnail URLs for Immowelt, Kleinanzeigen and Engel & Völkers so the
+existing local image cache can process them without opening detail pages. House
+cards and house detail now share one semantic fact-group component with a stable
+Objekt → Heizung → Distanzen → Internet order, category icons/colors and explicit
+good/warning/unknown visual states instead of one unordered pill cloud.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -537,17 +533,17 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 5. **DONE:** v0.4.5 hospital-access enrichment deployed and production-verified at `e1b42a425e469a291298196f25b54a328341da86`, DB head `0015_hospital_access`, Bundes-Klinik-Atlas snapshot 2026-09-01 with 1,572 facilities and `coverage_status=ok`.
 6. **DONE:** v0.4.6 DE Internet enrichment deployed and production-verified at `7e636b6edd80a1db0e56c160fc383c5630121008`, DB head `0016_internet_access`, Breitbandatlas snapshot 2025-12-31 with 3,590,703 grid cells and `coverage_status=ok`.
 7. **DONE:** v0.4.7 house settings modal/UI cleanup deployed and production-verified at `a1423e7aee4c59c61508f54e74f1cdfc20a9948b`; no DB migration.
-8. **DONE IN CODE / NOT YET DEPLOYED:** v0.4.8 deeper Internet source-evidence layer on the green base SHA `d9d874495d99817cca339c0c6ff92037aa9beb18`.
-9. **CURRENT:** v0.4.9 multi-source Germany houses + conservative cross-source dedupe + source-backed heating:
-   - Kleinanzeigen bounded newest-first frontier without disappearance authority;
-   - VON POLL state-sharded direct-broker source;
-   - ImmoScout24 explicit challenge checkpoint/handoff/resume path;
-   - canonical duplicate matching that preserves every source listing;
-   - heating type extraction/display with unknown preserved and Holz marked preferred;
-   - scheduler wiring is implemented for Kleinanzeigen and VON POLL, but production activation/source bootstrap remains gated on final exact-release CI and Sentinel target-host live smoke; ImmoScout stays out of the scheduler until its target-host transport is revalidated.
-10. After v0.4.9, continue source expansion with additional high-value broker networks where they add independent inventory rather than aliasing existing portals.
-11. Keep Germany jobs paused until an explicit operator decision reopens them.
-12. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
+8. **DONE:** v0.4.8 deeper Internet source-evidence work shipped as part of the atomic v0.4.9 production release.
+9. **DONE:** v0.4.9 multi-source/dedupe/heating release deployed at `3debfc67d4a828c418cab35b921f0412cbb2a26b`:
+   - Kleinanzeigen bounded newest-first frontier is operational;
+   - conservative cross-source canonical dedupe is active;
+   - source-backed heating is displayed, with Holz marked preferred and unknown preserved;
+   - ImmoScout24 has explicit challenge checkpoint/handoff semantics but remains unscheduled;
+   - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
+10. **CURRENT:** v0.4.10 adds Engel & Völkers as an independent large-broker Germany frontier, bounded detail heating enrichment, conservative unique-city PLZ resolution, source-card preview extraction for active DE house sources, and a shared categorized/icon-based house fact UI on both catalog cards and detail pages.
+11. After v0.4.10, evaluate additional independent broker networks only where they add inventory rather than alias existing portals.
+12. Keep Germany jobs paused until an explicit operator decision reopens them.
+13. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 
