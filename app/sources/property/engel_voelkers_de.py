@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import re
 from dataclasses import dataclass
@@ -21,7 +22,6 @@ from app.sources.property.germany import (
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
-from app.sources.property.preview import card_thumbnail_url
 
 BASE_URL = "https://www.engelvoelkers.com"
 SEARCH_ROOT = f"{BASE_URL}/de/en/properties/res/sale/house"
@@ -90,6 +90,39 @@ def _canonical_expose_url(value: str, *, page_url: str) -> tuple[str, str] | Non
         ("https", "www.engelvoelkers.com", parsed.path.rstrip("/"), "", "", "")
     )
     return canonical, match.group("listing_id").casefold()
+
+
+def _structured_preview_urls(html: str, *, page_url: str) -> dict[str, str]:
+    """Map expose IDs to source-backed preview URLs from E&V's public ItemList JSON-LD."""
+    match = re.search(
+        r'<script[^>]+id=["\\']structured-buyer-data-jsonld["\\'][^>]*>(?P<body>.*?)</script>',
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return {}
+    try:
+        data = json.loads(match.group("body"))
+    except json.JSONDecodeError:
+        return {}
+
+    items = data.get("itemListElement") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return {}
+
+    previews: dict[str, str] = {}
+    for entry in items:
+        if not isinstance(entry, dict):
+            continue
+        detail = _canonical_expose_url(str(entry.get("url") or ""), page_url=page_url)
+        image = str(entry.get("image") or "").strip()
+        if detail is None or not image:
+            continue
+        parsed = urlparse(urljoin(page_url, image))
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            continue
+        previews[detail[1]] = parsed.geturl()
+    return previews
 
 
 def _expose_anchors(node: _Node, *, page_url: str) -> list[tuple[_Node, str, str]]:
@@ -200,6 +233,7 @@ def parse_engel_voelkers_search_page(
     )
 
     items_by_id: dict[str, RawProperty] = {}
+    structured_previews = _structured_preview_urls(html, page_url=page_url)
     title_exposes: dict[str, tuple[_Node, str]] = {}
     for anchor, url, listing_id in _expose_anchors(parser.root, page_url=page_url):
         title = _clean_text(anchor.text())
@@ -225,7 +259,7 @@ def parse_engel_voelkers_search_page(
         price = _english_decimal(price_match.group("price")) if price_match else None
         living_match = _LIVING_RE.search(text)
         plot_match = _PLOT_RE.search(text)
-        thumbnail_url = card_thumbnail_url(card, page_url=page_url)
+        thumbnail_url = structured_previews.get(listing_id)
 
         if not title or location is None or (price is None and not price_on_request):
             continue
