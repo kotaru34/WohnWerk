@@ -17,6 +17,7 @@ from app.sources.base import (
     PropertySource,
     RawProperty,
     SourceBatch,
+    SourceChallenge,
     SourceFetchError,
     SourceShardSpec,
 )
@@ -36,6 +37,40 @@ _TOTAL_RE = re.compile(r"(?P<count>[\d.]+)")
 _ALLOWED_HOSTS = {"immobilienscout24.de", "www.immobilienscout24.de"}
 _BROWSER_FALLBACK_STATUSES = {401, 403}
 _RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+_CHALLENGE_MARKERS = (
+    "ich bin kein roboter",
+    "verify you are human",
+    "are you a human",
+    "captcha",
+    "challenge-platform",
+)
+
+
+def detect_immoscout24_challenge(
+    *,
+    status: int,
+    requested_url: str,
+    final_url: str,
+    html: str,
+) -> dict[str, Any] | None:
+    body = html.casefold()
+    marker = next((item for item in _CHALLENGE_MARKERS if item in body), None)
+    if status in _BROWSER_FALLBACK_STATUSES:
+        return {
+            "kind": f"http_{status}",
+            "http_status": status,
+            "requested_url": requested_url,
+            "final_url": final_url,
+        }
+    if marker is not None:
+        return {
+            "kind": "browser_challenge",
+            "http_status": status,
+            "requested_url": requested_url,
+            "final_url": final_url,
+            "marker": marker,
+        }
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,13 +276,24 @@ class ImmoScout24GermanyPropertySource(PropertySource):
             )
             if response is None:
                 raise RuntimeError("ImmoScout24 Chromium navigation returned no response")
+            final_url = page.url
+            html = await page.content()
+            challenge = detect_immoscout24_challenge(
+                status=response.status,
+                requested_url=url,
+                final_url=final_url,
+                html=html,
+            )
+            if challenge is not None:
+                raise SourceChallenge(
+                    f"ImmoScout24 access challenge detected ({challenge['kind']})",
+                    challenge=challenge,
+                )
+            self._validate_final_host(requested_url=url, final_url=final_url)
             if response.status >= 400:
                 raise RuntimeError(
                     f"ImmoScout24 Chromium returned HTTP {response.status} for {url!r}"
                 )
-            final_url = page.url
-            self._validate_final_host(requested_url=url, final_url=final_url)
-            html = await page.content()
             return httpx.Response(
                 response.status,
                 text=html,
