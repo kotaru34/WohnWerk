@@ -21,8 +21,22 @@
     .location { opacity: .7; margin-bottom: 3px; }
     .listed-date { opacity: .55; font-size: .82rem; margin-bottom: 12px; }
     .price { font-size: 1.7rem; font-weight: 760; margin: 12px 0; }
-    .facts, .statuses { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
-    .fact, .status { border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 5px 9px; }
+    .statuses { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
+    .status { border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 5px 9px; }
+    .fact-groups { display: grid; gap: 8px; margin: 15px 0; }
+    .fact-group { --fact-accent: #6d87a3; display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 9px; align-items: start; border-left: 3px solid var(--fact-accent); border-radius: 10px; padding: 8px 10px; background: color-mix(in srgb, var(--fact-accent) 6%, Canvas); }
+    .fact-group.fact-heating { --fact-accent: #b77743; }
+    .fact-group.fact-heating.preferred { --fact-accent: #5b9270; }
+    .fact-group.fact-distance { --fact-accent: #7a72a8; }
+    .fact-group.fact-internet { --fact-accent: #4d8d8a; }
+    .fact-group-label { display: flex; gap: 6px; align-items: center; color: var(--fact-accent); font-size: .76rem; font-weight: 780; letter-spacing: .035em; text-transform: uppercase; padding-top: 2px; }
+    .fact-group-label svg { width: 16px; height: 16px; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .fact-values { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+    .fact-chip { border: 1px solid color-mix(in srgb, var(--fact-accent) 27%, CanvasText 12%); border-radius: 7px; padding: 4px 7px; background: color-mix(in srgb, var(--fact-accent) 4%, Canvas); font-size: .82rem; line-height: 1.35; }
+    .fact-chip-key { font-weight: 760; opacity: .67; margin-right: 4px; }
+    .fact-chip.good { border-color: color-mix(in srgb, #4f8a66 45%, transparent); background: color-mix(in srgb, #4f8a66 10%, Canvas); }
+    .fact-chip.warn { border-color: color-mix(in srgb, #b8873f 52%, transparent); background: color-mix(in srgb, #b8873f 11%, Canvas); }
+    .fact-chip.muted { opacity: .62; border-style: dashed; }
     .status { font-size: .8rem; opacity: .75; }
     .status.favorite { opacity: 1; border-color: color-mix(in srgb, #b18a42 55%, transparent); }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
@@ -58,7 +72,7 @@
     .distance strong { display: block; font-size: 1.1rem; }
     .distance .air { font-size: .78rem; opacity: .65; margin-top: 4px; }
     .empty { padding: 24px 0; opacity: .7; }
-    @media (max-width: 850px) { .hero { grid-template-columns: 1fr; } .job { grid-template-columns: 76px 1fr; } .distance { grid-column: 2; text-align: left; } .nearby-head { align-items: start; flex-direction: column; } }
+    @media (max-width: 850px) { .hero { grid-template-columns: 1fr; } .job { grid-template-columns: 76px 1fr; } .distance { grid-column: 2; text-align: left; } .nearby-head { align-items: start; flex-direction: column; } .fact-group { grid-template-columns: 88px minmax(0, 1fr); } }
   </style>
 </head>
 <body>
@@ -87,61 +101,19 @@
       <div class="listed-date">Bei WohnWerk seit {{ house.property.first_seen_at.strftime('%d.%m.%Y') }}</div>
       <h1>{{ house.property.title }}</h1>
       <div class="price">{{ eur_label(house.property.price_eur) }}</div>
-      <div class="facts">
-        {% if area_label(house.property.living_area_m2) %}
-          <span class="fact">Wohnfläche {{ area_label(house.property.living_area_m2) }}</span>
-        {% elif area_label(house.neutral_area_m2) %}
-          <span class="fact">Fläche {{ area_label(house.neutral_area_m2) }} · Typ nicht eindeutig</span>
-        {% endif %}
-        {% if area_label(house.visible_usable_area_m2) %}<span class="fact">Nutzfläche {{ area_label(house.visible_usable_area_m2) }}</span>{% endif %}
-        {% if area_label(house.visible_plot_area_m2) %}<span class="fact">Grundstück {{ area_label(house.visible_plot_area_m2) }}</span>{% endif %}
-        {% if house.heating_labels_de %}
-          <span class="fact">Heizung {{ house.heating_labels_de|join(', ') }}{% if house.wood_heating_preferred %} · bevorzugt{% endif %}</span>
-        {% else %}
-          <span class="fact">Heizung: unbekannt</span>
-        {% endif %}
-        {% if workplace_distance %}
-          {% if workplace_distance.road_duration_minutes is not none %}
-            <span class="fact">Arbeitsplatz {{ workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(workplace_distance.road_distance_km) }} km Straße</span>
-          {% endif %}
-          <span class="fact">Arbeitsplatz {{ '%.1f'|format(workplace_distance.air_distance_km) }} km Luftlinie</span>
-        {% elif workplace %}
-          <span class="fact">Arbeitsplatz: Entfernung unbekannt</span>
-        {% endif %}
-        {% if nearest_hospital %}
-          <span class="fact">Klinik {{ '%.1f'|format(nearest_hospital.air_distance_km) }} km Luftlinie</span>
-        {% elif selected_country == 'DE' and hospital_data_ready %}
-          <span class="fact">Klinik: Entfernung unbekannt</span>
-        {% elif selected_country == 'DE' %}
-          <span class="fact">Klinik: Daten unbekannt</span>
-        {% endif %}
-        {% if emergency_access %}
-          <span class="fact">Notfall {{ '%.1f'|format(emergency_access.air_distance_km) }} km Luftlinie · Stufe {{ emergency_access.emergency_level }}</span>
-        {% elif selected_country == 'DE' and hospital_data_ready %}
-          <span class="fact">Bestätigte Notfallversorgung: Entfernung unbekannt</span>
-        {% endif %}
-        {% if selected_country == 'DE' %}
-          {% if internet_source_primary %}
-            {% if internet_source_primary.max_download_mbps %}
-              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {% if internet_source_primary.provider_name %}{{ internet_source_primary.provider_name }} · {% endif %}{% if internet_source_primary.technology %}{{ internet_source_primary.technology }} {% endif %}bis {{ internet_source_primary.max_download_mbps }} Mbit/s</span>
-            {% elif internet_source_primary.availability_status == 'connected' %}
-              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {{ internet_source_primary.technology or 'Festnetz' }} angeschlossen</span>
-            {% elif internet_source_primary.availability_status == 'at_property' %}
-              <span class="fact">Internet {{ internet_source_primary.kind_label_de }} · {{ internet_source_primary.technology or 'Festnetz' }} am Grundstück</span>
-            {% endif %}
-          {% endif %}
-          {% if internet_access and internet_access.max_full_download_mbps %}
-            <span class="fact">Amtliches Raster ≥ {{ internet_access.max_full_download_mbps }} Mbit/s · 100 % der 100-m-Zelle</span>
-          {% elif internet_access and internet_access.max_any_download_mbps %}
-            <span class="fact">Amtliches Raster bis {{ internet_access.max_any_download_mbps }} Mbit/s · {{ '%.0f'|format(internet_access.max_any_coverage_percent) }} % der 100-m-Zelle</span>
-          {% elif not internet_source_primary and internet_data_ready %}
-            <span class="fact">Festnetz hausgenau unbekannt</span>
-          {% elif not internet_source_primary %}
-            <span class="fact">Festnetz: Daten unbekannt</span>
-          {% endif %}
-          {% if internet_fallback_reason %}<span class="fact">Starlink-Fallback prüfen</span>{% endif %}
-        {% endif %}
-      </div>
+      {% set fact_property = house.property %}
+      {% set fact_row = house %}
+      {% set fact_nearest_hospital = nearest_hospital %}
+      {% set fact_emergency = emergency_access %}
+      {% set fact_source_net = internet_source_primary %}
+      {% set fact_fixed = internet_access %}
+      {% set fact_workplace_distance = workplace_distance %}
+      {% set fact_workplace = workplace %}
+      {% set fact_selected_country = selected_country %}
+      {% set fact_hospital_data_ready = hospital_data_ready %}
+      {% set fact_internet_data_ready = internet_data_ready %}
+      {% set fact_internet_fallback_reason = internet_fallback_reason %}
+      {% include "_house_fact_groups.html" %}
       <div class="actions">
         <form method="post" action="/houses/{{ house.property.id }}/favorite">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
