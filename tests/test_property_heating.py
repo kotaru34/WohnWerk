@@ -55,3 +55,17 @@ def test_payload_merge_preserves_previous_source_backed_evidence() -> None:
         "Befeuerung: Öl",
         "Wesentlicher Energieträger: Scheitholz",
     ]
+
+
+
+def test_explicit_heating_appliances_are_source_backed_evidence() -> None:
+    wood = extract_heating_evidence_from_text(
+        "Die Einliegerwohnung wurde bislang mit einem Holzofen beheizt."
+    )
+    gas = extract_heating_evidence_from_text("Warmwasser und Heizung über Gastherme.")
+    electric = extract_heating_evidence_from_text("Beheizung durch Nachtspeicherofen.")
+
+    assert wood.types == ("wood",)
+    assert wood.wood_preferred
+    assert gas.types == ("gas",)
+    assert electric.types == ("electric",)
