@@ -95,7 +95,7 @@ def _canonical_expose_url(value: str, *, page_url: str) -> tuple[str, str] | Non
 def _structured_preview_urls(html: str, *, page_url: str) -> dict[str, str]:
     """Map expose IDs to source-backed preview URLs from E&V's public ItemList JSON-LD."""
     match = re.search(
-        r'<script[^>]+id=["\\']structured-buyer-data-jsonld["\\'][^>]*>(?P<body>.*?)</script>',
+        r"<script[^>]+id=['\"]structured-buyer-data-jsonld['\"][^>]*>(?P<body>.*?)</script>",
         html,
         re.IGNORECASE | re.DOTALL,
     )
