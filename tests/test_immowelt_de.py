@@ -38,7 +38,8 @@ def _page_html(
             <div>Frau Beispiel</div>
             <p>Eine lange Beschreibung, die WohnWerk nicht übernehmen darf.</p>
             <img
-              src="https://images.example.test/house.jpg"
+              src="https://images.example.test/house-320.jpg"
+              srcset="https://images.example.test/house-320.jpg 320w, https://images.example.test/house-720.jpg 720w, https://images.example.test/house-1400.jpg 1400w"
               alt="Einfamilienhaus zum Kauf 89.500 € 4 Zimmer 98,5 m² 377 m² Grundstück Dresden 01067"
             >
           </div>
@@ -90,6 +91,8 @@ def test_parser_keeps_only_minimal_public_facts_and_leading_zero_plz() -> None:
     assert "Frau Beispiel" not in str(item.raw_payload)
     assert item.raw_payload["format"] == "immowelt-public-search-v2"
     assert item.raw_payload["country_code"] == "DE"
+    assert item.raw_payload["thumbnail_url"] == "https://images.example.test/house-720.jpg"
+    assert item.raw_payload["thumbnail_semantics"] == "source_search_card"
 
 
 def test_parser_accepts_observed_short_public_expose_identity() -> None:

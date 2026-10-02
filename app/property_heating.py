@@ -23,7 +23,7 @@ WOOD_PREFERRED_TYPES = frozenset({"wood"})
 _LABEL_RE = re.compile(
     r"(?:wesentlicher\s+energietr(?:ä|ae)ger|wesentliche\s+energietr(?:ä|ae)ger|"
     r"prim(?:ä|ae)renergietr(?:ä|ae)ger|energietr(?:ä|ae)ger|befeuerung|"
-    r"heizungsart|heizung|w(?:ä|ae)rmeerzeuger)"
+    r"heizungsart|heizung|w(?:ä|ae)rmeerzeuger|energy\s+source|type\s+of\s+heating)"
     r"\s*[:\-]?\s*(?:\|\s*)?(?P<value>[^|]{0,120})",
     re.IGNORECASE,
 )
@@ -40,7 +40,7 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "oil",
         re.compile(
-            r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)lofen|(?:ö|oe)l)\b",
+            r"\b(?:heiz(?:ö|oe)l|(?:ö|oe)lheizung|(?:ö|oe)lofen|(?:ö|oe)l|oil\s+heating|oil)\b",
             re.IGNORECASE,
         ),
     ),
@@ -51,15 +51,15 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.IGNORECASE,
         ),
     ),
-    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gastherme|gas)\b", re.IGNORECASE)),
+    ("gas", re.compile(r"\b(?:erdgas|gasheizung|gastherme|gas\s+heating|gas)\b", re.IGNORECASE)),
     (
         "heat_pump",
         re.compile(
-            r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe|erdw(?:ä|ae)rme)\b",
+            r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe|erdw(?:ä|ae)rme|heat\s+pump)\b",
             re.IGNORECASE,
         ),
     ),
-    ("district", re.compile(r"\bfernw(?:ä|ae)rme\b", re.IGNORECASE)),
+    ("district", re.compile(r"\b(?:fernw(?:ä|ae)rme|district\s+heating)\b", re.IGNORECASE)),
     ("solar", re.compile(r"\b(?:solarthermie|solar)\b", re.IGNORECASE)),
     ("biomass", re.compile(r"\bbiomasse\b", re.IGNORECASE)),
     ("coal", re.compile(r"\b(?:kohle|kohleheizung)\b", re.IGNORECASE)),
@@ -75,17 +75,17 @@ _COMPOUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("pellet", re.compile(r"\b(?:pelletheizung|pelletofen)\b", re.IGNORECASE)),
-    ("oil", re.compile(r"\b(?:(?:ö|oe)lheizung|(?:ö|oe)lofen)\b", re.IGNORECASE)),
+    ("oil", re.compile(r"\b(?:(?:ö|oe)lheizung|(?:ö|oe)lofen|oil\s+heating)\b", re.IGNORECASE)),
     (
         "electric",
         re.compile(r"\b(?:elektroheizung|nachtspeicher(?:heizung|ofen))\b", re.IGNORECASE),
     ),
-    ("gas", re.compile(r"\b(?:gasheizung|gastherme)\b", re.IGNORECASE)),
+    ("gas", re.compile(r"\b(?:gasheizung|gastherme|gas\s+heating)\b", re.IGNORECASE)),
     (
         "heat_pump",
-        re.compile(r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe)\b", re.IGNORECASE),
+        re.compile(r"\b(?:w(?:ä|ae)rmepumpe|luftw(?:ä|ae)rmepumpe|heat\s+pump)\b", re.IGNORECASE),
     ),
-    ("district", re.compile(r"\bfernw(?:ä|ae)rme\b", re.IGNORECASE)),
+    ("district", re.compile(r"\b(?:fernw(?:ä|ae)rme|district\s+heating)\b", re.IGNORECASE)),
     ("solar", re.compile(r"\bsolarthermie\b", re.IGNORECASE)),
     ("biomass", re.compile(r"\bbiomasseheizung\b", re.IGNORECASE)),
     ("coal", re.compile(r"\bkohleheizung\b", re.IGNORECASE)),
