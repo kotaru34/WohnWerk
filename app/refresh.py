@@ -46,6 +46,21 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         False,
         failure_isolated=True,
     ),
+    # Kleinanzeigen is intentionally a bounded newest-first frontier and can never
+    # prove disappearance. VON POLL has deterministic state shards and can reconcile
+    # only when every public page is traversed below its safety cap.
+    SourceRefreshPlan(
+        "kleinanzeigen-de",
+        "scripts/run_kleinanzeigen_de.py",
+        False,
+        failure_isolated=True,
+    ),
+    SourceRefreshPlan(
+        "von-poll-de",
+        "scripts/run_von_poll_de.py",
+        True,
+        failure_isolated=True,
+    ),
     SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
     SourceRefreshPlan(
         "greenhouse-public-job-board",

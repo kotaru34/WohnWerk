@@ -19,21 +19,47 @@ WohnWerk should combine independent layers rather than depend on one portal:
 
 Cross-source duplicates remain distinct source listings underneath a later canonical property entity.
 
-### Germany public portal layer
+### Germany public portal and broker layer
 
-`immoscout24-de` and `immowelt-de` cover public German house-for-sale search pages inside the
-WohnWerk EUR 30,000..300,000 product budget. Each adapter uses 48 deterministic shards: all 16
-states/city-states crossed with three non-overlapping price bands. Live validation on the largest
-state kept those bands below the portals' safety ceilings.
+The v0.4.9 candidate broadens Germany house discovery while keeping each source's
+coverage authority explicit:
 
-Both adapters keep only source ID/URL, title, price, living/plot area, PLZ and city. Descriptions,
-contact data and photos are not retained. ImmoScout24 is acquired through low-rate HTML requests.
-Immowelt requires ordinary browser rendering; it blocks heavy image/media/font resources, does not
-open detail pages, and stops rather than solving a CAPTCHA or access challenge.
+- `immowelt-de`: existing broad public portal, incremental/frontier-only in the
+  automatic scheduler while browser/challenge behavior remains under observation;
+- `immoscout24-de`: existing 48-shard public search adapter, now with explicit
+  browser-challenge detection, persisted storage-state handoff and same-run resume;
+  it remains unscheduled until the production transport is revalidated;
+- `kleinanzeigen-de`: bounded newest-first public house frontier. Its nationwide
+  corpus is much larger than the bounded scan, so it **never** gains disappearance
+  authority from that frontier;
+- `von-poll-de`: direct broker-network inventory, sharded by all 16 German
+  states/city-states and capable of authoritative reconciliation only when every
+  public result page parses below its hard cap.
 
-Incremental scans use newest-first ordering and never prove disappearance. A reconciliation is
-authoritative only when every shard is fully traversed, every card identity parses, observed unique
-IDs remain within the documented count tolerance and no shard reaches its cap.
+The active Germany purchase budget is EUR 30,000..200,000. Discovery adapters keep
+source identity/URL, title, asking price, explicit living/plot area, PLZ/city and
+bounded source-backed enrichment. Full descriptions, seller/broker contact data and
+portal-hosted photos are not retained as catalogue data.
+
+`immonet.de` is not represented as an independent WohnWerk source: its current
+public web entry redirects into Immowelt. Treating it as a separate source would
+manufacture duplicate provenance for the same inventory rather than add an
+independent acquisition layer.
+
+Incremental/frontier scans discover and update but never prove disappearance.
+Reconciliation is authoritative only when the source adapter proves complete
+coverage, every shard/page/card identity parses, no cap is hit and the normal count
+plausibility checks pass.
+
+Cross-source duplicate handling is deliberately conservative. Source listings remain
+separate provenance records underneath a canonical property; a merge requires
+compatible PLZ, asking price and corroborating area/title evidence, and ambiguous
+multi-candidate matches fail closed.
+
+Heating enrichment stores only normalized source-backed heating types and short
+energy-field evidence snippets. Unknown stays unknown. `Holz` is surfaced as the
+configured positive preference; WohnWerk does not infer wood heating from unrelated
+listing prose.
 
 ### IMMMO meta-search discovery
 
@@ -244,6 +270,42 @@ must still be confirmed for the concrete address.
 
 Required German attribution for the imported grid:
 `Breitbandatlas | Gigabit-Grundbuch (https://gigabitgrundbuch.bund.de)`.
+
+### DE portal/detail Internet evidence
+
+WohnWerk v0.4.8 adds a second, deliberately separate evidence layer from German
+listing/detail pages. It never replaces the official Breitbandatlas grid and it is
+not promoted to a contractual line-speed claim.
+
+Observed ImmoScout24 DE detail pages expose a structured Telekom-backed Internet
+availability/speed estimate and describe the displayed speed as a non-binding
+estimate based on the listing's Standortadresse; binding availability is deferred
+to an actual order/check. Some details also expose explicit street + house number
+metadata. WohnWerk stores those values as `portal_address_estimate` and
+`street_house_number` source evidence respectively. A source address is still
+not a coordinate and must not enter a 100 m Breitbandatlas lookup until a separate
+geocoding step establishes defensible coordinate provenance.
+
+Observed Immowelt DE exposés may state provider/technology/speed facts directly in
+the listing text, for example Telekom DSL, Vodafone Kabel or M-Net Glasfaser with
+an explicit Mbit/s value. WohnWerk stores those statements as `listing_claim`.
+They remain "Angabe im Exposé": useful source evidence, but not an independent
+provider orderability test. Explicit "connected", "at property" or "planned"
+Glasfaser statements can also be retained without inventing a speed.
+
+The UI must preserve the evidence class visibly:
+- `Portal-Schätzung` for address-based portal estimates;
+- `Angabe im Exposé` for listing statements;
+- `Amtliches Raster` for the official 100 x 100 m Bundesnetzagentur cell.
+
+The bounded Immowelt detail worker uses the normal project browser transport and
+existing challenge detection only. It stops on a detected challenge and never
+invokes the operator-owned external challenge handler. It is deliberately not
+wired into the automatic refresh loop in v0.4.8; deployment/maintenance runs it
+in bounded batches so source pressure and challenge behaviour can be observed
+before any recurring cadence is introduced. ImmoScout24 DE detail fetching
+remains dormant while that source is paused; only parser/schema support is
+present in v0.4.8.
 
 ## German hospital access
 
