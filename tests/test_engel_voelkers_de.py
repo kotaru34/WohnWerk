@@ -51,6 +51,17 @@ def _page_html() -> str:
         <div>~158 m² Living area</div>
         <div>~489 m² Plot surface</div>
       </div>
+      <div class="property-card">
+        <div>Memmingen, Bavaria, Germany</div>
+        <h2>
+          <a href="/de/en/exposes/8689ddd0-adb5-563c-9844-328132c4144b">
+            Exklusives Anwesen in Memmingen
+          </a>
+        </h2>
+        <div>Price on request</div>
+        <div>~350 m² Living area</div>
+        <div>~1200 m² Plot surface</div>
+      </div>
     </body></html>
     """
 
@@ -62,8 +73,9 @@ def test_parser_extracts_budget_house_and_skips_unavailable_and_expensive() -> N
     )
 
     assert page.source_reported_count == 3765
-    assert page.cards_seen == page.cards_parsed == 3
+    assert page.cards_seen == page.cards_parsed == 4
     assert page.unavailable_cards == 1
+    assert page.price_unknown_cards == 1
     assert page.out_of_budget_cards == 1
     assert len(page.items) == 1
 
@@ -92,6 +104,7 @@ def test_pagination_is_newest_first_and_source_is_single_frontier() -> None:
     assert len(source.default_shards()) == 1
     assert source._page_url(1) == (
         "https://www.engelvoelkers.com/de/en/properties/res/sale/house"
+        "?sorting=publishedAt"
     )
     assert source._page_url(2) == (
         "https://www.engelvoelkers.com/de/en/properties/res/sale/house"
