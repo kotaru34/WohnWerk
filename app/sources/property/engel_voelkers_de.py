@@ -183,18 +183,20 @@ def parse_engel_voelkers_search_page(
     )
 
     items_by_id: dict[str, RawProperty] = {}
-    cards_seen_ids: set[str] = set()
+    title_exposes: dict[str, tuple[_Node, str]] = {}
+    for anchor, url, listing_id in _expose_anchors(parser.root, page_url=page_url):
+        title = _clean_text(anchor.text())
+        if 8 <= len(title) <= 500:
+            title_exposes.setdefault(listing_id, (anchor, url))
+
     cards_parsed = 0
     unavailable_cards = 0
     out_of_budget_cards = 0
 
-    for anchor, url, listing_id in _expose_anchors(parser.root, page_url=page_url):
-        if listing_id in cards_seen_ids:
-            continue
+    for listing_id, (anchor, url) in title_exposes.items():
         card = _card_for_anchor(anchor, page_url=page_url)
         if card is None:
             continue
-        cards_seen_ids.add(listing_id)
 
         title_node = _title_anchor(card, page_url=page_url, listing_id=listing_id)
         title = _clean_text(title_node.text()) if title_node is not None else ""
@@ -244,7 +246,7 @@ def parse_engel_voelkers_search_page(
     return EngelVoelkersPage(
         items=list(items_by_id.values()),
         source_reported_count=source_reported_count,
-        cards_seen=len(cards_seen_ids),
+        cards_seen=len(title_exposes),
         cards_parsed=cards_parsed,
         unavailable_cards=unavailable_cards,
         out_of_budget_cards=out_of_budget_cards,
