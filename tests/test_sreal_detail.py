@@ -69,3 +69,25 @@ def test_sreal_detail_enrichment_preserves_card_fallbacks() -> None:
     assert enriched.raw_payload["detail_postal_code"] == "4372"
     assert enriched.raw_payload["detail_city"] == "St. Georgen am Walde"
     assert enriched.raw_payload["primary_image_url"] == EXPECTED_IMAGE_URL
+
+
+
+def test_sreal_detail_location_does_not_start_at_year_in_title() -> None:
+    html = """
+    <html><body>
+      <h1>Haus in Loidesthal – Besichtigung am Freitag, 16.10.2026 von 14-16 Uhr</h1>
+      <div>2225 Loidesthal - 960/75511</div>
+      <div>Grundfläche 375 m²</div>
+      <div>Kaufpreis 64.888,00 €</div>
+    </body></html>
+    """
+
+    detail = parse_sreal_detail_page(
+        html,
+        page_url="https://www.sreal.at/de/immobilie/960-75511/haus-in-loidesthal",
+    )
+
+    assert detail.postal_code == "2225"
+    assert detail.city == "Loidesthal"
+    assert detail.plot_area_m2 == Decimal(375)
+    assert detail.price_eur == Decimal("64888.00")
