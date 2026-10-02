@@ -24,7 +24,7 @@ _LABEL_RE = re.compile(
     r"(?:wesentlicher\s+energietr(?:ä|ae)ger|wesentliche\s+energietr(?:ä|ae)ger|"
     r"prim(?:ä|ae)renergietr(?:ä|ae)ger|energietr(?:ä|ae)ger|befeuerung|"
     r"heizungsart|heizung|w(?:ä|ae)rmeerzeuger)"
-    r"\s*[:\-]?\s*(?P<value>.{0,120})",
+    r"\s*[:\-]?\s*(?:\|\s*)?(?P<value>[^|]{0,120})",
     re.IGNORECASE,
 )
 
@@ -115,7 +115,9 @@ class _VisibleTextParser(HTMLParser):
             self.parts.append(value)
 
     def text(self) -> str:
-        return " ".join(self.parts)
+        # Keep visible DOM text-node boundaries so a short evidence field can never
+        # bleed into the following description/contact section after HTML flattening.
+        return " | ".join(self.parts)
 
 
 @dataclass(frozen=True, slots=True)
