@@ -55,6 +55,30 @@ def test_direct_403_preserves_datadome_frame_evidence() -> None:
     assert "verify you are human" in challenge["markers"]
 
 
+def test_direct_403_preserves_only_safe_datadome_bootstrap_classification() -> None:
+    challenge = detect_immowelt_challenge(
+        status=403,
+        requested_url="https://www.immowelt.de/classified-search?page=1",
+        final_url="https://www.immowelt.de/classified-search?page=1",
+        html=(
+            "<html><body><script>"
+            "var dd={'rt':'c','cid':'opaque-cid','hsh':'opaque-hash','t':'bv',"
+            "'s':55774,'e':'opaque-signature','host':'geo.captcha-delivery.com',"
+            "'cookie':'sensitive-cookie-value'}"
+            "</script><script src='https://ct.captcha-delivery.com/c.js'></script></body></html>"
+        ),
+    )
+
+    assert challenge is not None
+    assert challenge["datadome_response_type"] == "c"
+    assert challenge["datadome_challenge_type"] == "bv"
+    assert challenge["datadome_host"] == "geo.captcha-delivery.com"
+    assert "cookie" not in challenge
+    assert "cid" not in challenge
+    assert "hsh" not in challenge
+    assert "e" not in challenge
+
+
 def test_known_challenge_frame_is_detected_even_with_http_200() -> None:
     challenge = detect_immowelt_challenge(
         status=200,
