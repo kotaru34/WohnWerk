@@ -123,7 +123,13 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
     tmp_path,
 ) -> None:
     storage_state = tmp_path / "storage-state.json"
-    storage_state.write_text('{"cookies":[],"origins":[]}')
+    storage_state.write_text(
+        '{"cookies":['
+        '{"name":"datadome","value":"stale-a","domain":"www.immowelt.de","path":"/"},'
+        '{"name":"datadome","value":"stale-b","domain":".immowelt.de","path":"/"},'
+        '{"name":"other","value":"keep","domain":".immowelt.de","path":"/"}'
+        '],"origins":[]}'
+    )
     patch_path = tmp_path / "browser-patch.json"
     patch_path.write_text(
         '{"version":1,"kind":"immowelt_datadome_clearance",'
@@ -143,6 +149,12 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
     state = __import__("json").loads(storage_state.read_text())
     assert state["cookies"] == [
         {
+            "name": "other",
+            "value": "keep",
+            "domain": ".immowelt.de",
+            "path": "/",
+        },
+        {
             "name": "datadome",
             "value": "clearance",
             "domain": ".immowelt.de",
@@ -151,7 +163,7 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
             "httpOnly": False,
             "secure": True,
             "sameSite": "Lax",
-        }
+        },
     ]
     assert not patch_path.exists()
 
