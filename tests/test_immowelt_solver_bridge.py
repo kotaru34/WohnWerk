@@ -84,7 +84,9 @@ async def test_bridge_stages_datadome_cookie_and_exact_user_agent(tmp_path) -> N
     assert patch["cookie"]["name"] == "datadome"
     assert patch["cookie"]["value"] == "cookie-value"
     run_state = json.loads((tmp_path / "run-123" / "datadome-solver-state.json").read_text())
-    assert run_state["candidate_count"] == 1
+    assert run_state["version"] == 1
+    assert len(run_state["entries"]) == 1
+    assert next(iter(run_state["entries"].values()))["candidate_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -164,6 +166,37 @@ def test_explicit_operator_handler_keeps_precedence_over_local_solver() -> None:
     assert handler.command == ("/bin/true",)
 
 
+
+
+@pytest.mark.asyncio
+async def test_bridge_candidate_limit_is_scoped_to_saved_navigation(tmp_path) -> None:
+    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_run=1)
+    counter = 0
+
+    def solve(_url: str):
+        nonlocal counter
+        counter += 1
+        return {
+            "solved": True,
+            "success": True,
+            "datadome_cookie": f"cookie-{counter}",
+            "cookie_domain": ".immowelt.de",
+            "cookie_max_age": 300,
+            "user_agent": "solver-user-agent",
+        }
+
+    handler._solve = solve  # type: ignore[method-assign]
+
+    first = _request(tmp_path / "run-123" / "shard-7" / "handoff-1", handoff=1)
+    same_point = _request(tmp_path / "run-123" / "shard-7" / "handoff-2", handoff=2)
+    other_point = _request(tmp_path / "run-123" / "shard-7" / "handoff-3", handoff=3)
+    other_point.resume_cursor["resume_page"] = 3
+    other_point.challenge["requested_url"] = "https://www.immowelt.de/classified-search?page=3"
+
+    assert (await handler.handle(first)).action == "resolved"
+    assert (await handler.handle(same_point)).action == "defer"
+    assert (await handler.handle(other_point)).action == "resolved"
+    assert counter == 2
 
 def test_bridge_requires_loopback_solver_base_url() -> None:
     with pytest.raises(ValueError, match="loopback"):
