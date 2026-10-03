@@ -1,0 +1,28 @@
+[Unit]
+Description=Captcha Solver local sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=captcha-solver
+Group=captcha-solver
+WorkingDirectory=/opt/captcha-solver-global
+StateDirectory=captcha-solver
+Environment=HOME=/var/lib/captcha-solver
+Environment=PYTHONUNBUFFERED=1
+Environment=TURNSTILE_HEADLESS=0
+Environment=RECAPTCHA_HEADLESS=0
+Environment=HCAPTCHA_HEADLESS=0
+Environment=SOLVER_PUBLIC_URL=http://127.0.0.1:8877
+ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1920x1080x24" /opt/captcha-solver-global/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8877 --loop asyncio
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
