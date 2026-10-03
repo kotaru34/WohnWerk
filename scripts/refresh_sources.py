@@ -22,7 +22,9 @@ from app.version import __version__
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LOCK_PATH = Path("/run/wohnwerk-refresh/refresh.lock")
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/health"
-HEATING_ENRICHMENT_SOURCES = frozenset({"kleinanzeigen-de", "engel-voelkers-de"})
+HEATING_ENRICHMENT_SOURCES = frozenset(
+    {"kleinanzeigen-de", "engel-voelkers-de", "remax-de", "iad-de"}
+)
 
 
 @dataclass(frozen=True, slots=True)
