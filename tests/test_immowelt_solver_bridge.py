@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 import pytest
 
 from app.crawling.challenge import ChallengeRequest
+from app.crawling.challenge import ExternalCommandChallengeHandler
 from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
+from scripts.run_immowelt_de import _challenge_handler
 
 
 def _request(state_dir: Path, *, handoff: int = 1, datadome: bool = True) -> ChallengeRequest:
@@ -127,3 +130,36 @@ async def test_bridge_rejects_cookie_for_unexpected_domain(tmp_path) -> None:
     assert result.action == "defer"
     assert result.message is not None
     assert "unexpected" in result.message
+
+
+
+def _handler_args(*, command: str | None = None) -> argparse.Namespace:
+    return argparse.Namespace(
+        challenge_handler=command,
+        challenge_handler_timeout=90.0,
+    )
+
+
+def test_runner_uses_local_solver_bridge_only_when_explicitly_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("WOHNWERK_IMMOWELT_SOLVER_URL", raising=False)
+
+    assert _challenge_handler(_handler_args()) is None
+
+    monkeypatch.setenv("WOHNWERK_IMMOWELT_SOLVER_URL", "http://127.0.0.1:8877")
+    handler = _challenge_handler(_handler_args())
+
+    assert isinstance(handler, ImmoweltDataDomeSolverHandler)
+    assert handler.solver_url == "http://127.0.0.1:8877"
+
+
+def test_explicit_operator_handler_keeps_precedence_over_local_solver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("WOHNWERK_IMMOWELT_SOLVER_URL", "http://127.0.0.1:8877")
+
+    handler = _challenge_handler(_handler_args(command="/bin/true"))
+
+    assert isinstance(handler, ExternalCommandChallengeHandler)
+    assert handler.command == ("/bin/true",)
