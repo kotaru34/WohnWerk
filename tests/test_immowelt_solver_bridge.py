@@ -64,7 +64,7 @@ async def test_bridge_defers_unidentified_direct_403_without_calling_solver(tmp_
 
 @pytest.mark.asyncio
 async def test_bridge_stages_datadome_cookie_and_exact_user_agent(tmp_path) -> None:
-    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_run=2)
+    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_navigation=2)
     handler._solve = lambda _url: {  # type: ignore[method-assign]
         "solved": True,
         "success": True,
@@ -91,7 +91,7 @@ async def test_bridge_stages_datadome_cookie_and_exact_user_agent(tmp_path) -> N
 
 @pytest.mark.asyncio
 async def test_bridge_defers_repeated_clearance_candidate_instead_of_looping(tmp_path) -> None:
-    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_run=2)
+    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_navigation=2)
     handler._solve = lambda _url: {  # type: ignore[method-assign]
         "solved": True,
         "success": True,
@@ -170,7 +170,7 @@ def test_explicit_operator_handler_keeps_precedence_over_local_solver() -> None:
 
 @pytest.mark.asyncio
 async def test_bridge_candidate_limit_is_scoped_to_saved_navigation(tmp_path) -> None:
-    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_run=1)
+    handler = ImmoweltDataDomeSolverHandler(max_candidates_per_navigation=1)
     counter = 0
 
     def solve(_url: str):
