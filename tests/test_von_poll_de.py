@@ -42,6 +42,7 @@ def test_parser_keeps_available_budget_house_and_skips_reserved_inventory() -> N
     assert page.cards_seen == page.cards_parsed == 2
     assert page.unavailable_cards == 1
     assert page.out_of_budget_cards == 0
+    assert page.unstable_identity_cards == 0
     assert len(page.items) == 1
 
     item = page.items[0]
@@ -120,6 +121,56 @@ async def test_complete_single_page_reconciliation_is_authoritative(monkeypatch)
     assert len(batch.items) == 1
     assert batch.next_cursor["discovery_unavailable_cards"] == 1
 
+
+
+
+@pytest.mark.asyncio
+async def test_unstable_url_fallback_identity_withholds_reconciliation_authority(
+    monkeypatch,
+) -> None:
+    html = """
+    <html><body>
+      <h1>Haus kaufen in Bayern</h1>
+      <div>1 – 20 von 1 Treffer(n)</div>
+      <a href="/de/expose/regensburg/kleines-haus-ohne-provider-id">
+        95615 Marktredwitz – Bayern Kleines Haus ohne Provider-ID
+        5 Zi. ca. 112 m² ca. 640 m² 189.000 EUR
+      </a>
+    </body></html>
+    """
+    response = httpx.Response(
+        200,
+        text=html,
+        request=httpx.Request("GET", "https://www.von-poll.com/de/haus-kaufen/bayern"),
+    )
+
+    class ProbeSource(VonPollGermanyPropertySource):
+        async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+            del client, url
+            return response
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        "app.sources.property.von_poll_de.httpx.AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    source = ProbeSource(request_delay_seconds=2.0)
+    shard = next(shard for shard in source.default_shards() if shard.key == "bayern")
+    batch = await source.fetch_shard(shard, reconciliation=True)
+
+    assert len(batch.items) == 1
+    assert batch.items[0].source_listing_id.startswith("url-")
+    assert batch.items[0].raw_payload["identity_stable"] is False
+    assert batch.next_cursor["discovery_unstable_identity_cards"] == 1
+    assert batch.coverage_complete is False
+    assert batch.result_cap_hit is False
 
 
 @pytest.mark.asyncio

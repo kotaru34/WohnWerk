@@ -77,12 +77,6 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         False,
         failure_isolated=True,
     ),
-    SourceRefreshPlan(
-        "von-poll-de",
-        "scripts/run_von_poll_de.py",
-        True,
-        failure_isolated=True,
-    ),
     SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
     SourceRefreshPlan(
         "greenhouse-public-job-board",
@@ -134,6 +128,17 @@ MANUAL_SOURCE_RUN_PLANS: tuple[SourceRefreshPlan, ...] = (
         operational_note=(
             "Automatik pausiert: der öffentliche ImmoScout24-Frontend-Pfad verlangte "
             "zuletzt eine menschliche Challenge. Manueller Diagnose-Lauf bleibt fail-closed."
+        ),
+    ),
+    SourceRefreshPlan(
+        "von-poll-de",
+        "scripts/run_von_poll_de.py",
+        False,
+        failure_isolated=True,
+        operational_note=(
+            "Automatik pausiert: der Zielhost erhielt zuletzt HTTP 403. "
+            "Manueller Diagnose-Lauf bleibt fail-closed, bis ein unterstützter "
+            "öffentlicher Transport erneut validiert wurde."
         ),
     ),
 )

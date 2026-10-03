@@ -120,8 +120,7 @@ def test_german_property_scheduler_keeps_source_authority_explicit() -> None:
     assert plans["iad-de"].failure_isolated is True
     assert plans["falc-de"].supports_reconciliation is False
     assert plans["falc-de"].failure_isolated is True
-    assert plans["von-poll-de"].supports_reconciliation is True
-    assert plans["von-poll-de"].failure_isolated is True
+    assert "von-poll-de" not in plans
     assert plans["immmo.at"].failure_isolated is False
 
 
@@ -132,12 +131,32 @@ def test_de_job_sources_are_not_scheduled() -> None:
     assert "arbeitsagentur-jobsuche-de" not in names
 
 
-def test_challenge_bound_sources_are_manual_only_but_runnable() -> None:
+def test_access_gated_sources_are_manual_only_but_runnable() -> None:
     manual = {plan.source_name: plan for plan in MANUAL_SOURCE_RUN_PLANS}
+    scheduled = {plan.source_name for plan in SOURCE_REFRESH_PLANS}
 
-    assert "remax-de" not in {plan.source_name for plan in SOURCE_REFRESH_PLANS}
-    assert "immoscout24-de" not in {plan.source_name for plan in SOURCE_REFRESH_PLANS}
+    assert {"remax-de", "immoscout24-de", "von-poll-de"}.isdisjoint(scheduled)
     assert "Turnstile" in (manual["remax-de"].operational_note or "")
     assert "Challenge" in (manual["immoscout24-de"].operational_note or "")
+    assert "HTTP 403" in (manual["von-poll-de"].operational_note or "")
     assert source_run_plan("remax-de") == manual["remax-de"]
     assert source_run_plan("immoscout24-de") == manual["immoscout24-de"]
+    assert source_run_plan("von-poll-de") == manual["von-poll-de"]
+
+
+def test_current_german_property_registry_matches_operational_model() -> None:
+    scheduled = {plan.source_name for plan in SOURCE_REFRESH_PLANS}
+    manual = {plan.source_name for plan in MANUAL_SOURCE_RUN_PLANS}
+
+    assert {
+        "immowelt-de",
+        "kleinanzeigen-de",
+        "engel-voelkers-de",
+        "iad-de",
+        "falc-de",
+    } <= scheduled
+    assert {
+        "immoscout24-de",
+        "remax-de",
+        "von-poll-de",
+    } <= manual
