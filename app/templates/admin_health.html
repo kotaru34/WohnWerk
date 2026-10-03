@@ -19,18 +19,63 @@
     .stat { padding: 14px 16px; }
     .stat strong { display: block; font-size: 1.55rem; }
     .panel { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 1450px; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); vertical-align: top; }
     th { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; opacity: .7; }
     tr:last-child td { border-bottom: 0; }
+    .source-list { display: grid; gap: 10px; }
+    .source-card { border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); border-radius: 12px; overflow: hidden; }
+    .source-summary {
+      display: grid;
+      grid-template-columns: minmax(170px, 1.05fr) minmax(260px, 1.7fr) minmax(210px, 1.05fr) minmax(240px, 1.3fr) auto;
+      gap: 16px;
+      align-items: start;
+      padding: 13px 14px;
+    }
+    .source-name { font-weight: 750; overflow-wrap: anywhere; }
+    .source-meta { margin-top: 3px; font-size: .82rem; opacity: .68; }
+    .source-status .reason { margin-top: 6px; max-width: 560px; }
+    .source-kicker { font-size: .72rem; text-transform: uppercase; letter-spacing: .055em; opacity: .58; margin-bottom: 5px; }
+    .source-value { line-height: 1.38; }
+    .source-run strong { font-weight: 700; }
+    .source-run .run-metrics { margin-top: 4px; font-size: .82rem; opacity: .72; }
+    .source-details { border-top: 1px solid color-mix(in srgb, CanvasText 10%, transparent); }
+    .source-details summary {
+      cursor: pointer;
+      padding: 8px 14px;
+      font-size: .82rem;
+      font-weight: 650;
+      opacity: .72;
+      user-select: none;
+      list-style-position: inside;
+    }
+    .source-details[open] summary { border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent); }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
+      padding: 12px 14px;
+    }
+    .detail-box { min-width: 0; }
+    .detail-box .value { margin-top: 3px; overflow-wrap: anywhere; }
+    .detail-error {
+      grid-column: 1 / -1;
+      border: 1px solid color-mix(in srgb, #c28c2d 34%, transparent);
+      border-radius: 9px;
+      padding: 10px 11px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: .82rem;
+      line-height: 1.4;
+    }
     .state { display: inline-block; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 999px; padding: 3px 8px; font-size: .82rem; }
     .state.ok { border-color: color-mix(in srgb, #4f9d69 55%, transparent); background: color-mix(in srgb, #4f9d69 10%, Canvas); }
     .state.warnung, .state.veraltet, .state.ohne_erfolg { border-color: color-mix(in srgb, #c28c2d 60%, transparent); background: color-mix(in srgb, #c28c2d 10%, Canvas); }
     .state.läuft { border-color: color-mix(in srgb, AccentColor 55%, transparent); background: color-mix(in srgb, AccentColor 10%, Canvas); }
     .state.deaktiviert { opacity: .55; }
-    .reason, .error { max-width: 520px; white-space: normal; font-size: .82rem; line-height: 1.35; }
+    .reason, .error { white-space: normal; font-size: .82rem; line-height: 1.35; }
     .error { opacity: .76; }
-    .actions { display: flex; gap: 6px; flex-wrap: wrap; min-width: 170px; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; min-width: 170px; }
     .actions form { margin: 0; }
     button { font: inherit; padding: 6px 9px; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 24%, transparent); background: Canvas; color: CanvasText; cursor: pointer; }
     button:hover { background: color-mix(in srgb, AccentColor 10%, Canvas); }
@@ -39,7 +84,24 @@
     .notice { margin: 14px 0; padding: 10px 12px; border-radius: 9px; border: 1px solid color-mix(in srgb, AccentColor 30%, transparent); background: color-mix(in srgb, AccentColor 8%, Canvas); }
     .labels { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px; }
     .label { border: 1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius: 999px; padding: 4px 8px; }
-    @media (max-width: 1000px) { .stats { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 1180px) {
+      .source-summary { grid-template-columns: minmax(170px, 1fr) minmax(260px, 1.6fr) minmax(210px, 1fr); }
+      .source-run { grid-column: 2; }
+      .source-actions { grid-column: 3; grid-row: 1 / span 2; }
+      .detail-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    }
+    @media (max-width: 1000px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      .source-summary { grid-template-columns: 1fr 1.4fr; }
+      .source-run, .source-actions { grid-column: auto; grid-row: auto; }
+      .source-actions .actions { justify-content: flex-start; }
+    }
+    @media (max-width: 700px) {
+      main { padding-inline: 14px; }
+      .stats { grid-template-columns: 1fr; }
+      .source-summary { grid-template-columns: 1fr; gap: 11px; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -64,31 +126,23 @@
   </div>
 
   <h2>Quellen</h2>
-  <div class="panel">
-    <table>
-      <thead>
-        <tr>
-          <th>Quelle</th>
-          <th>Zustand / Grund</th>
-          <th>Zeitplan</th>
-          <th>Coverage</th>
-          <th>Letzter Erfolg</th>
-          <th>Letzter Lauf</th>
-          <th>Elemente</th>
-          <th>Shard-Probleme</th>
-          <th>Fehlerdetails</th>
-          <th>Aktionen</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in snapshot.sources %}
-          <tr>
-            <td><strong>{{ row.name }}</strong><br><span class="subtle">{{ row.category }} · {{ row.poll_interval_minutes }} min</span></td>
-            <td>
-              <span class="state {{ row.state }}">{{ row.state|replace('_', ' ') }}</span>
-              <div class="reason" style="margin-top:6px">{{ row.state_reason }}</div>
-            </td>
-            <td>
+  <div class="source-list">
+    {% for row in snapshot.sources %}
+      <article class="source-card" id="source-{{ row.id }}">
+        <div class="source-summary">
+          <div>
+            <div class="source-name">{{ row.name }}</div>
+            <div class="source-meta">{{ row.category }} · {{ row.poll_interval_minutes }} min</div>
+          </div>
+
+          <div class="source-status">
+            <span class="state {{ row.state }}">{{ row.state|replace('_', ' ') }}</span>
+            <div class="reason">{{ row.state_reason }}</div>
+          </div>
+
+          <div>
+            <div class="source-kicker">Betrieb</div>
+            <div class="source-value">
               {% if row.scheduled %}
                 automatisch
               {% elif row.runnable %}
@@ -96,64 +150,106 @@
               {% else %}
                 nicht registriert
               {% endif %}
-              {% if row.operational_note %}
-                <div class="subtle" style="margin-top:5px">{{ row.operational_note }}</div>
-              {% endif %}
-            </td>
-            <td>{{ row.coverage_status }}</td>
-            <td>{{ row.last_success_at.strftime('%d.%m.%Y %H:%M') if row.last_success_at else 'nie' }}</td>
-            <td>
-              {% if row.latest_run_id %}
-                #{{ row.latest_run_id }} · {{ row.latest_mode }} · {{ row.latest_status }}<br>
-                <span class="subtle">{{ row.latest_started_at.strftime('%d.%m.%Y %H:%M') if row.latest_started_at else '' }}</span><br>
-                <span class="subtle">
-                  Seiten {{ row.latest_pages_fetched or 0 }} ·
-                  Shards {{ row.latest_shards_completed or 0 }}/{{ row.latest_shards_total or 0 }}
-                </span>
-              {% else %}
-                –
-              {% endif %}
-            </td>
-            <td>
-              gesehen {{ row.latest_items_seen if row.latest_items_seen is not none else '–' }}<br>
-              <span class="subtle">
+              · Coverage {{ row.coverage_status }}
+            </div>
+            <div class="source-meta">
+              letzter Erfolg:
+              {{ row.last_success_at.strftime('%d.%m.%Y %H:%M') if row.last_success_at else 'nie' }}
+            </div>
+          </div>
+
+          <div class="source-run">
+            <div class="source-kicker">Letzter Lauf</div>
+            {% if row.latest_run_id %}
+              <div class="source-value">
+                <strong>#{{ row.latest_run_id }}</strong> · {{ row.latest_status }}
+                <span class="subtle">({{ row.latest_mode }})</span>
+              </div>
+              <div class="source-meta">{{ row.latest_started_at.strftime('%d.%m.%Y %H:%M') if row.latest_started_at else '' }}</div>
+              <div class="run-metrics">
+                {{ row.latest_items_seen if row.latest_items_seen is not none else '–' }} gesehen ·
+                {{ row.latest_items_new if row.latest_items_new is not none else '–' }} neu ·
+                {{ row.latest_items_updated if row.latest_items_updated is not none else '–' }} geändert
+              </div>
+            {% else %}
+              <div class="source-value">Noch kein Lauf</div>
+            {% endif %}
+          </div>
+
+          <div class="source-actions">
+            <div class="actions">
+              <form method="post" action="/admin/sources/{{ row.id }}/run">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" {% if not row.enabled or not row.runnable or row.state == 'läuft' %}disabled{% endif %}>Jetzt ausführen</button>
+              </form>
+              <form method="post" action="/admin/sources/{{ row.id }}/enabled">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if row.enabled %}
+                  <input type="hidden" name="enabled" value="0">
+                  <button type="submit" class="danger">Deaktivieren</button>
+                {% else %}
+                  <input type="hidden" name="enabled" value="1">
+                  <button type="submit">Aktivieren</button>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <details class="source-details">
+          <summary>Details &amp; Diagnose</summary>
+          <div class="detail-grid">
+            <div class="detail-box">
+              <div class="source-kicker">Coverage</div>
+              <div class="value">{{ row.coverage_status }}</div>
+            </div>
+            <div class="detail-box">
+              <div class="source-kicker">Seiten / Shards</div>
+              <div class="value">
+                {{ row.latest_pages_fetched if row.latest_pages_fetched is not none else '–' }} Seiten ·
+                {{ row.latest_shards_completed if row.latest_shards_completed is not none else '–' }}/{{ row.latest_shards_total if row.latest_shards_total is not none else '–' }} Shards
+              </div>
+            </div>
+            <div class="detail-box">
+              <div class="source-kicker">Shard-Probleme</div>
+              <div class="value">
+                {{ row.failing_shards }} aktiv ·
+                {{ row.latest_shards_failed if row.latest_shards_failed is not none else '–' }} im letzten Lauf
+              </div>
+            </div>
+            <div class="detail-box">
+              <div class="source-kicker">Elemente</div>
+              <div class="value">
+                gesehen {{ row.latest_items_seen if row.latest_items_seen is not none else '–' }} ·
                 neu {{ row.latest_items_new if row.latest_items_new is not none else '–' }} ·
                 geändert {{ row.latest_items_updated if row.latest_items_updated is not none else '–' }} ·
                 verschwunden {{ row.latest_items_disappeared if row.latest_items_disappeared is not none else '–' }}
-              </span>
-            </td>
-            <td>
-              {{ row.failing_shards }} aktiv ·
-              {{ row.latest_shards_failed if row.latest_shards_failed is not none else '–' }} im letzten Lauf
-            </td>
-            <td class="error">
-              {% if row.latest_error %}<strong>Lauf:</strong> {{ row.latest_error }}<br>{% endif %}
-              {% if row.last_error and row.last_error != row.latest_error %}<strong>Quelle:</strong> {{ row.last_error }}<br>{% endif %}
-              {% for error in row.shard_errors %}<strong>Shard:</strong> {{ error }}{% if not loop.last %}<br>{% endif %}{% endfor %}
-              {% if not row.latest_error and not row.last_error and not row.shard_errors %}–{% endif %}
-            </td>
-            <td>
-              <div class="actions">
-                <form method="post" action="/admin/sources/{{ row.id }}/run">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button type="submit" {% if not row.enabled or not row.runnable or row.state == 'läuft' %}disabled{% endif %}>Jetzt ausführen</button>
-                </form>
-                <form method="post" action="/admin/sources/{{ row.id }}/enabled">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  {% if row.enabled %}
-                    <input type="hidden" name="enabled" value="0">
-                    <button type="submit" class="danger">Deaktivieren</button>
-                  {% else %}
-                    <input type="hidden" name="enabled" value="1">
-                    <button type="submit">Aktivieren</button>
-                  {% endif %}
-                </form>
               </div>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+            </div>
+
+            {% if row.operational_note %}
+              <div class="detail-box" style="grid-column:1/-1">
+                <div class="source-kicker">Betriebshinweis</div>
+                <div class="value">{{ row.operational_note }}</div>
+              </div>
+            {% endif %}
+
+            {% if row.latest_error or row.last_error or row.shard_errors %}
+              <div class="detail-error">
+                {% if row.latest_error %}<strong>Lauf:</strong> {{ row.latest_error }}{% endif %}
+                {% if row.last_error and row.last_error != row.latest_error %}{% if row.latest_error %}<br>{% endif %}<strong>Quelle:</strong> {{ row.last_error }}{% endif %}
+                {% for error in row.shard_errors %}<br><strong>Shard:</strong> {{ error }}{% endfor %}
+              </div>
+            {% else %}
+              <div class="detail-box" style="grid-column:1/-1">
+                <div class="source-kicker">Fehlerdetails</div>
+                <div class="value subtle">Keine aktuellen Fehlerdetails.</div>
+              </div>
+            {% endif %}
+          </div>
+        </details>
+      </article>
+    {% endfor %}
   </div>
 
   <h2>Wert der Stellenquellen</h2>
