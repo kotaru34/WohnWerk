@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `release/v0.4.13`  
-**Production release:** `release/v0.4.12`; deployed code SHA `96656cd96091b33944824e5cb1b003142e7012d8`  
-**Active PR:** #28 — `Release v0.4.13 source operations and FALC`  
+**Active development branch:** none — v0.4.13 is deployed and production-accepted  
+**Production release:** `release/v0.4.13`; deployed code SHA `2863c01004341e9e7aa28bbc830c4e482e94c2df`  
+**Active PR:** #29 — post-deploy v0.4.13 acceptance verifier + handoff only; not deployed  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,21 +33,27 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.12**.
+Production is deployed and accepted on **v0.4.13**.
 
-- deployed application version: **v0.4.12**
-- exact deployed Git SHA: `96656cd96091b33944824e5cb1b003142e7012d8`
-- exact release branch: `release/v0.4.12`
-- previous rollback checkpoint: v0.4.11 at `6d7fd14cefbff75bed3957a5443c419c04db8501`
-- database migration head remains `0017_internet_source_evidence`; v0.4.11 has no DB migration
-- no dependency changes were part of v0.4.11
-- exact-release GitHub CI workflow `37078259652`: Ruff passed, compile passed, **680 passed, 2 warnings**
-- production deploy completed through Sentinel relay issue #73
-- post-deploy repair/acceptance completed through Sentinel relay issues #74 and #75
-- final `/health` reports `version=0.4.12`
-- v0.4.12 was deployed through HMAC-verified Sentinel relay issue #76; final HEAD/status/service/timer/health checks passed
-- `iad-de` production bootstrap Run #5175 succeeded as bounded frontier-only acquisition: 8 pages, 9 in-budget listings seen/new, provider-reported corpus 932, coverage intentionally degraded/non-authoritative for disappearance
-- final live checkout HEAD is exactly `96656cd96091b33944824e5cb1b003142e7012d8` and the production worktree is clean
+- deployed application version: **v0.4.13**
+- exact deployed Git SHA: `2863c01004341e9e7aa28bbc830c4e482e94c2df`
+- exact release branch: `release/v0.4.13`
+- previous rollback checkpoint: v0.4.12 at `96656cd96091b33944824e5cb1b003142e7012d8`; rollback ref `refs/wohnwerk/rollback-v0.4.12-pre-v0.4.13`
+- database migration head remains `0017_internet_source_evidence`; v0.4.13 has no DB migration
+- no dependency changes were part of v0.4.13
+- exact-release GitHub CI workflow `37089211650`: Install/Ruff/Compile/Tests passed, **698 passed, 2 warnings**
+- production deploy and acceptance completed through HMAC-verified Sentinel relay issue #77
+- final `/health` reports `status=ok`, `version=0.4.13`
+- final live checkout HEAD is exactly `2863c01004341e9e7aa28bbc830c4e482e94c2df` and the production worktree is clean
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active after validation cleanup
+- target-host FALC live probe parsed 12/12 public cards and proved stable ID `FALC-CAMA-90564` for a live EUR 119,000 listing at 23992 Zurow with source-backed `oil` heating evidence
+- `falc-de` production bootstrap Run #5179 succeeded: 8 pages, 10 in-budget listings seen/new, 0 updated; frontier-only `coverage=degraded`, disappearance authority never
+- authenticated `/admin/health` acceptance returned HTTP 200 and verified detailed source status/reason/error rendering plus Run-now and Enable/Disable controls
+- admin acceptance verified `falc-de`, `iad-de` and `immowelt-de` as automatic sources; `remax-de` and `immoscout24-de` are visible as manual-only diagnostics with challenge/access reasons and Run-now controls
+- RE/MAX diagnostic Run #5182 failed closed before any page/listing ingestion and created the production source row; no challenge bypass was attempted
+- ImmoScout24 diagnostic Run #5183 failed closed with 0 pages/listings accepted and created the production source row; no challenge bypass was attempted
+- post-deploy verifier commit `5d52c6915e395f3eb764a4a737eef48f14619656` passed GitHub CI workflow `37091465999` before authenticated production execution
+- validation worktrees and redirected bytecode cache were removed and Git worktree metadata pruned
 - `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
 - targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
 - repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
@@ -62,7 +68,14 @@ Production is deployed and accepted on **v0.4.12**.
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
 - `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
-- v0.4.13 development adds detailed admin source diagnostics/actions and `falc-de`; production remains v0.4.12 until the exact v0.4.13 release gate/deploy completes
+- v0.4.13 is deployed: detailed admin source diagnostics/actions are live and `falc-de` is bootstrapped as an operational bounded frontier
+
+v0.4.13 shipped:
+- operator-grade source diagnostics on `/admin/health`, including concrete reasons and latest run/shard errors;
+- authenticated/CSRF-protected Run-now plus Enable/Disable controls using the registered source plan and normal refresh lock/runtime gate;
+- explicit automatic vs manual-only source visibility;
+- `falc-de` bounded Germany house frontier with stable FALC object-number identity and source-backed heating evidence;
+- production source rows for challenge-bound RE/MAX and ImmoScout24 manual diagnostics, with no challenge bypass.
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
@@ -570,8 +583,8 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 10. **DONE:** v0.4.10 r4 deployed at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`: Engel & Völkers frontier, heating integration, conservative unique-city PLZ resolution, DE source-card previews and shared categorized/icon-based house facts.
 11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
 12. **DONE:** v0.4.12 deployed and production-accepted at `96656cd96091b33944824e5cb1b003142e7012d8`. `iad-de` is operational and bootstrapped; `remax-de` remains an unscheduled fail-closed diagnostic adapter after target-host Cloudflare Turnstile.
-13. **CURRENT:** v0.4.13 expands `/admin/health` with source-state reasons, latest run/shard diagnostics, safe Run-now and Enable/Disable controls, and adds `falc-de` as another bounded direct Germany broker-network source with explicit FALC object-number identity and source-backed heating evidence.
-14. After v0.4.13, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+13. **DONE:** v0.4.13 deployed and production-accepted at `2863c01004341e9e7aa28bbc830c4e482e94c2df`: `/admin/health` now exposes source-state reasons, latest run/shard diagnostics, safe Run-now and Enable/Disable controls; `falc-de` is live as a bounded direct Germany broker-network source with explicit FALC object-number identity and source-backed heating evidence.
+14. **NEXT:** continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
 15. Keep Germany jobs paused until an explicit operator decision reopens them.
 16. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
