@@ -178,20 +178,21 @@ def main() -> None:
 
     try:
         with SessionLocal() as session:
-            if args.source:
-                source = session.scalar(select(Source).where(Source.name == args.source))
+            requested_source = getattr(args, "source", None)
+            if requested_source:
+                source = session.scalar(select(Source).where(Source.name == requested_source))
                 if source is None:
-                    print(f"refresh_status=skipped reason=unknown_source source={args.source}")
+                    print(f"refresh_status=skipped reason=unknown_source source={requested_source}")
                     raise SystemExit(2)
                 if not source.enabled:
-                    print(f"refresh_status=skipped reason=source_disabled source={args.source}")
+                    print(f"refresh_status=skipped reason=source_disabled source={requested_source}")
                     return
-                plan = source_run_plan(args.source)
+                plan = source_run_plan(requested_source)
                 if plan is None:
-                    print(f"refresh_status=skipped reason=source_not_runnable source={args.source}")
+                    print(f"refresh_status=skipped reason=source_not_runnable source={requested_source}")
                     raise SystemExit(2)
                 due = [DueSourceRun(plan=plan, reconciliation=False)]
-                print(f"manual_source={args.source}")
+                print(f"manual_source={requested_source}")
             else:
                 due = due_source_runs(
                     session,
