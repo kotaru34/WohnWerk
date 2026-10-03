@@ -40,6 +40,21 @@ def test_direct_403_is_explicit_challenge() -> None:
     assert challenge["http_status"] == 403
 
 
+def test_direct_403_preserves_datadome_frame_evidence() -> None:
+    challenge = detect_immowelt_challenge(
+        status=403,
+        requested_url="https://www.immowelt.de/classified-search?page=2",
+        final_url="https://www.immowelt.de/classified-search?page=2",
+        html="<html><body>verify you are human</body></html>",
+        frame_urls=["https://geo.captcha-delivery.com/captcha/?id=example"],
+    )
+
+    assert challenge is not None
+    assert challenge["kind"] == "http_403"
+    assert challenge["challenge_url"].startswith("https://geo.captcha-delivery.com/")
+    assert "verify you are human" in challenge["markers"]
+
+
 def test_known_challenge_frame_is_detected_even_with_http_200() -> None:
     challenge = detect_immowelt_challenge(
         status=200,
