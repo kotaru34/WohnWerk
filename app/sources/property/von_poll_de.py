@@ -62,6 +62,7 @@ class VonPollPage:
     cards_parsed: int
     unavailable_cards: int
     out_of_budget_cards: int
+    unstable_identity_cards: int
 
 
 @dataclass(slots=True)
@@ -200,6 +201,7 @@ def parse_von_poll_search_page(
     cards_parsed = 0
     unavailable_cards = 0
     out_of_budget_cards = 0
+    unstable_identity_cards = 0
     seen_urls: set[str] = set()
 
     for anchor in parser.anchors:
@@ -211,6 +213,8 @@ def parse_von_poll_search_page(
             continue
         seen_urls.add(url)
         cards_seen += 1
+        if listing_id.startswith("url-"):
+            unstable_identity_cards += 1
 
         facts = _parse_card_text(" ".join(anchor.parts), region_key=region_key)
         if facts is None:
@@ -259,6 +263,7 @@ def parse_von_poll_search_page(
         cards_parsed=cards_parsed,
         unavailable_cards=unavailable_cards,
         out_of_budget_cards=out_of_budget_cards,
+        unstable_identity_cards=unstable_identity_cards,
     )
 
 
@@ -360,6 +365,7 @@ class VonPollGermanyPropertySource(PropertySource):
         cards_parsed = 0
         unavailable_cards = 0
         out_of_budget_cards = 0
+        unstable_identity_cards = 0
         source_reported_count: int | None = None
         max_page = 1
         result_cap_hit = False
@@ -398,6 +404,7 @@ class VonPollGermanyPropertySource(PropertySource):
                 cards_parsed = first.cards_parsed
                 unavailable_cards = first.unavailable_cards
                 out_of_budget_cards = first.out_of_budget_cards
+                unstable_identity_cards = first.unstable_identity_cards
                 items_by_id.update({item.source_listing_id: item for item in first.items})
 
                 for page_number in range(2, target_pages + 1):
@@ -417,6 +424,7 @@ class VonPollGermanyPropertySource(PropertySource):
                     cards_parsed += page.cards_parsed
                     unavailable_cards += page.unavailable_cards
                     out_of_budget_cards += page.out_of_budget_cards
+                    unstable_identity_cards += page.unstable_identity_cards
         except Exception as exc:
             if isinstance(exc, SourceFetchError):
                 exc.pages_fetched = pages_fetched
@@ -428,6 +436,7 @@ class VonPollGermanyPropertySource(PropertySource):
                     "discovery_cards_parsed": cards_parsed,
                     "discovery_unavailable_cards": unavailable_cards,
                     "discovery_out_of_budget_cards": out_of_budget_cards,
+                    "discovery_unstable_identity_cards": unstable_identity_cards,
                     "country_code": "DE",
                 }
                 raise
@@ -442,6 +451,7 @@ class VonPollGermanyPropertySource(PropertySource):
                     "discovery_cards_parsed": cards_parsed,
                     "discovery_unavailable_cards": unavailable_cards,
                     "discovery_out_of_budget_cards": out_of_budget_cards,
+                    "discovery_unstable_identity_cards": unstable_identity_cards,
                     "country_code": "DE",
                 },
             ) from exc
@@ -451,6 +461,7 @@ class VonPollGermanyPropertySource(PropertySource):
             and not result_cap_hit
             and pages_fetched >= max_page
             and cards_seen == cards_parsed
+            and unstable_identity_cards == 0
         )
         return SourceBatch(
             items=list(items_by_id.values()),
@@ -460,6 +471,7 @@ class VonPollGermanyPropertySource(PropertySource):
                 "discovery_cards_parsed": cards_parsed,
                 "discovery_unavailable_cards": unavailable_cards,
                 "discovery_out_of_budget_cards": out_of_budget_cards,
+                "discovery_unstable_identity_cards": unstable_identity_cards,
                 "discovery_max_page": max_page,
                 "country_code": "DE",
             },
