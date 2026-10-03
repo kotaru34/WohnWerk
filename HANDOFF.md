@@ -4,7 +4,7 @@
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
 **Active development branch:** `release/v0.4.16`  
-**Production release:** `release/v0.4.15`; deployed code SHA `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`  
+**Production release:** `release/v0.4.16`; deployed code SHA `c9029e0c4b8db9f0bab80a29af65140f3838adbc`  
 **Active PR:** #37 — `Release v0.4.16 loop-safe Immowelt DataDome solver bridge`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
@@ -34,20 +34,24 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.15**.
+Production is deployed and accepted on **v0.4.16**.
 
-- deployed application version: **v0.4.15**
-- exact deployed Git SHA: `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`
-- exact release branch: `release/v0.4.15`
-- rollback checkpoint: v0.4.14 at `bc223ff2aa17306528300d4d3e31ad4180ca19fa` via `rollback/v0.4.14-pre-v0.4.15`
-- database migration head remains `0017_internet_source_evidence`; v0.4.15 has no DB migration
-- no dependency changes were part of v0.4.15
-- exact-release GitHub CI workflow `37138156156`: Install, Ruff and Compile passed, **700 passed, 2 warnings**
-- v0.4.15 was deployed through HMAC-verified Sentinel issue #79 and final host acceptance completed through issue #80
-- final `/health` reports `version=0.4.15`
-- final live checkout HEAD is exactly `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`; production worktree is clean
-- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, and `wohnwerk-liveness.timer` are all active
-- German source-model audit is now enforced in production: VON POLL is manual-only after target-host HTTP 403, a direct diagnostic does not silently re-enable it, and unstable URL-hash fallback identity can never grant reconciliation/disappearance authority
+- deployed application version: **v0.4.16**
+- exact deployed Git SHA: `c9029e0c4b8db9f0bab80a29af65140f3838adbc`
+- exact release branch: `release/v0.4.16`
+- rollback checkpoint: v0.4.15 at `abdec02fee6e0f984d9f298d6b7e7ef8879dea87` via `refs/wohnwerk/rollback-v0.4.15-pre-v0.4.16`
+- database migration head remains `0017_internet_source_evidence`; v0.4.16 has no DB migration
+- no dependency changes were part of v0.4.16
+- feature CI #37148542528 and exact-release CI #37148817221 both passed Install, Ruff, Compile and full Tests: **712 passed, 2 warnings**
+- v0.4.16 was deployed and accepted through HMAC-verified Sentinel issue #81
+- target-host exact-release compile gate passed before cutover
+- final `/health` reports `version=0.4.16`
+- final live checkout HEAD is exactly `c9029e0c4b8db9f0bab80a29af65140f3838adbc`; production worktree is clean
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`, and `captcha-solver.service` are active
+- `wohnwerk-refresh.service` now selects the source-specific Immowelt DataDome bridge through `WOHNWERK_IMMOWELT_SOLVER_URL=http://127.0.0.1:8877`; the previous external-handler drop-in is inactive and preserved as a rollback backup
+- deployed synthetic acceptance proved exact solver User-Agent replay, stale DataDome-cookie replacement, unrelated-cookie preservation, and bounded same-navigation retry falling closed to `defer`
+- no live third-party CAPTCHA/challenge solve was used for deployment acceptance
+- v0.4.15 German source-model hardening remains in force: VON POLL stays manual-only after target-host HTTP 403, and unstable URL-hash fallback identities cannot grant reconciliation/disappearance authority
 - Immowelt, ImmoScout24, Kleinanzeigen, Engel & Völkers, RE/MAX, iad and FALC remain aligned with the current acquisition contract; dormant German job adapters remain unscheduled/coverage-incomplete
 - the compact v0.4.14 source-card admin UI remains deployed unchanged
 
@@ -66,8 +70,7 @@ A separate operator-owned localhost sidecar was installed on the WohnWerk VM dur
 - active observed multimodal model id: `Qwen3.6-Heretic-Quality`; a synthetic red-image smoke through `/v1/chat/completions` returned `red`
 - `SOLVER_ALLOW_PRIVATE` is not set; no public Caddy route, Cloudflare exposure, proxy credentials, or Mistral API keys were configured
 - installation acceptance did **not** perform a live solve against a third-party challenge page
-- production v0.4.15 does **not** automatically wire the sidecar into WohnWerk source adapters.
-- v0.4.16 development adds an explicitly enabled Immowelt-only DataDome bridge. It accepts only positively identified DataDome gates, stages only an Immowelt-scoped `datadome` cookie plus the solver's exact User-Agent, and makes the crawler retry its own saved navigation point.
+- production v0.4.16 enables the explicitly configured Immowelt-only DataDome bridge through the loopback solver. It accepts only positively identified DataDome gates, stages only an Immowelt-scoped `datadome` cookie plus the solver's exact User-Agent, and makes the crawler retry its own saved navigation point.
 - the bridge records only a hash of the last candidate for loop detection; repeated identical candidates or the bounded candidate limit return `defer` instead of another false `resolved`.
 - generic Cloudflare/Turnstile or other challenge-cookie replay is still prohibited because those flows can require stronger same-browser/fingerprint semantics.
 
