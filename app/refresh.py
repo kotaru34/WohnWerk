@@ -15,6 +15,7 @@ class SourceRefreshPlan:
     script: str
     supports_reconciliation: bool
     failure_isolated: bool = False
+    operational_note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +72,12 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         failure_isolated=True,
     ),
     SourceRefreshPlan(
+        "falc-de",
+        "scripts/run_falc_de.py",
+        False,
+        failure_isolated=True,
+    ),
+    SourceRefreshPlan(
         "von-poll-de",
         "scripts/run_von_poll_de.py",
         True,
@@ -104,6 +111,48 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
     # adapters/scripts dormant for a possible later restart, but do not register DE job
     # sources in the automatic refresh scheduler.
 )
+
+# These adapters stay out of automatic scheduling but remain available to an authenticated
+# operator for an explicit diagnostic/manual run. They fail closed when their public frontend
+# presents a human-verification boundary; the admin UI surfaces that reason from the run.
+MANUAL_SOURCE_RUN_PLANS: tuple[SourceRefreshPlan, ...] = (
+    SourceRefreshPlan(
+        "remax-de",
+        "scripts/run_remax_de.py",
+        False,
+        failure_isolated=True,
+        operational_note=(
+            "Automatik pausiert: der Zielhost zeigte zuletzt Cloudflare Turnstile. "
+            "Manueller Diagnose-Lauf ist möglich; kein Challenge-Bypass."
+        ),
+    ),
+    SourceRefreshPlan(
+        "immoscout24-de",
+        "scripts/run_immoscout24_de.py",
+        False,
+        failure_isolated=True,
+        operational_note=(
+            "Automatik pausiert: der öffentliche ImmoScout24-Frontend-Pfad verlangte "
+            "zuletzt eine menschliche Challenge. Manueller Diagnose-Lauf bleibt fail-closed."
+        ),
+    ),
+)
+
+
+def source_run_plan(source_name: str) -> SourceRefreshPlan | None:
+    for plan in (*SOURCE_REFRESH_PLANS, *MANUAL_SOURCE_RUN_PLANS):
+        if plan.source_name == source_name:
+            return plan
+    return None
+
+
+def source_is_scheduled(source_name: str) -> bool:
+    return any(plan.source_name == source_name for plan in SOURCE_REFRESH_PLANS)
+
+
+def source_operational_note(source_name: str) -> str | None:
+    plan = source_run_plan(source_name)
+    return plan.operational_note if plan is not None else None
 
 
 def _aware(value: datetime | None) -> datetime | None:
