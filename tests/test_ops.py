@@ -11,6 +11,7 @@ from app.ops import (
     JobSourceValueRow,
     OpsSnapshot,
     SourceOpsRow,
+    source_ops_reason,
     source_ops_state,
     split_unresolved_location_labels,
 )
@@ -54,6 +55,49 @@ def test_source_ops_state_flags_stale_and_failed_sources() -> None:
         0,
         now=now,
     ) == "deaktiviert"
+
+
+def test_source_ops_reason_explains_manual_only_and_failed_runs() -> None:
+    now = datetime(2026, 8, 30, 14, 0, tzinfo=UTC)
+
+    manual = _source(last_success_at=now - timedelta(minutes=10))
+    assert source_ops_state(
+        manual,
+        SimpleNamespace(status=RunStatus.SUCCESS),
+        0,
+        now=now,
+        scheduled=False,
+        runnable=True,
+    ) == "warnung"
+    assert "Turnstile" in source_ops_reason(
+        manual,
+        SimpleNamespace(status=RunStatus.SUCCESS),
+        0,
+        (),
+        now=now,
+        scheduled=False,
+        runnable=True,
+        operational_note="Automatik pausiert: Cloudflare Turnstile.",
+    )
+
+    failed = SimpleNamespace(
+        id=77,
+        status=RunStatus.FAILED,
+        error="HTTP 403 challenge",
+        started_at=now - timedelta(minutes=5),
+        shards_failed=1,
+        shards_total=1,
+        shards_completed=0,
+    )
+    reason = source_ops_reason(
+        _source(),
+        failed,
+        1,
+        ("HTTP 403 challenge",),
+        now=now,
+    )
+    assert "Lauf #77 fehlgeschlagen" in reason
+    assert "HTTP 403 challenge" in reason
 
 
 def test_legacy_bounded_partial_without_failed_shards_is_not_a_warning() -> None:
@@ -131,6 +175,7 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
         enabled_sources=7,
         sources=(
             SourceOpsRow(
+                id=7,
                 name="example-source",
                 category="job",
                 enabled=True,
@@ -146,6 +191,18 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
                 latest_shards_failed=0,
                 failing_shards=0,
                 last_error=None,
+                state_reason="Letzter Lauf und Coverage sind ohne aktuellen Fehler.",
+                latest_error=None,
+                latest_pages_fetched=3,
+                latest_items_new=2,
+                latest_items_updated=1,
+                latest_items_disappeared=0,
+                latest_shards_total=1,
+                latest_shards_completed=1,
+                shard_errors=(),
+                scheduled=True,
+                runnable=True,
+                operational_note=None,
             ),
         ),
         unresolved_labels=(("Traboch", 2),),
@@ -177,6 +234,7 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
         yield object()
 
     monkeypatch.setattr("app.ops.collect_ops_snapshot", lambda _db: snapshot)
+    monkeypatch.setattr("app.ops._csrf_token", lambda: "test-csrf")
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[require_admin] = lambda: None
     try:
@@ -189,6 +247,9 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
             assert "Wert der Stellenquellen" in page.text
             assert "25.0 %" in page.text
             assert "example-source" in page.text
+            assert "Letzter Lauf und Coverage" in page.text
+            assert "Jetzt ausführen" in page.text
+            assert "Deaktivieren" in page.text
             assert "konkrete ungeocodierte Job-Orte" in page.text
             assert "Noch nicht aufgelöste konkrete Ortsangaben" in page.text
             assert "Traboch" in page.text
