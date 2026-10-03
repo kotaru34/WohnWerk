@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/v0.4.12-broker-sources`  
-**Production release:** `release/v0.4.11-r2`; deployed code SHA `6d7fd14cefbff75bed3957a5443c419c04db8501`  
-**Active PR:** #25 — `Release v0.4.12 exact broker-source candidate`  
+**Active development branch:** none — v0.4.12 is deployed and production-accepted  
+**Production release:** `release/v0.4.12`; deployed code SHA `96656cd96091b33944824e5cb1b003142e7012d8`  
+**Active PR:** #26 — post-deploy acceptance/HANDOFF only; not deployed  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,33 +33,51 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.11**.
+Production is deployed and accepted on **v0.4.12**.
 
-- deployed application version: **v0.4.11**
-- exact deployed Git SHA: `6d7fd14cefbff75bed3957a5443c419c04db8501`
-- exact release branch: `release/v0.4.11-r2`
-- previous rollback checkpoint: v0.4.10 r4 at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`
-- database migration head remains `0017_internet_source_evidence`; v0.4.11 has no DB migration
-- no dependency changes were part of v0.4.11
-- exact-release GitHub CI workflow `37078259652`: Ruff passed, compile passed, **680 passed, 2 warnings**
-- production deploy completed through Sentinel relay issue #73
-- post-deploy repair/acceptance completed through Sentinel relay issues #74 and #75
-- final `/health` reports `version=0.4.11`
-- final live checkout HEAD is exactly `6d7fd14cefbff75bed3957a5443c419c04db8501` and the production worktree is clean
+- deployed application version: **v0.4.12**
+- exact deployed Git SHA: `96656cd96091b33944824e5cb1b003142e7012d8`
+- exact release branch: `release/v0.4.12`
+- rollback ref `refs/wohnwerk/rollback-v0.4.11-pre-v0.4.12` points to v0.4.11 SHA `6d7fd14cefbff75bed3957a5443c419c04db8501`
+- database migration head remains `0017_internet_source_evidence`; v0.4.12 has no DB migration
+- v0.4.12 has no dependency changes
+- exact-release GitHub CI workflow `37086602828`: Install, Ruff, Compile and Tests passed, **689 passed, 2 warnings**
+- production target-host/live gate and deployment completed through Sentinel relay issue #76
+- final `/health` reports `version=0.4.12`
+- final live checkout HEAD is exactly `96656cd96091b33944824e5cb1b003142e7012d8` and the production worktree is clean
 - `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
-- targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
-- repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
-- authenticated production catalog and detail requests both returned HTTP 200 for the repaired house
-- both catalog and detail render the branded **s REAL** source badge before the seen status; badge class/icon/color/original-source href contract passed
-- the shared house-fact template contract remains intact in Objekt → Heizung → Distanzen → Internet order
-- the repaired property's cached media endpoint returned **200 image/jpeg**
-- the only recurring non-fatal runtime warning observed during the repair/readback is PostgreSQL timezone alias `Europe/Kiev` being treated as UTC by the client
-- post-deploy PR #23 contains only acceptance tooling/HANDOFF bookkeeping over the deployed SHA; production is **not** checked out to that PR commit
+- `iad-de` is the new operational Germany broker-network source: target-host page 1 exposed 9/9 parseable cards with source-reported corpus 932 and no reconciliation authority
+- production iad bootstrap Run #5175 completed successfully over 8 pages: **9 seen, 9 new, 0 updated**, source-reported corpus 932; coverage is deliberately `degraded` / frontier-only and disappearance authority remains `never`
+- `remax-de` is retained only as a diagnostic adapter: target-host access returned Cloudflare Turnstile `Security Verification`; the adapter detects it and halts fail-closed, it is absent from the automatic scheduler, and no challenge bypass is attempted
+- branded source metadata and bounded source-backed heating support include iad; RE/MAX branding may remain for historical/diagnostic provenance but blocked RE/MAX is not part of production acquisition coverage
+- the recurring non-fatal PostgreSQL timezone warning remains: timezone alias `Europe/Kiev` is treated as UTC by the client
 - `von-poll-de` remains disabled fail-closed after HTTP 403
-- RE/MAX target-host access reaches Cloudflare Turnstile; `remax-de` remains unscheduled/fail-closed in v0.4.12
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
 - `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
+
+v0.4.12 shipped:
+- a dedicated `iad-de` bounded public house frontier with stable source IDs from detail slugs, PLZ/city, asking price, explicit living/plot area where present and source-backed preview provenance;
+- iad scheduler integration as failure-isolated, incremental/frontier-only acquisition with no disappearance authority;
+- iad branded provenance and bounded heating-detail enrichment integration;
+- a RE/MAX Germany adapter plus tests/diagnostics, but production scheduling is intentionally disabled after the target-host Turnstile gate;
+- explicit RE/MAX challenge detection so a HTTP-200 verification page cannot be misclassified as an empty/valid listing page;
+- a repo-owned read-only live source probe used before cutover to prove the exact candidate against the production host;
+- all v0.4.11 source-badge, s REAL repair, dedupe, Germany suitability and Austria compatibility behavior preserved.
+
+### v0.4.12 production proof
+
+Trusted release proof is the exact-head GitHub CI plus HMAC-verified Sentinel issue #76:
+
+- exact release SHA: `96656cd96091b33944824e5cb1b003142e7012d8`, exactly one commit over deployed v0.4.11;
+- CI #37086602828: **689 passed, 2 warnings** with Ruff and compile green;
+- pre-cutover v0.4.11 HEAD/worktree/health/four-unit invariants passed;
+- read-only target-host gate: RE/MAX challenge detected and fail-closed; iad 9/9 live cards parsed, `source_reported=932`, `coverage_complete=False`;
+- rollback ref created before cutover;
+- production checkout moved to the exact release SHA and `wohnwerk.service` restarted successfully;
+- post-restart health reported `0.4.12`;
+- iad production bootstrap Run #5175 succeeded with 9 new listings from the bounded eight-page scan;
+- final production HEAD is exact, Git worktree clean, all four core units active, and final health still reports `0.4.12`.
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
@@ -566,8 +584,8 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
 10. **DONE:** v0.4.10 r4 deployed at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`: Engel & Völkers frontier, heating integration, conservative unique-city PLZ resolution, DE source-card previews and shared categorized/icon-based house facts.
 11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
-12. **CURRENT:** v0.4.12 adds `iad-de` as an operational bounded broker-network frontier and retains `remax-de` as a fail-closed diagnostic adapter. Target-host validation reached Cloudflare Turnstile on RE/MAX, so it is unscheduled and no challenge bypass is attempted; iad target-host HTML is directly accessible and remains the operational new source.
-13. After v0.4.12, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+12. **DONE:** v0.4.12 deployed and production-accepted at `96656cd96091b33944824e5cb1b003142e7012d8`: `iad-de` is operational with 9 new bootstrap listings; `remax-de` is explicitly fail-closed/unscheduled after target-host Cloudflare Turnstile detection.
+13. **CURRENT:** continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
 14. Keep Germany jobs paused until an explicit operator decision reopens them.
 15. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
