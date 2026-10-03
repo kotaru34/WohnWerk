@@ -56,4 +56,5 @@ def test_default_heating_enrichment_skips_von_poll_blocked_details() -> None:
         "kleinanzeigen-de",
         "engel-voelkers-de",
         "iad-de",
+        "falc-de",
     )
