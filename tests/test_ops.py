@@ -100,6 +100,28 @@ def test_source_ops_reason_explains_manual_only_and_failed_runs() -> None:
     assert "HTTP 403 challenge" in reason
 
 
+def test_source_ops_reason_explains_intentional_frontier_degraded_coverage() -> None:
+    now = datetime(2026, 8, 30, 14, 0, tzinfo=UTC)
+    source = _source(
+        coverage_status=CoverageStatus.DEGRADED,
+        last_success_at=now - timedelta(minutes=10),
+    )
+    latest = SimpleNamespace(status=RunStatus.SUCCESS, error=None)
+
+    reason = source_ops_reason(
+        source,
+        latest,
+        0,
+        (),
+        now=now,
+        supports_reconciliation=False,
+    )
+
+    assert "Letzter Lauf erfolgreich" in reason
+    assert "Frontier-Scan" in reason
+    assert "Disappearance-Authority" in reason
+
+
 def test_legacy_bounded_partial_without_failed_shards_is_not_a_warning() -> None:
     now = datetime(2026, 8, 30, 14, 0, tzinfo=UTC)
     legacy_bounded = SimpleNamespace(
