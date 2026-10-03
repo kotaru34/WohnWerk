@@ -39,6 +39,19 @@ second independent broker frontier while keeping each source's coverage authorit
   Germany house corpus. Public expose UUIDs provide stable source identity and
   detail pages expose structured energy-source fields. The frontier never claims
   disappearance authority.
+- `remax-de`: v0.4.12 adapter retained for diagnostics, but **not scheduled in
+  production**. Target-host live validation on 2026-10-03 returned a Cloudflare
+  Turnstile `Security Verification` page instead of listing HTML. The adapter
+  explicitly detects that challenge and halts fail-closed; WohnWerk does not solve,
+  replay or bypass it. Public-browser observations remain useful for future transport
+  revalidation, but RE/MAX contributes no operational production coverage in this release.
+- `iad-de`: v0.4.12 operational direct iad Immobilien Agentur Deutschland
+  broker-network frontier over bounded nationwide house pages. Target-host validation
+  confirmed raw listing HTML is directly available (932 houses observed during the
+  release gate). The public detail slug carries a stable object identifier; WohnWerk
+  retains that provenance plus card-backed location/price/area/preview facts. iad may
+  syndicate listings to large portals, so canonical dedupe remains conservative and
+  source provenance remains distinct.
 
 The active Germany purchase budget is EUR 30,000..200,000. Discovery adapters keep
 source identity/URL, title, asking price, explicit living/plot area, PLZ/city and

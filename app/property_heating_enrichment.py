@@ -14,11 +14,17 @@ from sqlalchemy.orm import Session
 from app.models import ListingStatus, PropertyListing, Source
 from app.property_heating import extract_heating_evidence_from_html, merge_heating_into_payload
 
-DEFAULT_SOURCE_NAMES = ("kleinanzeigen-de", "engel-voelkers-de")
+DEFAULT_SOURCE_NAMES = (
+    "kleinanzeigen-de",
+    "engel-voelkers-de",
+    "iad-de",
+)
 SOURCE_ALLOWED_HOSTS: dict[str, frozenset[str]] = {
     "von-poll-de": frozenset({"von-poll.com", "www.von-poll.com"}),
     "kleinanzeigen-de": frozenset({"kleinanzeigen.de", "www.kleinanzeigen.de"}),
     "engel-voelkers-de": frozenset({"engelvoelkers.com", "www.engelvoelkers.com"}),
+    "remax-de": frozenset({"remax.de", "www.remax.de"}),
+    "iad-de": frozenset({"iad-immobilien.de", "www.iad-immobilien.de"}),
 }
 
 

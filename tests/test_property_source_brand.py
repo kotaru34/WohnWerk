@@ -10,6 +10,8 @@ def test_known_house_sources_have_stable_branded_labels() -> None:
         "engel-voelkers-de": ("Engel & Völkers", "#8b1f2d", "E&V"),
         "immoscout24-de": ("ImmoScout24", "#ff7500", "24"),
         "von-poll-de": ("VON POLL", "#21384f", "VP"),
+        "remax-de": ("RE/MAX", "#dc1c2e", "R/M"),
+        "iad-de": ("iad", "#005a9c", "iad"),
     }
 
     for source_name, values in expected.items():

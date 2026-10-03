@@ -61,6 +61,15 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         False,
         failure_isolated=True,
     ),
+    # RE/MAX DE is intentionally unscheduled: target-host live validation on
+    # 2026-10-03 reached a Cloudflare Turnstile verification page. The adapter remains
+    # for diagnostics and fails closed on that challenge; no bypass is attempted.
+    SourceRefreshPlan(
+        "iad-de",
+        "scripts/run_iad_de.py",
+        False,
+        failure_isolated=True,
+    ),
     SourceRefreshPlan(
         "von-poll-de",
         "scripts/run_von_poll_de.py",
