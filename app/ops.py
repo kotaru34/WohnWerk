@@ -171,6 +171,7 @@ def source_ops_reason(
     scheduled: bool = True,
     runnable: bool = True,
     operational_note: str | None = None,
+    supports_reconciliation: bool = True,
 ) -> str:
     if not source.enabled:
         return "Vom Administrator deaktiviert; automatische und manuelle Läufe sind gesperrt."
@@ -198,6 +199,17 @@ def source_ops_reason(
             )
 
     if source.coverage_status in {CoverageStatus.DEGRADED, CoverageStatus.FAILED}:
+        if (
+            source.coverage_status == CoverageStatus.DEGRADED
+            and not supports_reconciliation
+            and latest is not None
+            and latest.status == RunStatus.SUCCESS
+        ):
+            return (
+                "Letzter Lauf erfolgreich; Coverage bleibt absichtlich degraded, weil "
+                "diese Quelle nur einen begrenzten Frontier-Scan liefert und deshalb "
+                "keine Vollständigkeit bzw. Disappearance-Authority behauptet."
+            )
         detail = latest_error or (shard_errors[0] if shard_errors else None)
         suffix = f": {detail}" if detail else ""
         return f"Coverage ist {source.coverage_status}{suffix}"
@@ -437,6 +449,9 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
                     scheduled=scheduled,
                     runnable=runnable,
                     operational_note=operational_note,
+                    supports_reconciliation=(
+                        plan.supports_reconciliation if plan is not None else False
+                    ),
                 ),
                 latest_error=latest.error if latest else None,
                 latest_pages_fetched=latest.pages_fetched if latest else None,
