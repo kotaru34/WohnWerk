@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.crawling.challenge import ChallengeRequest
-from app.crawling.challenge import ExternalCommandChallengeHandler
+from app.crawling.challenge import ChallengeRequest, ExternalCommandChallengeHandler
 from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
 from scripts.run_immowelt_de import _challenge_handler
 
@@ -130,7 +129,6 @@ async def test_bridge_rejects_cookie_for_unexpected_domain(tmp_path) -> None:
     assert result.action == "defer"
     assert result.message is not None
     assert "unexpected" in result.message
-
 
 
 def _handler_args(*, command: str | None = None) -> argparse.Namespace:
