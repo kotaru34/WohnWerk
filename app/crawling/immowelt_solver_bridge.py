@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shlex
 import tempfile
 import time
 import urllib.error
@@ -12,7 +13,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
+from app.crawling.challenge import (
+    ChallengeHandler,
+    ChallengeRequest,
+    ChallengeResult,
+    ExternalCommandChallengeHandler,
+)
 
 IMMOWELT_HOSTS = {"immowelt.de", "www.immowelt.de"}
 DATADOME_HOST_SUFFIXES = ("captcha-delivery.com", "captcha-delivery.net")
@@ -231,6 +237,32 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             action="resolved",
             message="DataDome clearance candidate staged for same-IP/exact-UA crawler replay",
         )
+
+
+def configured_immowelt_challenge_handler(
+    *,
+    external_command: str | None,
+    solver_url: str | None,
+    timeout_seconds: float,
+) -> ChallengeHandler | None:
+    """Select the explicit operator command first, then the optional loopback bridge."""
+
+    raw = str(external_command or "").strip()
+    if raw:
+        command = shlex.split(raw)
+        if command:
+            return ExternalCommandChallengeHandler(
+                command,
+                timeout_seconds=max(1.0, float(timeout_seconds)),
+            )
+
+    local_url = str(solver_url or "").strip()
+    if not local_url:
+        return None
+    return ImmoweltDataDomeSolverHandler(
+        local_url,
+        timeout_seconds=min(90.0, max(5.0, float(timeout_seconds))),
+    )
 
     def _solve(self, requested_url: str) -> dict[str, Any]:
         body = json.dumps(
