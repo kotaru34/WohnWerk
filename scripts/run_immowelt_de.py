@@ -3,14 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import shlex
 from pathlib import Path
 
 from sqlalchemy import select
 
-from app.crawling.challenge import ExternalCommandChallengeHandler
 from app.crawling.coverage import RUN_STATUS_PAUSED
-from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
+from app.crawling.immowelt_solver_bridge import configured_immowelt_challenge_handler
 from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
@@ -129,24 +127,11 @@ def _latest_paused_run(source_id: int) -> CrawlRun | None:
         )
 
 
-def _challenge_handler(
-    args: argparse.Namespace,
-) -> ExternalCommandChallengeHandler | ImmoweltDataDomeSolverHandler | None:
-    raw = str(args.challenge_handler or "").strip()
-    if raw:
-        command = shlex.split(raw)
-        if command:
-            return ExternalCommandChallengeHandler(
-                command,
-                timeout_seconds=max(1.0, args.challenge_handler_timeout),
-            )
-
-    solver_url = str(os.environ.get("WOHNWERK_IMMOWELT_SOLVER_URL") or "").strip()
-    if not solver_url:
-        return None
-    return ImmoweltDataDomeSolverHandler(
-        solver_url,
-        timeout_seconds=min(90.0, max(5.0, args.challenge_handler_timeout)),
+def _challenge_handler(args: argparse.Namespace):
+    return configured_immowelt_challenge_handler(
+        external_command=args.challenge_handler,
+        solver_url=os.environ.get("WOHNWERK_IMMOWELT_SOLVER_URL"),
+        timeout_seconds=args.challenge_handler_timeout,
     )
 
 
