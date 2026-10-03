@@ -5,7 +5,7 @@
 **Repository:** `kotaru34/WohnWerk`  
 **Active development branch:** none — v0.4.12 is deployed and production-accepted  
 **Production release:** `release/v0.4.12`; deployed code SHA `96656cd96091b33944824e5cb1b003142e7012d8`  
-**Active PR:** post-deploy acceptance/HANDOFF branch `ops/v0.4.12-acceptance`  
+**Active PR:** #26 — post-deploy acceptance/HANDOFF only; not deployed  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
