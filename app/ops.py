@@ -178,7 +178,9 @@ def source_ops_reason(
     if latest is not None and latest.status == RunStatus.RUNNING:
         return f"Lauf #{latest.id} läuft seit {latest.started_at:%d.%m.%Y %H:%M}."
 
-    latest_error = (latest.error if latest is not None else None) or source.last_error
+    latest_error = (
+        getattr(latest, "error", None) if latest is not None else None
+    ) or getattr(source, "last_error", None)
     if latest is not None and latest.status == RunStatus.FAILED:
         detail = latest_error or "kein Fehlertext gespeichert"
         return f"Lauf #{latest.id} fehlgeschlagen: {detail}"
