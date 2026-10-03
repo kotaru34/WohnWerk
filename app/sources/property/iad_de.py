@@ -93,6 +93,16 @@ def _detail_anchors(node: _Node, *, page_url: str) -> list[tuple[_Node, str, str
     return result
 
 
+def _source_location(node: _Node) -> re.Match[str] | None:
+    candidates: list[tuple[int, re.Match[str]]] = []
+    for child in node.walk():
+        direct = _clean_text(" ".join(child.text_parts))
+        match = _LOCATION_RE.match(direct)
+        if match is not None:
+            candidates.append((len(direct), match))
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
 def _card_for_anchor(anchor: _Node, *, listing_id: str) -> _Node | None:
     node = anchor.parent
     fallback: _Node | None = None
@@ -107,7 +117,7 @@ def _card_for_anchor(anchor: _Node, *, listing_id: str) -> _Node | None:
             if child.tag == "a"
         ]
         matching_links = sum(marker in href for href in links)
-        if matching_links and _PRICE_RE.search(text) and _LOCATION_RE.search(text):
+        if matching_links and _PRICE_RE.search(text) and _source_location(node):
             fallback = node
             if _LIVING_RE.search(text) or "Haus zu kaufen" in text:
                 return node
@@ -150,7 +160,7 @@ def parse_iad_search_page(html: str, *, page_url: str) -> IadPage:
 
     for card, url, listing_id in candidates:
         text = card.text()
-        location = _LOCATION_RE.search(text)
+        location = _source_location(card)
         title = _title_for_card(card, page_url=page_url, listing_id=listing_id)
         if location is None or not title:
             continue
