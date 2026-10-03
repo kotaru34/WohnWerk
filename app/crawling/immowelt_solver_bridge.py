@@ -239,31 +239,6 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
         )
 
 
-def configured_immowelt_challenge_handler(
-    *,
-    external_command: str | None,
-    solver_url: str | None,
-    timeout_seconds: float,
-) -> ChallengeHandler | None:
-    """Select the explicit operator command first, then the optional loopback bridge."""
-
-    raw = str(external_command or "").strip()
-    if raw:
-        command = shlex.split(raw)
-        if command:
-            return ExternalCommandChallengeHandler(
-                command,
-                timeout_seconds=max(1.0, float(timeout_seconds)),
-            )
-
-    local_url = str(solver_url or "").strip()
-    if not local_url:
-        return None
-    return ImmoweltDataDomeSolverHandler(
-        local_url,
-        timeout_seconds=min(90.0, max(5.0, float(timeout_seconds))),
-    )
-
     def _solve(self, requested_url: str) -> dict[str, Any]:
         body = json.dumps(
             {
@@ -293,3 +268,29 @@ def configured_immowelt_challenge_handler(
         if not isinstance(payload, dict):
             raise SolverBridgeError("solver response is not a JSON object")
         return payload
+
+
+def configured_immowelt_challenge_handler(
+    *,
+    external_command: str | None,
+    solver_url: str | None,
+    timeout_seconds: float,
+) -> ChallengeHandler | None:
+    """Select the explicit operator command first, then the optional loopback bridge."""
+
+    raw = str(external_command or "").strip()
+    if raw:
+        command = shlex.split(raw)
+        if command:
+            return ExternalCommandChallengeHandler(
+                command,
+                timeout_seconds=max(1.0, float(timeout_seconds)),
+            )
+
+    local_url = str(solver_url or "").strip()
+    if not local_url:
+        return None
+    return ImmoweltDataDomeSolverHandler(
+        local_url,
+        timeout_seconds=min(90.0, max(5.0, float(timeout_seconds))),
+    )
