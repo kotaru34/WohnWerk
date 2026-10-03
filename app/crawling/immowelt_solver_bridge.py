@@ -82,7 +82,21 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
         timeout_seconds: float = 75.0,
         max_candidates_per_run: int = 2,
     ) -> None:
-        self.solver_url = solver_url.rstrip("/")
+        normalized_solver_url = solver_url.rstrip("/")
+        parsed_solver = urlparse(normalized_solver_url)
+        if (
+            parsed_solver.scheme not in {"http", "https"}
+            or parsed_solver.hostname not in {"127.0.0.1", "::1", "localhost"}
+            or parsed_solver.username is not None
+            or parsed_solver.password is not None
+            or parsed_solver.query
+            or parsed_solver.fragment
+            or parsed_solver.path not in {"", "/"}
+        ):
+            raise ValueError(
+                "Immowelt DataDome solver must be an uncredentialed loopback HTTP(S) base URL"
+            )
+        self.solver_url = normalized_solver_url
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.max_candidates_per_run = max(1, int(max_candidates_per_run))
 
@@ -103,14 +117,18 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             )
 
         state_dir_raw = request.handoff_state.get("state_dir")
-        patch_path_raw = request.handoff_state.get("browser_patch_path")
-        if not state_dir_raw or not patch_path_raw:
-            return ChallengeResult(
-                action="defer",
-                message="challenge handoff does not expose a browser patch path",
-            )
+        if not state_dir_raw:
+            return ChallengeResult(action="defer", message="challenge handoff has no state directory")
         state_dir = Path(str(state_dir_raw)).resolve()
-        patch_path = Path(str(patch_path_raw)).resolve()
+        patch_path_raw = request.handoff_state.get("browser_patch_path")
+        patch_path = (
+            Path(str(patch_path_raw)).resolve()
+            if patch_path_raw
+            else (state_dir / "browser-patch.json").resolve()
+        )
+        # Older persisted handoffs predate browser_patch_path. Mutating the in-memory request
+        # keeps them compatible with restore_challenge_handoff without rewriting run history.
+        request.handoff_state["browser_patch_path"] = str(patch_path)
         try:
             patch_path.relative_to(state_dir)
         except ValueError:
@@ -119,11 +137,21 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
         run_state_path = state_dir.parent.parent / "datadome-solver-state.json"
         prior: dict[str, Any] = {}
         try:
-            prior = json.loads(run_state_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            prior = {}
-
-        attempts = max(0, int(prior.get("candidate_count") or 0))
+            loaded_prior = json.loads(run_state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            loaded_prior = {}
+        except (json.JSONDecodeError, OSError) as exc:
+            return ChallengeResult(
+                action="defer",
+                message=f"invalid DataDome loop state: {type(exc).__name__}",
+            )
+        if not isinstance(loaded_prior, dict):
+            return ChallengeResult(action="defer", message="invalid DataDome loop state object")
+        prior = loaded_prior
+        try:
+            attempts = max(0, int(prior.get("candidate_count") or 0))
+        except (TypeError, ValueError):
+            return ChallengeResult(action="defer", message="invalid DataDome candidate counter")
         if attempts >= self.max_candidates_per_run:
             return ChallengeResult(
                 action="defer",
@@ -140,13 +168,18 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
 
         cookie_value = str(result.get("datadome_cookie") or "").strip()
         user_agent = str(result.get("user_agent") or "").strip()
+        if result.get("proxy"):
+            return ChallengeResult(
+                action="defer",
+                message="DataDome solver used a proxy; crawler replay would not share the exit IP",
+            )
         if not result.get("solved") or not cookie_value or not user_agent:
             message = str(
                 result.get("error") or "local DataDome solver returned no replayable clearance"
             )
             return ChallengeResult(action="defer", message=message[:400])
 
-        cookie_domain = str(result.get("cookie_domain") or ".immowelt.de").strip().casefold()
+        cookie_domain = str(result.get("cookie_domain") or _host(requested_url)).strip().casefold()
         normalized_domain = cookie_domain.lstrip(".")
         if normalized_domain not in IMMOWELT_HOSTS and not normalized_domain.endswith(".immowelt.de"):
             return ChallengeResult(
