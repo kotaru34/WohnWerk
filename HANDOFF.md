@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/v0.4.12-broker-sources`  
+**Active development branch:** `feature/v0.4.13-admin-source-ops-falc`  
 **Production release:** `release/v0.4.11-r2`; deployed code SHA `6d7fd14cefbff75bed3957a5443c419c04db8501`  
-**Active PR:** #25 — `Release v0.4.12 exact broker-source candidate`  
+**Active PR:** pending — v0.4.13 admin source operations + FALC  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -60,6 +60,7 @@ Production is deployed and accepted on **v0.4.11**.
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
 - `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
+- v0.4.13 development adds detailed admin source diagnostics/actions and `falc-de`; production remains v0.4.11 until the exact v0.4.13 release gate/deploy completes
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
@@ -566,10 +567,11 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
 10. **DONE:** v0.4.10 r4 deployed at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`: Engel & Völkers frontier, heating integration, conservative unique-city PLZ resolution, DE source-card previews and shared categorized/icon-based house facts.
 11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
-12. **CURRENT:** v0.4.12 adds `iad-de` as an operational bounded broker-network frontier and retains `remax-de` as a fail-closed diagnostic adapter. Target-host validation reached Cloudflare Turnstile on RE/MAX, so it is unscheduled and no challenge bypass is attempted; iad target-host HTML is directly accessible and remains the operational new source.
-13. After v0.4.12, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
-14. Keep Germany jobs paused until an explicit operator decision reopens them.
-15. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
+12. **READY / NOT YET DEPLOYED:** v0.4.12 exact candidate `96656cd96091b33944824e5cb1b003142e7012d8` adds `iad-de` as an operational bounded broker-network frontier and retains `remax-de` as a fail-closed diagnostic adapter. Target-host validation reached Cloudflare Turnstile on RE/MAX, so it is unscheduled and no challenge bypass is attempted; iad target-host HTML is directly accessible.
+13. **CURRENT:** v0.4.13 expands `/admin/health` with source-state reasons, latest run/shard diagnostics, safe Run-now and Enable/Disable controls, and adds `falc-de` as another bounded direct Germany broker-network source with explicit FALC object-number identity and source-backed heating evidence.
+14. After v0.4.13, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+15. Keep Germany jobs paused until an explicit operator decision reopens them.
+16. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 
