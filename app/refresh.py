@@ -62,6 +62,18 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         failure_isolated=True,
     ),
     SourceRefreshPlan(
+        "remax-de",
+        "scripts/run_remax_de.py",
+        False,
+        failure_isolated=True,
+    ),
+    SourceRefreshPlan(
+        "iad-de",
+        "scripts/run_iad_de.py",
+        False,
+        failure_isolated=True,
+    ),
+    SourceRefreshPlan(
         "von-poll-de",
         "scripts/run_von_poll_de.py",
         True,
