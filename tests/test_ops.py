@@ -270,6 +270,12 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
             assert "25.0 %" in page.text
             assert "example-source" in page.text
             assert "Letzter Lauf und Coverage" in page.text
+            assert 'class="source-list"' in page.text
+            assert 'class="source-card"' in page.text
+            assert "Details &amp; Diagnose" in page.text
+            assert "Coverage ok" in page.text
+            assert "3 Seiten" in page.text
+            assert "1/1 Shards" in page.text
             assert "Jetzt ausführen" in page.text
             assert "Deaktivieren" in page.text
             assert "konkrete ungeocodierte Job-Orte" in page.text
