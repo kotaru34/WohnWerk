@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `release/v0.4.15`  
-**Production release:** `release/v0.4.14`; deployed code SHA `bc223ff2aa17306528300d4d3e31ad4180ca19fa`  
-**Active PR:** #34 — `Release v0.4.15 German source model hardening`  
+**Active development branch:** `feature/v0.4.16-immowelt-solver-bridge`  
+**Production release:** `release/v0.4.15`; deployed code SHA `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`  
+**Active PR:** #36 — `v0.4.16: loop-safe Immowelt DataDome solver bridge`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -28,43 +28,48 @@ The active Germany phase is now **house-only**.
 - Existing Austrian job acquisition/profile/ranking remains the compatibility baseline.
 - Workplace distance for German houses is based on an explicitly configured workplace location, not on a German job listing.
 - Current Germany house purchase target is **EUR 30,000..200,000**.
-- The external Immowelt challenge handler is operator-owned code. WohnWerk automation must not edit, refactor, install dependencies into, or otherwise modify that handler implementation unless the operator explicitly changes this rule.
-- WohnWerk owns everything around that handler boundary: detection, persistence, handoff contract, timeout/error behavior, same-run resume, source isolation, telemetry, tests and deployment.
+- An explicitly configured external Immowelt challenge-handler command remains operator-owned and keeps precedence over any bundled bridge.
+- Operator decision on 2026-10-03 authorizes WohnWerk to add a **source-specific local DataDome bridge** to the already installed localhost solver, provided it remains fail-closed, loop-safe, and does not pretend a separate-browser clearance is valid until the crawler itself retries the saved navigation point.
+- WohnWerk owns detection, persistence, handoff contract, local bridge validation, timeout/error behavior, same-run resume, source isolation, telemetry, tests and deployment. Cloudflare/Turnstile and other challenge families remain outside this DataDome replay path.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.14**.
+Production is deployed and accepted on **v0.4.15**.
 
-- deployed application version: **v0.4.14**
-- exact deployed Git SHA: `bc223ff2aa17306528300d4d3e31ad4180ca19fa`
-- exact release branch: `release/v0.4.14`
-- previous rollback checkpoint: v0.4.13 at `2863c01004341e9e7aa28bbc830c4e482e94c2df`
-- database migration head remains `0017_internet_source_evidence`; v0.4.14 has no DB migration
-- no dependency changes were part of v0.4.14
-- exact-release GitHub CI workflow `37092247093`: Install, Ruff and Compile passed, **698 passed, 2 warnings**
-- v0.4.14 was deployed and accepted through HMAC-verified Sentinel relay issue #78
-- final `/health` reports `version=0.4.14`
-- final live checkout HEAD is exactly `bc223ff2aa17306528300d4d3e31ad4180ca19fa` and the production worktree is clean
-- authenticated admin UI acceptance confirmed compact source cards, no legacy wide source table, collapsed diagnostics, and preserved Run-now / Enable / Disable controls
-- `falc-de` production bootstrap Run #5179 succeeded as bounded frontier-only acquisition: 8 pages, 10 listings seen/new, coverage intentionally degraded/non-authoritative for disappearance
-- authenticated admin source-operations acceptance passed: FALC automatic + runnable, RE/MAX manual-only with Turnstile reason, ImmoScout24 manual-only with challenge reason, Immowelt/iad automatic, exact HEAD clean, units active
-- RE/MAX diagnostic Run #5182 failed closed on the known browser challenge; ImmoScout24 diagnostic Run #5183 failed closed and preserved explicit browser/runtime error detail
-- final post-cleanup `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
-- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
-- targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
-- repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
-- authenticated production catalog and detail requests both returned HTTP 200 for the repaired house
-- both catalog and detail render the branded **s REAL** source badge before the seen status; badge class/icon/color/original-source href contract passed
-- the shared house-fact template contract remains intact in Objekt → Heizung → Distanzen → Internet order
-- the repaired property's cached media endpoint returned **200 image/jpeg**
-- the only recurring non-fatal runtime warning observed during the repair/readback is PostgreSQL timezone alias `Europe/Kiev` being treated as UTC by the client
-- post-deploy PR #23 contains only acceptance tooling/HANDOFF bookkeeping over the deployed SHA; production is **not** checked out to that PR commit
-- `von-poll-de` remains disabled fail-closed after HTTP 403
-- RE/MAX target-host access reaches Cloudflare Turnstile; `remax-de` remains unscheduled/fail-closed in v0.4.12
-- `immoscout24-de` remains unscheduled behind the explicit challenge boundary
-- `immowelt-de` remains the broad Germany portal source
-- `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
-- v0.4.14 is deployed with the compact source-card admin UI. v0.4.15 now audits every current German scraper against the latest acquisition model and hardens VON POLL so HTTP-403-blocked transport is manual-only and unstable fallback identities can never grant reconciliation authority
+- deployed application version: **v0.4.15**
+- exact deployed Git SHA: `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`
+- exact release branch: `release/v0.4.15`
+- rollback checkpoint: v0.4.14 at `bc223ff2aa17306528300d4d3e31ad4180ca19fa` via `rollback/v0.4.14-pre-v0.4.15`
+- database migration head remains `0017_internet_source_evidence`; v0.4.15 has no DB migration
+- no dependency changes were part of v0.4.15
+- exact-release GitHub CI workflow `37138156156`: Install, Ruff and Compile passed, **700 passed, 2 warnings**
+- v0.4.15 was deployed through HMAC-verified Sentinel issue #79 and final host acceptance completed through issue #80
+- final `/health` reports `version=0.4.15`
+- final live checkout HEAD is exactly `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`; production worktree is clean
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, and `wohnwerk-liveness.timer` are all active
+- German source-model audit is now enforced in production: VON POLL is manual-only after target-host HTTP 403, a direct diagnostic does not silently re-enable it, and unstable URL-hash fallback identity can never grant reconciliation/disappearance authority
+- Immowelt, ImmoScout24, Kleinanzeigen, Engel & Völkers, RE/MAX, iad and FALC remain aligned with the current acquisition contract; dormant German job adapters remain unscheduled/coverage-incomplete
+- the compact v0.4.14 source-card admin UI remains deployed unchanged
+
+
+### Local captcha-solver sidecar
+
+A separate operator-owned localhost sidecar was installed on the WohnWerk VM during Sentinel issue #80. Host-level recovery details live in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`; do not duplicate secrets there or here.
+
+- upstream checkout: `/opt/captcha-solver-global`, pinned to `d415fd7151e61a1cec677076036834fc178545c1`
+- isolated venv: `/opt/captcha-solver-global/venv`
+- runtime overlay: `/opt/captcha-solver-overlay`
+- dedicated unit/account: `captcha-solver.service` / `captcha-solver`
+- headed CloakBrowser runs under Xvfb on the headless VM; managed Chromium was downloaded under the dedicated service user's state
+- API is loopback-only at `127.0.0.1:8877`; final acceptance verified no public listener
+- the legacy upstream Mistral `KeyPool` interface is preserved by a local compatibility overlay that sends image prompts to the operator-owned llama-server at `http://10.169.0.130:8080/v1`
+- active observed multimodal model id: `Qwen3.6-Heretic-Quality`; a synthetic red-image smoke through `/v1/chat/completions` returned `red`
+- `SOLVER_ALLOW_PRIVATE` is not set; no public Caddy route, Cloudflare exposure, proxy credentials, or Mistral API keys were configured
+- installation acceptance did **not** perform a live solve against a third-party challenge page
+- production v0.4.15 does **not** automatically wire the sidecar into WohnWerk source adapters.
+- v0.4.16 development adds an explicitly enabled Immowelt-only DataDome bridge. It accepts only positively identified DataDome gates, stages only an Immowelt-scoped `datadome` cookie plus the solver's exact User-Agent, and makes the crawler retry its own saved navigation point.
+- the bridge records only a hash of the last candidate for loop detection; repeated identical candidates or the bounded candidate limit return `defer` instead of another false `resolved`.
+- generic Cloudflare/Turnstile or other challenge-cookie replay is still prohibited because those flows can require stronger same-browser/fingerprint semantics.
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
@@ -404,7 +409,7 @@ Production transport:
 
 ### Resumable challenge boundary
 
-WohnWerk owns a resumable state machine around the operator-owned handler.
+WohnWerk owns a resumable state machine around either an explicitly configured operator-owned command or the optional v0.4.16 local DataDome bridge.
 
 On a recognized challenge WohnWerk must:
 
@@ -415,23 +420,23 @@ On a recognized challenge WohnWerk must:
 5. export browser storage state and diagnostic screenshot where available;
 6. commit persistence before invoking the external handler;
 7. mark the current run/shard paused without fabricating failures for untouched shards;
-8. invoke the external handler through the documented JSON stdin/stdout contract;
-9. on `resolved`, load returned/updated browser state and retry the same saved navigation point in the same run;
+8. invoke the explicit external handler, or when configured and positively identified as DataDome, invoke the source-specific localhost bridge;
+9. on `resolved`, validate and load returned/staged browser state and retry the same saved navigation point in the same run;
 10. on `defer`, leave the run unfinished and resumable;
 11. on `abort`/hard source failure, count the actual failed work separately and mark untouched remainder as skipped/not-attempted;
 12. never allow a challenge-resumed/incomplete run to gain reconciliation authority unless complete identity history and all normal authority conditions hold.
 
-The supported operator boundary is exposed through `--challenge-handler` and/or
-`WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`. The request carries `contract_version=1`; newly created
-handoffs also carry a stable `handoff_id`. Persisted legacy handoffs such as Run #990 remain
-backward compatible even if that field is empty.
+The explicit operator boundary remains exposed through `--challenge-handler` and
+`WOHNWERK_IMMOWELT_CHALLENGE_HANDLER`; it always takes precedence. v0.4.16 additionally recognizes
+`WOHNWERK_IMMOWELT_SOLVER_URL` for the bundled Immowelt DataDome bridge. The request carries
+`contract_version=1`; newly created handoffs also carry a stable `handoff_id`. Persisted legacy
+handoffs such as Run #990 remain backward compatible even if that field is empty.
 
-The child process receives only the documented allowlisted execution environment plus
+External child processes still receive only the documented allowlisted environment plus
 `WOHNWERK_CHALLENGE_CONTRACT_VERSION=1`; unrelated WohnWerk runtime variables are not forwarded.
+The bundled bridge does not execute a shell command and only talks to the configured local solver URL.
 
-See `docs/immowelt_handler_contract.md` for the concrete JSON contract and acceptance checklist.
-
-The handler itself is not a WohnWerk implementation task.
+See `docs/immowelt_handler_contract.md` for the concrete contract and v0.4.16 acceptance rules.
 
 ### Latest production Immowelt checkpoint
 
@@ -573,10 +578,12 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
 12. **DONE:** v0.4.12 deployed and production-accepted at `96656cd96091b33944824e5cb1b003142e7012d8`. `iad-de` is operational and bootstrapped; `remax-de` remains an unscheduled fail-closed diagnostic adapter after target-host Cloudflare Turnstile.
 13. **DONE:** v0.4.13 deployed at `2863c01004341e9e7aa28bbc830c4e482e94c2df`: `/admin/health` source-state reasons, run/shard diagnostics, safe Run-now and Enable/Disable controls, plus operational `falc-de` bounded Germany broker-network source.
-14. **CURRENT:** v0.4.14 redesigns only the `/admin/health` source-list presentation into compact responsive cards with collapsed diagnostics; source semantics and controls stay unchanged.
-15. After v0.4.14, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
-16. Keep Germany jobs paused until an explicit operator decision reopens them.
-17. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
+14. **DONE:** v0.4.14 deployed at `bc223ff2aa17306528300d4d3e31ad4180ca19fa`: compact responsive admin source cards with collapsed diagnostics; source semantics and controls unchanged.
+15. **DONE:** v0.4.15 deployed at `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`: German source-model audit hardening; VON POLL manual-only after HTTP 403 and unstable fallback identity cannot grant reconciliation authority.
+16. **CURRENT:** v0.4.16 adds an opt-in, Immowelt-only DataDome bridge to the localhost solver with exact User-Agent replay, persisted browser-patch validation and bounded repeat-candidate loop prevention. External handler commands retain precedence; generic Cloudflare/Turnstile replay remains fail-closed.
+17. After v0.4.16, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+18. Keep Germany jobs paused until an explicit operator decision reopens them.
+19. Run #990 remains retained for audit continuity and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 
