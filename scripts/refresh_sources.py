@@ -16,7 +16,7 @@ from app.database import SessionLocal
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.live_events import queue_live_event
 from app.models import Source, SourceCategory
-from app.refresh import DueSourceRun, due_source_runs
+from app.refresh import DueSourceRun, due_source_runs, source_run_plan
 from app.version import __version__
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -58,6 +58,13 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Running web health endpoint used to gate mutating refresh work "
             f"(default: {DEFAULT_HEALTH_URL})."
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        help=(
+            "Run exactly one enabled registered source now (incremental mode), ignoring "
+            "its poll interval. The normal global refresh lock and runtime release gate still apply."
         ),
     )
     parser.add_argument(
@@ -171,10 +178,25 @@ def main() -> None:
 
     try:
         with SessionLocal() as session:
-            due = due_source_runs(
-                session,
-                reconciliation_retry_minutes=max(1, args.reconciliation_retry_minutes),
-            )
+            if args.source:
+                source = session.scalar(select(Source).where(Source.name == args.source))
+                if source is None:
+                    print(f"refresh_status=skipped reason=unknown_source source={args.source}")
+                    raise SystemExit(2)
+                if not source.enabled:
+                    print(f"refresh_status=skipped reason=source_disabled source={args.source}")
+                    return
+                plan = source_run_plan(args.source)
+                if plan is None:
+                    print(f"refresh_status=skipped reason=source_not_runnable source={args.source}")
+                    raise SystemExit(2)
+                due = [DueSourceRun(plan=plan, reconciliation=False)]
+                print(f"manual_source={args.source}")
+            else:
+                due = due_source_runs(
+                    session,
+                    reconciliation_retry_minutes=max(1, args.reconciliation_retry_minutes),
+                )
 
         print(f"due_sources={len(due)}")
         for run in due:
