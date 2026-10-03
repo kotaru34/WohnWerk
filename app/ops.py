@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-import subprocess
-import sys
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, HTTPException, Request, status
@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
 from app.jobs.location_resolution import is_non_point_location_scope
-from app.refresh import source_is_scheduled, source_operational_note, source_run_plan
 from app.models import (
     CoverageStatus,
     CrawlRun,
@@ -32,6 +31,7 @@ from app.models import (
     SourceCategory,
     SourceShard,
 )
+from app.refresh import source_is_scheduled, source_operational_note, source_run_plan
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
