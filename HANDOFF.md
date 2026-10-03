@@ -4,7 +4,7 @@
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
 **Active development branch:** `release/v0.4.15`  
-**Production release:** `release/v0.4.14`; deployed code SHA `bc223ff2aa17306528300d4d3e31ad4180ca19fa`  
+**Production release:** `release/v0.4.15`; deployed code SHA `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`  
 **Active PR:** #34 — `Release v0.4.15 German source model hardening`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
@@ -33,38 +33,40 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.14**.
+Production is deployed and accepted on **v0.4.15**.
 
-- deployed application version: **v0.4.14**
-- exact deployed Git SHA: `bc223ff2aa17306528300d4d3e31ad4180ca19fa`
-- exact release branch: `release/v0.4.14`
-- previous rollback checkpoint: v0.4.13 at `2863c01004341e9e7aa28bbc830c4e482e94c2df`
-- database migration head remains `0017_internet_source_evidence`; v0.4.14 has no DB migration
-- no dependency changes were part of v0.4.14
-- exact-release GitHub CI workflow `37092247093`: Install, Ruff and Compile passed, **698 passed, 2 warnings**
-- v0.4.14 was deployed and accepted through HMAC-verified Sentinel relay issue #78
-- final `/health` reports `version=0.4.14`
-- final live checkout HEAD is exactly `bc223ff2aa17306528300d4d3e31ad4180ca19fa` and the production worktree is clean
-- authenticated admin UI acceptance confirmed compact source cards, no legacy wide source table, collapsed diagnostics, and preserved Run-now / Enable / Disable controls
-- `falc-de` production bootstrap Run #5179 succeeded as bounded frontier-only acquisition: 8 pages, 10 listings seen/new, coverage intentionally degraded/non-authoritative for disappearance
-- authenticated admin source-operations acceptance passed: FALC automatic + runnable, RE/MAX manual-only with Turnstile reason, ImmoScout24 manual-only with challenge reason, Immowelt/iad automatic, exact HEAD clean, units active
-- RE/MAX diagnostic Run #5182 failed closed on the known browser challenge; ImmoScout24 diagnostic Run #5183 failed closed and preserved explicit browser/runtime error detail
-- final post-cleanup `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
-- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
-- targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
-- repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
-- authenticated production catalog and detail requests both returned HTTP 200 for the repaired house
-- both catalog and detail render the branded **s REAL** source badge before the seen status; badge class/icon/color/original-source href contract passed
-- the shared house-fact template contract remains intact in Objekt → Heizung → Distanzen → Internet order
-- the repaired property's cached media endpoint returned **200 image/jpeg**
-- the only recurring non-fatal runtime warning observed during the repair/readback is PostgreSQL timezone alias `Europe/Kiev` being treated as UTC by the client
-- post-deploy PR #23 contains only acceptance tooling/HANDOFF bookkeeping over the deployed SHA; production is **not** checked out to that PR commit
-- `von-poll-de` remains disabled fail-closed after HTTP 403
-- RE/MAX target-host access reaches Cloudflare Turnstile; `remax-de` remains unscheduled/fail-closed in v0.4.12
-- `immoscout24-de` remains unscheduled behind the explicit challenge boundary
-- `immowelt-de` remains the broad Germany portal source
-- `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
-- v0.4.14 is deployed with the compact source-card admin UI. v0.4.15 now audits every current German scraper against the latest acquisition model and hardens VON POLL so HTTP-403-blocked transport is manual-only and unstable fallback identities can never grant reconciliation authority
+- deployed application version: **v0.4.15**
+- exact deployed Git SHA: `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`
+- exact release branch: `release/v0.4.15`
+- rollback checkpoint: v0.4.14 at `bc223ff2aa17306528300d4d3e31ad4180ca19fa` via `rollback/v0.4.14-pre-v0.4.15`
+- database migration head remains `0017_internet_source_evidence`; v0.4.15 has no DB migration
+- no dependency changes were part of v0.4.15
+- exact-release GitHub CI workflow `37138156156`: Install, Ruff and Compile passed, **700 passed, 2 warnings**
+- v0.4.15 was deployed through HMAC-verified Sentinel issue #79 and final host acceptance completed through issue #80
+- final `/health` reports `version=0.4.15`
+- final live checkout HEAD is exactly `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`; production worktree is clean
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, and `wohnwerk-liveness.timer` are all active
+- German source-model audit is now enforced in production: VON POLL is manual-only after target-host HTTP 403, a direct diagnostic does not silently re-enable it, and unstable URL-hash fallback identity can never grant reconciliation/disappearance authority
+- Immowelt, ImmoScout24, Kleinanzeigen, Engel & Völkers, RE/MAX, iad and FALC remain aligned with the current acquisition contract; dormant German job adapters remain unscheduled/coverage-incomplete
+- the compact v0.4.14 source-card admin UI remains deployed unchanged
+
+
+### Local captcha-solver sidecar
+
+A separate operator-owned localhost sidecar was installed on the WohnWerk VM during Sentinel issue #80. Host-level recovery details live in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md`; do not duplicate secrets there or here.
+
+- upstream checkout: `/opt/captcha-solver-global`, pinned to `d415fd7151e61a1cec677076036834fc178545c1`
+- isolated venv: `/opt/captcha-solver-global/venv`
+- runtime overlay: `/opt/captcha-solver-overlay`
+- dedicated unit/account: `captcha-solver.service` / `captcha-solver`
+- headed CloakBrowser runs under Xvfb on the headless VM; managed Chromium was downloaded under the dedicated service user's state
+- API is loopback-only at `127.0.0.1:8877`; final acceptance verified no public listener
+- the legacy upstream Mistral `KeyPool` interface is preserved by a local compatibility overlay that sends image prompts to the operator-owned llama-server at `http://10.169.0.130:8080/v1`
+- active observed multimodal model id: `Qwen3.6-Heretic-Quality`; a synthetic red-image smoke through `/v1/chat/completions` returned `red`
+- `SOLVER_ALLOW_PRIVATE` is not set; no public Caddy route, Cloudflare exposure, proxy credentials, or Mistral API keys were configured
+- installation acceptance did **not** perform a live solve against a third-party challenge page
+- the sidecar is **not automatically wired into WohnWerk source adapters**. The existing external handler resumes persisted state from the crawler's own Playwright browser, while the sidecar produces tokens/cookies from a separate CloakBrowser session. Some clearances are bound to UA/fingerprint/IP, so a generic token/cookie replay bridge would be incorrect and can create false `resolved` loops.
+- any future integration must be source-specific, GitHub-first and CI-gated, and must preserve same-session/browser-state semantics before a challenge handler may return `resolved`.
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
