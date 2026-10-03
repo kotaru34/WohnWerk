@@ -89,6 +89,11 @@ _CHALLENGE_STRONG_MARKERS = (
     "geo.captcha-delivery",
 )
 
+_DATADOME_BOOTSTRAP_FIELD_RE = re.compile(
+    r"""['"](?P<key>rt|t|host)['"]\s*:\s*['"](?P<value>[^'"]+)['"]""",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ImmoweltPage:
@@ -102,6 +107,28 @@ class ImmoweltPage:
     blank_cards_skipped: int
 
 
+def _datadome_bootstrap_metadata(html: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for match in _DATADOME_BOOTSTRAP_FIELD_RE.finditer(html):
+        key = match.group("key").casefold()
+        fields.setdefault(key, match.group("value").strip())
+
+    host = fields.get("host", "").casefold()
+    if not host or not any(
+        host == suffix or host.endswith(f".{suffix}") for suffix in _CHALLENGE_HOST_SUFFIXES
+    ):
+        return {}
+
+    metadata = {"datadome_host": host}
+    response_type = fields.get("rt", "").casefold()
+    challenge_type = fields.get("t", "").casefold()
+    if response_type:
+        metadata["datadome_response_type"] = response_type
+    if challenge_type:
+        metadata["datadome_challenge_type"] = challenge_type
+    return metadata
+
+
 def detect_immowelt_challenge(
     *,
     status: int | None,
@@ -111,6 +138,7 @@ def detect_immowelt_challenge(
     frame_urls: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any] | None:
     """Recognize explicit source gates without treating ordinary portal JS as a challenge."""
+    datadome_metadata = _datadome_bootstrap_metadata(html)
     suspicious_url: str | None = None
     for candidate in (final_url, *frame_urls):
         host = (urlparse(candidate).hostname or "").casefold()
@@ -132,25 +160,30 @@ def detect_immowelt_challenge(
             challenge["challenge_url"] = suspicious_url
         if markers:
             challenge["markers"] = markers[:5]
+        challenge.update(datadome_metadata)
         return challenge
 
     if suspicious_url is not None:
-        return {
+        challenge = {
             "kind": "challenge_frame_or_redirect",
             "http_status": status,
             "requested_url": requested_url,
             "final_url": final_url,
             "challenge_url": suspicious_url,
         }
+        challenge.update(datadome_metadata)
+        return challenge
 
     if markers:
-        return {
+        challenge = {
             "kind": "challenge_content",
             "http_status": status,
             "requested_url": requested_url,
             "final_url": final_url,
             "markers": markers[:5],
         }
+        challenge.update(datadome_metadata)
+        return challenge
 
     # Avoid false positives from a normal page merely loading a generic CAPTCHA library.
     # Generic "captcha" only counts when the document itself also looks like a challenge UI.
