@@ -1,7 +1,7 @@
 # Immowelt external challenge-handler contract
 
 **Contract version:** 1  
-**Ownership:** external command remains operator-owned when configured; v0.4.16 also supports an optional WohnWerk-owned, source-specific DataDome bridge to the local loopback solver.
+**Ownership:** external command remains operator-owned when configured; v0.4.16+ supports an optional WohnWerk-owned, source-specific DataDome bridge to the local loopback solver.
 
 WohnWerk owns challenge detection, persistence, invocation, retry/resume semantics and telemetry.
 The external handler owns only whatever operator-controlled action is required to turn one persisted
@@ -108,6 +108,7 @@ The v0.4.16 local-solver integration is deliberately narrower than the generic h
 
 - it is enabled only by explicit `WOHNWERK_IMMOWELT_SOLVER_URL` configuration;
 - it only acts on positively identified Immowelt **DataDome** gates;
+- v0.4.17 preserves only non-sensitive DataDome bootstrap classification (`rt`, `t`, challenge host) and fails closed immediately when `t=bv` reports a banned visitor; it never persists the inline DataDome cookie/cid/hash/signature;
 - it does not treat a generic HTTP 403 as solvable without DataDome frame/content evidence;
 - it calls the loopback solver for a DataDome clearance candidate and requires a cookie scoped to
   Immowelt plus the exact solver browser User-Agent;
@@ -154,3 +155,14 @@ Before enabling the local bridge in production:
 7. after deployment, a real challenge may only be considered resolved after the normal crawler
    successfully retries the saved navigation point. A repeated gate remains paused/deferred rather
    than restarting from page 1.
+
+## v0.4.17 live-bridge hardening
+
+A live target-host acceptance on 2026-10-03 proved the current Immowelt search request returns
+HTTP 403 with a DataDome bootstrap classified as `rt=c`, `t=bv`. The local solver's DataDome
+implementation is a silent-clearance harvester, so repeatedly calling it for a banned-visitor gate
+only consumes its bounded timeout and cannot produce a replayable same-IP clearance.
+
+v0.4.17 therefore treats `t=bv` as an explicit fail-closed condition before invoking the solver.
+The run remains paused/resumable and retains no reconciliation authority. This does not add proxy
+rotation, generic challenge bypass, or a claim that an unsolved third-party gate was resolved.
