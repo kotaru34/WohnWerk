@@ -27,6 +27,7 @@ _BRANDS: dict[str, PropertySourceBrand] = {
     "von-poll-de": PropertySourceBrand("von-poll", "VON POLL", "#21384f", "VP"),
     "remax-de": PropertySourceBrand("remax", "RE/MAX", "#dc1c2e", "R/M"),
     "iad-de": PropertySourceBrand("iad", "iad", "#005a9c", "iad"),
+    "falc-de": PropertySourceBrand("falc", "FALC", "#2b2b2b", "F"),
     "willhaben.at": PropertySourceBrand("willhaben", "willhaben", "#c6168d", "w"),
 }
 

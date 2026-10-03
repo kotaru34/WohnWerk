@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.admin import AdminDependency, DbDependency
+from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
 from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
     CoverageStatus,
@@ -27,13 +31,23 @@ from app.models import (
     SourceCategory,
     SourceShard,
 )
+from app.refresh import source_is_scheduled, source_operational_note, source_run_plan
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+NOTICE_LABELS = {
+    "source_enabled": "Quelle aktiviert.",
+    "source_disabled": "Quelle deaktiviert.",
+    "run_started": "Manueller Quellenlauf wurde gestartet.",
+    "already_running": "Für diese Quelle läuft bereits ein Crawl.",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class SourceOpsRow:
+    id: int
     name: str
     category: str
     enabled: bool
@@ -49,6 +63,18 @@ class SourceOpsRow:
     latest_shards_failed: int | None
     failing_shards: int
     last_error: str | None
+    state_reason: str
+    latest_error: str | None
+    latest_pages_fetched: int | None
+    latest_items_new: int | None
+    latest_items_updated: int | None
+    latest_items_disappeared: int | None
+    latest_shards_total: int | None
+    latest_shards_completed: int | None
+    shard_errors: tuple[str, ...]
+    scheduled: bool
+    runnable: bool
+    operational_note: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,9 +128,15 @@ def source_ops_state(
     failing_shards: int,
     *,
     now: datetime,
+    scheduled: bool = True,
+    runnable: bool = True,
 ) -> str:
     if not source.enabled:
         return "deaktiviert"
+    if latest is not None and latest.status == RunStatus.RUNNING:
+        return "läuft"
+    if runnable and not scheduled:
+        return "warnung"
     if source.coverage_status in {CoverageStatus.DEGRADED, CoverageStatus.FAILED}:
         return "warnung"
     if latest is not None and latest.status == RunStatus.FAILED:
@@ -127,6 +159,80 @@ def source_ops_state(
     if age > stale_after:
         return "veraltet"
     return "ok"
+
+
+def source_ops_reason(
+    source: Source,
+    latest: CrawlRun | None,
+    failing_shards: int,
+    shard_errors: tuple[str, ...],
+    *,
+    now: datetime,
+    scheduled: bool = True,
+    runnable: bool = True,
+    operational_note: str | None = None,
+    supports_reconciliation: bool = True,
+) -> str:
+    if not source.enabled:
+        return "Vom Administrator deaktiviert; automatische und manuelle Läufe sind gesperrt."
+
+    if latest is not None and latest.status == RunStatus.RUNNING:
+        return f"Lauf #{latest.id} läuft seit {latest.started_at:%d.%m.%Y %H:%M}."
+
+    latest_error = (
+        getattr(latest, "error", None) if latest is not None else None
+    ) or getattr(source, "last_error", None)
+    if latest is not None and latest.status == RunStatus.FAILED:
+        detail = latest_error or "kein Fehlertext gespeichert"
+        return f"Lauf #{latest.id} fehlgeschlagen: {detail}"
+
+    if latest is not None and latest.status == RunStatus.PARTIAL:
+        failed = int(getattr(latest, "shards_failed", 0) or 0)
+        total = int(getattr(latest, "shards_total", 0) or 0)
+        completed = int(getattr(latest, "shards_completed", 0) or 0)
+        if failed or (total and completed < total):
+            detail = shard_errors[0] if shard_errors else latest_error
+            suffix = f" Ursache: {detail}" if detail else ""
+            return (
+                f"Lauf #{latest.id} nur teilweise: {completed}/{total} Shards abgeschlossen, "
+                f"{failed} fehlgeschlagen.{suffix}"
+            )
+
+    if source.coverage_status in {CoverageStatus.DEGRADED, CoverageStatus.FAILED}:
+        if (
+            source.coverage_status == CoverageStatus.DEGRADED
+            and not supports_reconciliation
+            and latest is not None
+            and latest.status == RunStatus.SUCCESS
+        ):
+            return (
+                "Letzter Lauf erfolgreich; Coverage bleibt absichtlich degraded, weil "
+                "diese Quelle nur einen begrenzten Frontier-Scan liefert und deshalb "
+                "keine Vollständigkeit bzw. Disappearance-Authority behauptet."
+            )
+        detail = latest_error or (shard_errors[0] if shard_errors else None)
+        suffix = f": {detail}" if detail else ""
+        return f"Coverage ist {source.coverage_status}{suffix}"
+
+    if failing_shards:
+        suffix = f" Letzter Shard-Fehler: {shard_errors[0]}" if shard_errors else ""
+        return f"{failing_shards} aktive Shards haben aufeinanderfolgende Fehler.{suffix}"
+
+    if runnable and not scheduled:
+        return operational_note or "Quelle ist nur für manuelle Diagnose-Läufe registriert."
+
+    age = _age_minutes(source.last_success_at, now)
+    if age is None:
+        return operational_note or "Noch kein erfolgreicher Lauf gespeichert."
+
+    stale_after = max(180, source.poll_interval_minutes * 3)
+    if age > stale_after:
+        return (
+            f"Letzter Erfolg vor {age / 60:.1f} h; erwartet wird spätestens nach "
+            f"{stale_after / 60:.1f} h ein erfolgreicher Lauf."
+        )
+
+    return operational_note or "Letzter Lauf und Coverage sind ohne aktuellen Fehler."
 
 
 def split_unresolved_location_labels(
@@ -287,12 +393,42 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
             )
             or 0
         )
+        latest_shard_errors = (
+            tuple(
+                str(error)
+                for error in db.scalars(
+                    select(CrawlShardRun.error)
+                    .where(
+                        CrawlShardRun.crawl_run_id == latest.id,
+                        CrawlShardRun.error.is_not(None),
+                    )
+                    .order_by(CrawlShardRun.id)
+                    .limit(3)
+                )
+                if error
+            )
+            if latest is not None
+            else ()
+        )
+        plan = source_run_plan(source.name)
+        scheduled = source_is_scheduled(source.name)
+        runnable = plan is not None
+        operational_note = source_operational_note(source.name)
+        state = source_ops_state(
+            source,
+            latest,
+            failing_shards,
+            now=now,
+            scheduled=scheduled,
+            runnable=runnable,
+        )
         rows.append(
             SourceOpsRow(
+                id=source.id,
                 name=source.name,
                 category=source.category,
                 enabled=source.enabled,
-                state=source_ops_state(source, latest, failing_shards, now=now),
+                state=state,
                 coverage_status=source.coverage_status,
                 poll_interval_minutes=source.poll_interval_minutes,
                 last_success_at=source.last_success_at,
@@ -304,6 +440,30 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
                 latest_shards_failed=latest.shards_failed if latest else None,
                 failing_shards=failing_shards,
                 last_error=source.last_error,
+                state_reason=source_ops_reason(
+                    source,
+                    latest,
+                    failing_shards,
+                    latest_shard_errors,
+                    now=now,
+                    scheduled=scheduled,
+                    runnable=runnable,
+                    operational_note=operational_note,
+                    supports_reconciliation=(
+                        plan.supports_reconciliation if plan is not None else False
+                    ),
+                ),
+                latest_error=latest.error if latest else None,
+                latest_pages_fetched=latest.pages_fetched if latest else None,
+                latest_items_new=latest.items_new if latest else None,
+                latest_items_updated=latest.items_updated if latest else None,
+                latest_items_disappeared=latest.items_disappeared if latest else None,
+                latest_shards_total=latest.shards_total if latest else None,
+                latest_shards_completed=latest.shards_completed if latest else None,
+                shard_errors=latest_shard_errors,
+                scheduled=scheduled,
+                runnable=runnable,
+                operational_note=operational_note,
             )
         )
 
@@ -360,16 +520,89 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
     )
 
 
+def _health_redirect(notice: str) -> RedirectResponse:
+    return RedirectResponse(f"/admin/health?{urlencode({'hinweis': notice})}", status_code=303)
+
+
+@router.post("/sources/{source_id}/enabled")
+def set_source_enabled(
+    source_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    enabled: str = Form(),
+):
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Quelle nicht gefunden.")
+    source.enabled = enabled == "1"
+    db.commit()
+    return _health_redirect("source_enabled" if source.enabled else "source_disabled")
+
+
+@router.post("/sources/{source_id}/run")
+def run_source_now(
+    source_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+):
+    source = db.get(Source, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Quelle nicht gefunden.")
+    if not source.enabled:
+        raise HTTPException(status_code=409, detail="Deaktivierte Quelle kann nicht gestartet werden.")
+    if source_run_plan(source.name) is None:
+        raise HTTPException(status_code=409, detail="Quelle ist nicht für manuelle Läufe registriert.")
+
+    running = db.scalar(
+        select(CrawlRun.id)
+        .where(
+            CrawlRun.source_id == source.id,
+            CrawlRun.status == RunStatus.RUNNING,
+            CrawlRun.finished_at.is_(None),
+        )
+        .order_by(CrawlRun.id.desc())
+        .limit(1)
+    )
+    if running is not None:
+        return _health_redirect("already_running")
+
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
+                "--source",
+                source.name,
+            ],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Quellenlauf konnte nicht gestartet werden: {exc}",
+        ) from exc
+    return _health_redirect("run_started")
+
+
 @router.get("/health")
 def admin_health_page(
     request: Request,
     _: AdminDependency,
     db: DbDependency,
+    hinweis: str | None = None,
 ):
     return templates.TemplateResponse(
         request=request,
         name="admin_health.html",
         context={
             "snapshot": collect_ops_snapshot(db),
+            "csrf_token": _csrf_token(),
+            "notice": NOTICE_LABELS.get(hinweis or ""),
         },
     )

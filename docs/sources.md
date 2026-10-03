@@ -52,6 +52,13 @@ second independent broker frontier while keeping each source's coverage authorit
   retains that provenance plus card-backed location/price/area/preview facts. iad may
   syndicate listings to large portals, so canonical dedupe remains conservative and
   source provenance remains distinct.
+- `falc-de`: v0.4.13 direct FALC Immobilien broker-network frontier over
+  bounded nationwide house-sale pages. Search cards are filtered locally to the active
+  EUR 30,000..200,000 budget before detail requests. For those retained candidates only,
+  WohnWerk reads the explicit FALC `Objektnr.` as stable source identity and stores
+  normalized source-backed heating evidence when present. Full descriptions, broker
+  contacts and inquiry-form data are not retained. The bounded frontier never gains
+  disappearance authority.
 
 The active Germany purchase budget is EUR 30,000..200,000. Discovery adapters keep
 source identity/URL, title, asking price, explicit living/plot area, PLZ/city and
@@ -236,6 +243,19 @@ RTR is the canonical source for Austrian PLZ/name data. BEV Adressregister data 
 The production database already contains the Austria-first schema, RTR PLZ data and BEV-derived PLZ geography.
 
 ## Operational source rules
+
+The authenticated `/admin/health` source table is also the operator control surface.
+It explains the current state from the latest crawl/source/shard evidence instead of
+showing a bare warning label. It exposes whether a source is automatic, manual-only or
+not runnable, and allows an authenticated/CSRF-protected operator to enable/disable a
+source or request one immediate registered-source run. Manual runs still pass through
+the normal single-instance refresh lock and runtime release-version gate; the browser
+cannot supply an arbitrary command or script path.
+
+Challenge-bound adapters such as RE/MAX and ImmoScout24 remain excluded from automatic
+scheduling. Their explicit manual diagnostic action repeats the normal fail-closed
+transport so the current challenge/error can be observed in the same source-status
+history; it does not implement or invoke a challenge bypass.
 
 Every source owns:
 

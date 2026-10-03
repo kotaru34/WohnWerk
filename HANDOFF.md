@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/v0.4.12-broker-sources`  
-**Production release:** `release/v0.4.11-r2`; deployed code SHA `6d7fd14cefbff75bed3957a5443c419c04db8501`  
-**Active PR:** #25 — `Release v0.4.12 exact broker-source candidate`  
+**Active development branch:** `release/v0.4.13`  
+**Production release:** `release/v0.4.12`; deployed code SHA `96656cd96091b33944824e5cb1b003142e7012d8`  
+**Active PR:** #28 — `Release v0.4.13 source operations and FALC`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,19 +33,21 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.11**.
+Production is deployed and accepted on **v0.4.12**.
 
-- deployed application version: **v0.4.11**
-- exact deployed Git SHA: `6d7fd14cefbff75bed3957a5443c419c04db8501`
-- exact release branch: `release/v0.4.11-r2`
-- previous rollback checkpoint: v0.4.10 r4 at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`
+- deployed application version: **v0.4.12**
+- exact deployed Git SHA: `96656cd96091b33944824e5cb1b003142e7012d8`
+- exact release branch: `release/v0.4.12`
+- previous rollback checkpoint: v0.4.11 at `6d7fd14cefbff75bed3957a5443c419c04db8501`
 - database migration head remains `0017_internet_source_evidence`; v0.4.11 has no DB migration
 - no dependency changes were part of v0.4.11
 - exact-release GitHub CI workflow `37078259652`: Ruff passed, compile passed, **680 passed, 2 warnings**
 - production deploy completed through Sentinel relay issue #73
 - post-deploy repair/acceptance completed through Sentinel relay issues #74 and #75
-- final `/health` reports `version=0.4.11`
-- final live checkout HEAD is exactly `6d7fd14cefbff75bed3957a5443c419c04db8501` and the production worktree is clean
+- final `/health` reports `version=0.4.12`
+- v0.4.12 was deployed through HMAC-verified Sentinel relay issue #76; final HEAD/status/service/timer/health checks passed
+- `iad-de` production bootstrap Run #5175 succeeded as bounded frontier-only acquisition: 8 pages, 9 in-budget listings seen/new, provider-reported corpus 932, coverage intentionally degraded/non-authoritative for disappearance
+- final live checkout HEAD is exactly `96656cd96091b33944824e5cb1b003142e7012d8` and the production worktree is clean
 - `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
 - targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
 - repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
@@ -60,6 +62,7 @@ Production is deployed and accepted on **v0.4.11**.
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
 - `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
+- v0.4.13 development adds detailed admin source diagnostics/actions and `falc-de`; production remains v0.4.12 until the exact v0.4.13 release gate/deploy completes
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
@@ -566,10 +569,11 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
 10. **DONE:** v0.4.10 r4 deployed at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`: Engel & Völkers frontier, heating integration, conservative unique-city PLZ resolution, DE source-card previews and shared categorized/icon-based house facts.
 11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
-12. **CURRENT:** v0.4.12 adds `iad-de` as an operational bounded broker-network frontier and retains `remax-de` as a fail-closed diagnostic adapter. Target-host validation reached Cloudflare Turnstile on RE/MAX, so it is unscheduled and no challenge bypass is attempted; iad target-host HTML is directly accessible and remains the operational new source.
-13. After v0.4.12, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
-14. Keep Germany jobs paused until an explicit operator decision reopens them.
-15. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
+12. **DONE:** v0.4.12 deployed and production-accepted at `96656cd96091b33944824e5cb1b003142e7012d8`. `iad-de` is operational and bootstrapped; `remax-de` remains an unscheduled fail-closed diagnostic adapter after target-host Cloudflare Turnstile.
+13. **CURRENT:** v0.4.13 expands `/admin/health` with source-state reasons, latest run/shard diagnostics, safe Run-now and Enable/Disable controls, and adds `falc-de` as another bounded direct Germany broker-network source with explicit FALC object-number identity and source-backed heating evidence.
+14. After v0.4.13, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+15. Keep Germany jobs paused until an explicit operator decision reopens them.
+16. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 

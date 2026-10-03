@@ -18,6 +18,7 @@ DEFAULT_SOURCE_NAMES = (
     "kleinanzeigen-de",
     "engel-voelkers-de",
     "iad-de",
+    "falc-de",
 )
 SOURCE_ALLOWED_HOSTS: dict[str, frozenset[str]] = {
     "von-poll-de": frozenset({"von-poll.com", "www.von-poll.com"}),
@@ -25,6 +26,7 @@ SOURCE_ALLOWED_HOSTS: dict[str, frozenset[str]] = {
     "engel-voelkers-de": frozenset({"engelvoelkers.com", "www.engelvoelkers.com"}),
     "remax-de": frozenset({"remax.de", "www.remax.de"}),
     "iad-de": frozenset({"iad-immobilien.de", "www.iad-immobilien.de"}),
+    "falc-de": frozenset({"falcimmo.de", "www.falcimmo.de"}),
 }
 
 
