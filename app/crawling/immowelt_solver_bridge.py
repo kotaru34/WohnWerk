@@ -141,19 +141,34 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             return ChallengeResult(action="defer", message="browser patch path escaped handoff state")
 
         run_state_path = state_dir.parent.parent / "datadome-solver-state.json"
-        prior: dict[str, Any] = {}
+        challenge_identity = "|".join(
+            (
+                str(request.shard_id),
+                str(request.resume_cursor.get("resume_page") or ""),
+                requested_url,
+            )
+        )
+        challenge_key = hashlib.sha256(challenge_identity.encode("utf-8")).hexdigest()
         try:
-            loaded_prior = json.loads(run_state_path.read_text(encoding="utf-8"))
+            loaded_state = json.loads(run_state_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            loaded_prior = {}
+            loaded_state = {"version": 1, "entries": {}}
         except (json.JSONDecodeError, OSError) as exc:
             return ChallengeResult(
                 action="defer",
                 message=f"invalid DataDome loop state: {type(exc).__name__}",
             )
-        if not isinstance(loaded_prior, dict):
+        if not isinstance(loaded_state, dict):
             return ChallengeResult(action="defer", message="invalid DataDome loop state object")
-        prior = loaded_prior
+        entries = loaded_state.get("entries")
+        if entries is None:
+            entries = {}
+        if not isinstance(entries, dict):
+            return ChallengeResult(action="defer", message="invalid DataDome loop entries")
+        prior_value = entries.get(challenge_key, {})
+        if not isinstance(prior_value, dict):
+            return ChallengeResult(action="defer", message="invalid DataDome challenge state")
+        prior: dict[str, Any] = prior_value
         try:
             attempts = max(0, int(prior.get("candidate_count") or 0))
         except (TypeError, ValueError):
@@ -224,13 +239,16 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             },
         }
         _atomic_json(patch_path, patch)
+        entries[challenge_key] = {
+            "candidate_count": attempts + 1,
+            "last_cookie_sha256": cookie_sha256,
+            "last_handoff_id": request.handoff_id,
+        }
         _atomic_json(
             run_state_path,
             {
                 "version": 1,
-                "candidate_count": attempts + 1,
-                "last_cookie_sha256": cookie_sha256,
-                "last_handoff_id": request.handoff_id,
+                "entries": entries,
             },
         )
         return ChallengeResult(
