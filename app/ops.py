@@ -47,6 +47,7 @@ NOTICE_LABELS = {
 
 @dataclass(frozen=True, slots=True)
 class SourceOpsRow:
+    id: int
     name: str
     category: str
     enabled: bool
@@ -409,6 +410,7 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
         )
         rows.append(
             SourceOpsRow(
+                id=source.id,
                 name=source.name,
                 category=source.category,
                 enabled=source.enabled,
