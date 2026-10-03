@@ -109,6 +109,10 @@ def test_german_property_scheduler_keeps_source_authority_explicit() -> None:
     assert plans["kleinanzeigen-de"].failure_isolated is True
     assert plans["engel-voelkers-de"].supports_reconciliation is False
     assert plans["engel-voelkers-de"].failure_isolated is True
+    assert plans["remax-de"].supports_reconciliation is False
+    assert plans["remax-de"].failure_isolated is True
+    assert plans["iad-de"].supports_reconciliation is False
+    assert plans["iad-de"].failure_isolated is True
     assert plans["von-poll-de"].supports_reconciliation is True
     assert plans["von-poll-de"].failure_isolated is True
     assert plans["immmo.at"].failure_isolated is False
