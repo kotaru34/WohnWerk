@@ -9,8 +9,8 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.crawling.challenge import ExternalCommandChallengeHandler
-from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
 from app.crawling.coverage import RUN_STATUS_PAUSED
+from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
 from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
@@ -60,7 +60,7 @@ def get_or_create_source() -> int:
         "scope": "Germany houses for sale priced EUR 30,000 through EUR 200,000",
         "acquisition": (
             "public browser-rendered search pages; no detail pages or login; explicit challenge "
-            "detection with state handoff to an operator-provided external interface"
+            "detection with persisted same-run handoff"
         ),
         "retention": "title, price, area, PLZ, city and source URL only; no contact data or photos",
         "auction_policy": (
@@ -85,8 +85,9 @@ def get_or_create_source() -> int:
         ),
         "runtime": "headed Playwright Chromium on an Xvfb display is required",
         "challenge_handler_contract": (
-            "external executable only; JSON stdin request and JSON stdout disposition; "
-            "WohnWerk contains no challenge-solving implementation"
+            "explicit external command remains supported; optional local DataDome bridge stages "
+            "only an Immowelt-scoped clearance cookie plus exact solver User-Agent, with bounded "
+            "repeat-candidate loop protection"
         ),
         "reconciliation_interval_hours": 24,
     }
@@ -145,7 +146,7 @@ def _challenge_handler(
         return None
     return ImmoweltDataDomeSolverHandler(
         solver_url,
-        timeout_seconds=max(1.0, args.challenge_handler_timeout),
+        timeout_seconds=min(90.0, max(5.0, args.challenge_handler_timeout)),
     )
 
 
