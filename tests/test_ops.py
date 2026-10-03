@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.admin import require_admin
+from app.admin import require_admin, require_csrf
 from app.database import get_db
 from app.main import app
 from app.models import CoverageStatus, RunStatus
@@ -256,5 +256,95 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
             assert "Regionale / landesweite Ortsangaben" in page.text
             assert "Kärnten" in page.text
             assert "österreichweit" in page.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+
+class _SourceControlDb:
+    def __init__(self, source):
+        self.source = source
+        self.commits = 0
+
+    def get(self, model, source_id):
+        del model
+        return self.source if source_id == self.source.id else None
+
+    def scalar(self, _statement):
+        return None
+
+    def commit(self):
+        self.commits += 1
+
+
+def test_admin_can_disable_and_enable_source() -> None:
+    source = SimpleNamespace(id=9, name="falc-de", enabled=True)
+    db = _SourceControlDb(source)
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            disabled = client.post(
+                "/admin/sources/9/enabled",
+                data={"enabled": "0"},
+                follow_redirects=False,
+            )
+            assert disabled.status_code == 303
+            assert disabled.headers["location"].endswith("hinweis=source_disabled")
+            assert source.enabled is False
+
+            enabled = client.post(
+                "/admin/sources/9/enabled",
+                data={"enabled": "1"},
+                follow_redirects=False,
+            )
+            assert enabled.status_code == 303
+            assert enabled.headers["location"].endswith("hinweis=source_enabled")
+            assert source.enabled is True
+            assert db.commits == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_run_now_uses_registered_refresh_runner(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="falc-de", enabled=True)
+    db = _SourceControlDb(source)
+    calls = []
+
+    def override_db():
+        yield db
+
+    def fake_popen(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(pid=123)
+
+    monkeypatch.setattr(
+        "app.ops.source_run_plan",
+        lambda name: SimpleNamespace(source_name=name) if name == "falc-de" else None,
+    )
+    monkeypatch.setattr("app.ops.subprocess.Popen", fake_popen)
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/run",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("hinweis=run_started")
+        assert len(calls) == 1
+        argv, kwargs = calls[0]
+        assert argv[-2:] == ["--source", "falc-de"]
+        assert argv[-3].endswith("scripts/refresh_sources.py")
+        assert kwargs["start_new_session"] is True
+        assert kwargs["close_fds"] is True
     finally:
         app.dependency_overrides.clear()
