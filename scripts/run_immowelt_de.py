@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.crawling.challenge import ExternalCommandChallengeHandler
+from app.crawling.immowelt_solver_bridge import ImmoweltDataDomeSolverHandler
 from app.crawling.coverage import RUN_STATUS_PAUSED
 from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
@@ -127,15 +128,23 @@ def _latest_paused_run(source_id: int) -> CrawlRun | None:
         )
 
 
-def _challenge_handler(args: argparse.Namespace) -> ExternalCommandChallengeHandler | None:
+def _challenge_handler(
+    args: argparse.Namespace,
+) -> ExternalCommandChallengeHandler | ImmoweltDataDomeSolverHandler | None:
     raw = str(args.challenge_handler or "").strip()
-    if not raw:
+    if raw:
+        command = shlex.split(raw)
+        if command:
+            return ExternalCommandChallengeHandler(
+                command,
+                timeout_seconds=max(1.0, args.challenge_handler_timeout),
+            )
+
+    solver_url = str(os.environ.get("WOHNWERK_IMMOWELT_SOLVER_URL") or "").strip()
+    if not solver_url:
         return None
-    command = shlex.split(raw)
-    if not command:
-        return None
-    return ExternalCommandChallengeHandler(
-        command,
+    return ImmoweltDataDomeSolverHandler(
+        solver_url,
         timeout_seconds=max(1.0, args.challenge_handler_timeout),
     )
 
