@@ -1,11 +1,11 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-10-02  
+**Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `feature/v0.4.11-source-badges-sreal-location`  
-**Production/release base:** `release/v0.4.10-r4` at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`  
-**Active PR:** #20 — `v0.4.11: branded source badges and s REAL location repair`  
+**Active development branch:** `feature/v0.4.12-broker-sources`  
+**Production release:** `release/v0.4.11-r2`; deployed code SHA `6d7fd14cefbff75bed3957a5443c419c04db8501`  
+**Active PR:** #24 — `v0.4.12: add RE/MAX and iad Germany broker sources`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,37 +33,55 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed on **v0.4.10 r4**.
+Production is deployed and accepted on **v0.4.11**.
 
-- deployed application version: **v0.4.10**
-- deployed Git SHA: `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`
-- release branch: `release/v0.4.10-r4`
-- rollback point: `3debfc67d4a828c418cab35b921f0412cbb2a26b` (v0.4.9)
-- database migration head remains `0017_internet_source_evidence`
-- exact-release GitHub CI workflow `37072012581`: Ruff + compile + **672 passed, 2 warnings**
-- target-host live gate verified E&V and Kleinanzeigen public search parsers and source-backed previews before deploy
-- post-deploy health reports `version=0.4.10`
-- `wohnwerk.service`, refresh, images and liveness timers are active
-- bounded production bootstrap created/updated current E&V and Kleinanzeigen listings
-- bounded heating enrichment completed with 4/4 source-backed results
-- image worker retry-reset/cache pass completed without download failures; source-backed preview coverage is present for E&V and current Kleinanzeigen listings
+- deployed application version: **v0.4.11**
+- exact deployed Git SHA: `6d7fd14cefbff75bed3957a5443c419c04db8501`
+- exact release branch: `release/v0.4.11-r2`
+- previous rollback checkpoint: v0.4.10 r4 at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`
+- database migration head remains `0017_internet_source_evidence`; v0.4.11 has no DB migration
+- no dependency changes were part of v0.4.11
+- exact-release GitHub CI workflow `37078259652`: Ruff passed, compile passed, **680 passed, 2 warnings**
+- production deploy completed through Sentinel relay issue #73
+- post-deploy repair/acceptance completed through Sentinel relay issues #74 and #75
+- final `/health` reports `version=0.4.11`
+- final live checkout HEAD is exactly `6d7fd14cefbff75bed3957a5443c419c04db8501` and the production worktree is clean
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer` and `wohnwerk-liveness.timer` are all active
+- targeted s REAL persisted-data repair completed for listing `960-75511` / listing row `62735` / canonical property `62724`: persisted location is now **2225 Loidesthal**
+- repair evidence was read back as `source_postal_code=2225`, `detail_postal_code=2225`, `detail_city=Loidesthal`
+- authenticated production catalog and detail requests both returned HTTP 200 for the repaired house
+- both catalog and detail render the branded **s REAL** source badge before the seen status; badge class/icon/color/original-source href contract passed
+- the shared house-fact template contract remains intact in Objekt → Heizung → Distanzen → Internet order
+- the repaired property's cached media endpoint returned **200 image/jpeg**
+- the only recurring non-fatal runtime warning observed during the repair/readback is PostgreSQL timezone alias `Europe/Kiev` being treated as UTC by the client
+- post-deploy PR #23 contains only acceptance tooling/HANDOFF bookkeeping over the deployed SHA; production is **not** checked out to that PR commit
 - `von-poll-de` remains disabled fail-closed after HTTP 403
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
-- `immowelt-de` remains the broad Germany portal source; its existing historic rows still need normal future refreshes before all old rows gain search-card preview payloads
+- `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
 
-v0.4.10 shipped:
-- Engel & Völkers as an independent Germany broker frontier;
-- conservative cross-source dedupe/heating integration;
-- bounded source-backed previews for active DE parsers;
-- one shared semantic house-fact presentation on catalog and detail pages in
-  Objekt → Heizung → Distanzen → Internet order with icons and state colors.
+v0.4.11 shipped:
+- branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
+- centralized source-brand metadata, including s REAL, IMMMO, Immowelt, Kleinanzeigen, Engel & Völkers, ImmoScout24, VON POLL and willhaben;
+- s REAL search-card and detail-page location parsing hardened so a title year cannot be promoted to a postcode or swallowed into the city;
+- targeted dry-run-by-default persisted-location repair tooling;
+- the affected production Loidesthal property repaired and live-accepted;
+- v0.4.10's conservative dedupe, source-backed heating, DE previews and shared grouped house-fact UI preserved.
 
-v0.4.11 is the active development step:
-- add branded source badges immediately before the seen/unseen status on catalog cards and house detail;
-- show all retained provenance sources on deduplicated canonical properties;
-- fix s REAL location parsing/data repair for cases where source-card or detail text contaminates the city field;
-- preserve v0.4.10 r4 as the production rollback checkpoint until the new cut passes CI and target acceptance.
+### v0.4.11 production proof
+
+Trusted post-deploy proof is the HMAC-verified Sentinel output from issues #74/#75 plus exact-release CI:
+
+- exact deployed SHA: `6d7fd14cefbff75bed3957a5443c419c04db8501`;
+- final Git tree: clean;
+- health: `status=ok`, `version=0.4.11`;
+- all four WohnWerk service/timer units: active;
+- property `62724`: `2225 Loidesthal`;
+- listing repair evidence: all postal/city fields agree with `2225 Loidesthal`;
+- production catalog: HTTP 200, s REAL badge before seen status, repaired location and fact groups verified;
+- production detail: HTTP 200, s REAL badge before seen status, repaired location and fact groups verified;
+- property media: HTTP 200, `image/jpeg`;
+- acceptance verifier commit `890a7647924dc30b4a2e4ad1d10ce43c67fbfaac` passed GitHub CI workflow `37081977187` (Install, Ruff, Compile, full Tests) before being executed from temporary storage against deployed production code/settings/DB.
 
 The v0.4.1 step:
 - removes `adzuna-api-de` and `arbeitsagentur-jobsuche-de` from automatic refresh plans;
@@ -546,10 +564,11 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
    - ImmoScout24 has explicit challenge checkpoint/handoff semantics but remains unscheduled;
    - VON POLL code remains available but its production source is disabled after a live HTTP-403 access gate.
 10. **DONE:** v0.4.10 r4 deployed at `3ba1dae99c190ff3089c6dfdebdafd1233509b2e`: Engel & Völkers frontier, heating integration, conservative unique-city PLZ resolution, DE source-card previews and shared categorized/icon-based house facts.
-11. **CURRENT:** v0.4.11 adds branded provenance badges before the seen/unseen status and fixes s REAL location contamination, including repair of affected persisted rows.
-12. After v0.4.11, evaluate additional independent broker networks only where they add inventory rather than alias existing portals.
-13. Keep Germany jobs paused until an explicit operator decision reopens them.
-14. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
+11. **DONE:** v0.4.11 deployed and production-accepted at `6d7fd14cefbff75bed3957a5443c419c04db8501`: branded provenance badges, s REAL location hardening, targeted persisted repair and live acceptance of property 62724 at 2225 Loidesthal.
+12. **CURRENT:** v0.4.12 adds two direct Germany broker-network frontiers: `remax-de` and `iad-de`. Both preserve stable source provenance, are failure-isolated, and remain bounded/non-authoritative for disappearance.
+13. After v0.4.12, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+14. Keep Germany jobs paused until an explicit operator decision reopens them.
+15. Keep the external challenge-handler implementation untouched. Run #990 remains retained and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 
