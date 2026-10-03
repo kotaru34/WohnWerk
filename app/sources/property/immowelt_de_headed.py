@@ -124,13 +124,20 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
                 except json.JSONDecodeError as exc:
                     raise RuntimeError(f"Invalid challenge storage state JSON: {path}") from exc
                 cookies = list(state.get("cookies") or [])
+
+                def _immowelt_cookie_domain(value: object) -> bool:
+                    normalized = str(value or "").casefold().lstrip(".")
+                    return normalized in {"immowelt.de", "www.immowelt.de"} or normalized.endswith(
+                        ".immowelt.de"
+                    )
+
                 cookies = [
                     item
                     for item in cookies
                     if not (
                         isinstance(item, dict)
                         and item.get("name") == "datadome"
-                        and str(item.get("domain") or "").casefold() == str(cookie.get("domain") or "").casefold()
+                        and _immowelt_cookie_domain(item.get("domain"))
                     )
                 ]
                 cookies.append(dict(cookie))
