@@ -1,3 +1,3 @@
 """Single source of truth for the user-visible WohnWerk version."""
 
-__version__ = "0.4.16"
+__version__ = "0.4.17"
