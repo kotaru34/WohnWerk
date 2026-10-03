@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from app.crawling.challenge import (
     ChallengeHandler,
@@ -32,6 +32,24 @@ class SolverBridgeError(RuntimeError):
 
 def _host(raw_url: str | None) -> str:
     return (urlparse(str(raw_url or "")).hostname or "").casefold()
+
+
+def _datadome_challenge_type(request: ChallengeRequest) -> str | None:
+    challenge = dict(request.challenge or {})
+    explicit = str(challenge.get("datadome_challenge_type") or "").strip().casefold()
+    if explicit:
+        return explicit
+
+    challenge_url = str(challenge.get("challenge_url") or "").strip()
+    host = _host(challenge_url)
+    if not any(host == suffix or host.endswith("." + suffix) for suffix in DATADOME_HOST_SUFFIXES):
+        return None
+    values = parse_qs(urlparse(challenge_url).query).get("t") or []
+    for value in values:
+        normalized = str(value).strip().casefold()
+        if normalized:
+            return normalized
+    return None
 
 
 def _is_datadome_challenge(request: ChallengeRequest) -> bool:
@@ -113,6 +131,15 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             return ChallengeResult(
                 action="defer",
                 message="challenge is not positively identified as an Immowelt DataDome gate",
+            )
+
+        if _datadome_challenge_type(request) == "bv":
+            return ChallengeResult(
+                action="defer",
+                message=(
+                    "DataDome reports banned visitor for this exit IP; "
+                    "same-IP local solver cannot produce replayable clearance"
+                ),
             )
 
         requested_url = str(request.challenge.get("requested_url") or "").strip()
