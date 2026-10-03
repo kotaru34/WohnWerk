@@ -86,7 +86,7 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
         solver_url: str = DEFAULT_SOLVER_URL,
         *,
         timeout_seconds: float = 75.0,
-        max_candidates_per_run: int = 2,
+        max_candidates_per_navigation: int = 2,
     ) -> None:
         normalized_solver_url = solver_url.rstrip("/")
         parsed_solver = urlparse(normalized_solver_url)
@@ -104,7 +104,7 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             )
         self.solver_url = normalized_solver_url
         self.timeout_seconds = max(1.0, float(timeout_seconds))
-        self.max_candidates_per_run = max(1, int(max_candidates_per_run))
+        self.max_candidates_per_navigation = max(1, int(max_candidates_per_navigation))
 
     async def handle(self, request: ChallengeRequest) -> ChallengeResult:
         if request.source != "immowelt-de":
@@ -173,7 +173,7 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             attempts = max(0, int(prior.get("candidate_count") or 0))
         except (TypeError, ValueError):
             return ChallengeResult(action="defer", message="invalid DataDome candidate counter")
-        if attempts >= self.max_candidates_per_run:
+        if attempts >= self.max_candidates_per_navigation:
             return ChallengeResult(
                 action="defer",
                 message="DataDome solver candidate limit reached; pausing instead of retry-looping",
