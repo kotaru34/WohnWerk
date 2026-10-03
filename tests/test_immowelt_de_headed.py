@@ -111,5 +111,68 @@ async def test_headed_adapter_exports_browser_state_for_external_handler(tmp_pat
 
     assert Path(handoff["storage_state_path"]).is_file()
     assert Path(handoff["screenshot_path"]).is_file()
+    assert handoff["browser_patch_path"].endswith("browser-patch.json")
     assert handoff["current_url"].endswith("page=2")
     assert handoff["challenge"]["kind"] == "http_403"
+
+
+
+@pytest.mark.asyncio
+async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    storage_state = tmp_path / "storage-state.json"
+    storage_state.write_text(
+        '{"cookies":['
+        '{"name":"datadome","value":"stale-a","domain":"www.immowelt.de","path":"/"},'
+        '{"name":"datadome","value":"stale-b","domain":".immowelt.de","path":"/"},'
+        '{"name":"other","value":"keep","domain":".immowelt.de","path":"/"}'
+        '],"origins":[]}'
+    )
+    patch_path = tmp_path / "browser-patch.json"
+    patch_path.write_text(
+        '{"version":1,"kind":"immowelt_datadome_clearance",'
+        '"user_agent":"solver-exact-ua",'
+        '"cookie":{"name":"datadome","value":"clearance","domain":".immowelt.de",'
+        '"path":"/","expires":-1,"httpOnly":false,"secure":true,"sameSite":"Lax"}}'
+    )
+
+    source = ImmoweltHeadedPropertySource()
+    await source.restore_challenge_handoff(
+        {
+            "storage_state_path": str(storage_state),
+            "browser_patch_path": str(patch_path),
+        }
+    )
+
+    state = __import__("json").loads(storage_state.read_text())
+    assert state["cookies"] == [
+        {
+            "name": "other",
+            "value": "keep",
+            "domain": ".immowelt.de",
+            "path": "/",
+        },
+        {
+            "name": "datadome",
+            "value": "clearance",
+            "domain": ".immowelt.de",
+            "path": "/",
+            "expires": -1,
+            "httpOnly": False,
+            "secure": True,
+            "sameSite": "Lax",
+        },
+    ]
+    assert not patch_path.exists()
+
+    fake = FakePlaywright()
+    monkeypatch.setattr(headed_module, "async_playwright", lambda: FakeStarter(fake))
+    await source._ensure_page()
+
+    assert fake.chromium.browser.context_kwargs == {
+        "locale": "de-DE",
+        "storage_state": str(storage_state),
+        "user_agent": "solver-exact-ua",
+    }

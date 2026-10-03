@@ -111,20 +111,29 @@ def detect_immowelt_challenge(
     frame_urls: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any] | None:
     """Recognize explicit source gates without treating ordinary portal JS as a challenge."""
-    if status == 403:
-        return {
-            "kind": "http_403",
-            "http_status": 403,
-            "requested_url": requested_url,
-            "final_url": final_url,
-        }
-
     suspicious_url: str | None = None
     for candidate in (final_url, *frame_urls):
         host = (urlparse(candidate).hostname or "").casefold()
         if any(host == suffix or host.endswith(f".{suffix}") for suffix in _CHALLENGE_HOST_SUFFIXES):
             suspicious_url = candidate
             break
+
+    lowered = html.casefold()
+    markers = [marker for marker in _CHALLENGE_STRONG_MARKERS if marker in lowered]
+
+    if status == 403:
+        challenge: dict[str, Any] = {
+            "kind": "http_403",
+            "http_status": 403,
+            "requested_url": requested_url,
+            "final_url": final_url,
+        }
+        if suspicious_url is not None:
+            challenge["challenge_url"] = suspicious_url
+        if markers:
+            challenge["markers"] = markers[:5]
+        return challenge
+
     if suspicious_url is not None:
         return {
             "kind": "challenge_frame_or_redirect",
@@ -134,8 +143,6 @@ def detect_immowelt_challenge(
             "challenge_url": suspicious_url,
         }
 
-    lowered = html.casefold()
-    markers = [marker for marker in _CHALLENGE_STRONG_MARKERS if marker in lowered]
     if markers:
         return {
             "kind": "challenge_content",

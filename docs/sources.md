@@ -25,7 +25,12 @@ The deployed v0.4.9 release broadens Germany house discovery, and v0.4.10 adds a
 second independent broker frontier while keeping each source's coverage authority explicit:
 
 - `immowelt-de`: existing broad public portal, incremental/frontier-only in the
-  automatic scheduler while browser/challenge behavior remains under observation;
+  automatic scheduler. v0.4.16 adds an explicitly enabled, source-specific bridge for
+  positively identified DataDome gates only: the localhost solver may stage an
+  Immowelt-scoped `datadome` cookie plus its exact User-Agent into the persisted handoff,
+  after which the crawler itself retries the saved navigation point. Repeated clearance
+  candidates defer/pause rather than cycling; generic 403, Cloudflare/Turnstile and other
+  challenge families remain fail-closed;
 - `immoscout24-de`: existing 48-shard public search adapter, now with explicit
   browser-challenge detection, persisted storage-state handoff and same-run resume;
   it remains unscheduled until the production transport is revalidated;
