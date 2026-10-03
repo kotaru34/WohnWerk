@@ -161,3 +161,56 @@ def test_explicit_operator_handler_keeps_precedence_over_local_solver(
 
     assert isinstance(handler, ExternalCommandChallengeHandler)
     assert handler.command == ("/bin/true",)
+
+
+
+def test_bridge_requires_loopback_solver_base_url() -> None:
+    with pytest.raises(ValueError, match="loopback"):
+        ImmoweltDataDomeSolverHandler("http://solver.example.com:8877")
+
+
+@pytest.mark.asyncio
+async def test_bridge_rejects_proxy_backed_clearance_candidate(tmp_path) -> None:
+    handler = ImmoweltDataDomeSolverHandler()
+    handler._solve = lambda _url: {  # type: ignore[method-assign]
+        "solved": True,
+        "success": True,
+        "datadome_cookie": "cookie-value",
+        "cookie_domain": ".immowelt.de",
+        "cookie_max_age": 300,
+        "user_agent": "solver-user-agent",
+        "proxy": "http://proxy.example:8080",
+    }
+
+    result = await handler.handle(
+        _request(tmp_path / "run-123" / "shard-7" / "handoff-1")
+    )
+
+    assert result.action == "defer"
+    assert result.message is not None
+    assert "proxy" in result.message
+
+
+@pytest.mark.asyncio
+async def test_bridge_backfills_browser_patch_path_for_legacy_handoff(tmp_path) -> None:
+    handler = ImmoweltDataDomeSolverHandler()
+    handler._solve = lambda _url: {  # type: ignore[method-assign]
+        "solved": True,
+        "success": True,
+        "datadome_cookie": "legacy-cookie",
+        "cookie_domain": None,
+        "cookie_max_age": 300,
+        "user_agent": "legacy-user-agent",
+    }
+    state_dir = tmp_path / "run-123" / "shard-7" / "handoff-1"
+    request = _request(state_dir)
+    request.handoff_state.pop("browser_patch_path")
+
+    result = await handler.handle(request)
+
+    assert result.action == "resolved"
+    assert request.handoff_state["browser_patch_path"] == str(
+        (state_dir / "browser-patch.json").resolve()
+    )
+    patch = json.loads((state_dir / "browser-patch.json").read_text())
+    assert patch["cookie"]["domain"] == "www.immowelt.de"
