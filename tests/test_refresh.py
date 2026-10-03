@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.models import Source
-from app.refresh import SOURCE_REFRESH_PLANS, SourceRefreshPlan, source_due_run
+from app.refresh import (
+    MANUAL_SOURCE_RUN_PLANS,
+    SOURCE_REFRESH_PLANS,
+    SourceRefreshPlan,
+    source_due_run,
+    source_run_plan,
+)
 
 NOW = datetime(2026, 8, 28, 15, 0, tzinfo=UTC)
 
@@ -112,6 +118,8 @@ def test_german_property_scheduler_keeps_source_authority_explicit() -> None:
     assert "remax-de" not in plans
     assert plans["iad-de"].supports_reconciliation is False
     assert plans["iad-de"].failure_isolated is True
+    assert plans["falc-de"].supports_reconciliation is False
+    assert plans["falc-de"].failure_isolated is True
     assert plans["von-poll-de"].supports_reconciliation is True
     assert plans["von-poll-de"].failure_isolated is True
     assert plans["immmo.at"].failure_isolated is False
@@ -122,3 +130,14 @@ def test_de_job_sources_are_not_scheduled() -> None:
 
     assert "adzuna-api-de" not in names
     assert "arbeitsagentur-jobsuche-de" not in names
+
+
+def test_challenge_bound_sources_are_manual_only_but_runnable() -> None:
+    manual = {plan.source_name: plan for plan in MANUAL_SOURCE_RUN_PLANS}
+
+    assert "remax-de" not in {plan.source_name for plan in SOURCE_REFRESH_PLANS}
+    assert "immoscout24-de" not in {plan.source_name for plan in SOURCE_REFRESH_PLANS}
+    assert "Turnstile" in (manual["remax-de"].operational_note or "")
+    assert "Challenge" in (manual["immoscout24-de"].operational_note or "")
+    assert source_run_plan("remax-de") == manual["remax-de"]
+    assert source_run_plan("immoscout24-de") == manual["immoscout24-de"]
