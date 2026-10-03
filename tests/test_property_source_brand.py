@@ -12,6 +12,7 @@ def test_known_house_sources_have_stable_branded_labels() -> None:
         "von-poll-de": ("VON POLL", "#21384f", "VP"),
         "remax-de": ("RE/MAX", "#dc1c2e", "R/M"),
         "iad-de": ("iad", "#005a9c", "iad"),
+        "falc-de": ("FALC", "#2b2b2b", "F"),
     }
 
     for source_name, values in expected.items():
