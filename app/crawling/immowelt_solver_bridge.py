@@ -20,6 +20,10 @@ DATADOME_MARKERS = ("dd_captcha", "captcha-delivery.com", "captcha-delivery.net"
 DEFAULT_SOLVER_URL = "http://127.0.0.1:8877"
 
 
+class SolverBridgeError(RuntimeError):
+    """Expected local-solver transport or response failure."""
+
+
 def _host(raw_url: str | None) -> str:
     return (urlparse(str(raw_url or "")).hostname or "").casefold()
 
@@ -112,21 +116,35 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
         except ValueError:
             return ChallengeResult(action="defer", message="browser patch path escaped handoff state")
 
+        run_state_path = state_dir.parent.parent / "datadome-solver-state.json"
+        prior: dict[str, Any] = {}
         try:
-            result = await asyncio.to_thread(self._solve, requested_url)
-        except Exception as exc:
+            prior = json.loads(run_state_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            prior = {}
+
+        attempts = max(0, int(prior.get("candidate_count") or 0))
+        if attempts >= self.max_candidates_per_run:
             return ChallengeResult(
                 action="defer",
-                message=f"local DataDome solver unavailable: {type(exc).__name__}: {str(exc)[:240]}",
+                message="DataDome solver candidate limit reached; pausing instead of retry-looping",
+            )
+
+        try:
+            result = await asyncio.to_thread(self._solve, requested_url)
+        except SolverBridgeError as exc:
+            return ChallengeResult(
+                action="defer",
+                message=f"local DataDome solver unavailable: {str(exc)[:300]}",
             )
 
         cookie_value = str(result.get("datadome_cookie") or "").strip()
         user_agent = str(result.get("user_agent") or "").strip()
         if not result.get("solved") or not cookie_value or not user_agent:
-            return ChallengeResult(
-                action="defer",
-                message=str(result.get("error") or "local DataDome solver returned no replayable clearance")[:400],
+            message = str(
+                result.get("error") or "local DataDome solver returned no replayable clearance"
             )
+            return ChallengeResult(action="defer", message=message[:400])
 
         cookie_domain = str(result.get("cookie_domain") or ".immowelt.de").strip().casefold()
         normalized_domain = cookie_domain.lstrip(".")
@@ -136,20 +154,7 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
                 message=f"solver returned unexpected DataDome cookie domain {cookie_domain!r}",
             )
 
-        run_state_path = state_dir.parent.parent / "datadome-solver-state.json"
-        prior: dict[str, Any] = {}
-        try:
-            prior = json.loads(run_state_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            prior = {}
-
         cookie_sha256 = hashlib.sha256(cookie_value.encode("utf-8")).hexdigest()
-        attempts = max(0, int(prior.get("candidate_count") or 0))
-        if attempts >= self.max_candidates_per_run:
-            return ChallengeResult(
-                action="defer",
-                message="DataDome solver candidate limit reached; pausing instead of retry-looping",
-            )
         if prior.get("last_cookie_sha256") == cookie_sha256:
             return ChallengeResult(
                 action="defer",
@@ -215,7 +220,11 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
                 payload = json.loads(response.read())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")[:400]
-            raise RuntimeError(f"solver HTTP {exc.code}: {detail}") from exc
+            raise SolverBridgeError(f"HTTP {exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise SolverBridgeError(f"{type(exc).__name__}: {exc}") from exc
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise SolverBridgeError(f"invalid JSON response: {exc}") from exc
         if not isinstance(payload, dict):
-            raise TypeError("solver response is not a JSON object")
+            raise SolverBridgeError("solver response is not a JSON object")
         return payload
