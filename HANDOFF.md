@@ -3,9 +3,9 @@
 **Checkpoint date:** 2026-10-03  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `release/v0.4.14`  
-**Production release:** `release/v0.4.13`; deployed code SHA `2863c01004341e9e7aa28bbc830c4e482e94c2df`  
-**Active PR:** #31 — `Release v0.4.14 compact admin source layout`  
+**Active development branch:** `feature/v0.4.15-de-source-model-audit`  
+**Production release:** `release/v0.4.14`; deployed code SHA `bc223ff2aa17306528300d4d3e31ad4180ca19fa`  
+**Active PR:** pending — v0.4.15 German source-model audit hardening  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -33,18 +33,19 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.13**.
+Production is deployed and accepted on **v0.4.14**.
 
-- deployed application version: **v0.4.13**
-- exact deployed Git SHA: `2863c01004341e9e7aa28bbc830c4e482e94c2df`
-- exact release branch: `release/v0.4.13`
-- previous rollback checkpoint: v0.4.12 at `96656cd96091b33944824e5cb1b003142e7012d8`
-- database migration head remains `0017_internet_source_evidence`; v0.4.13 has no DB migration
-- no dependency changes were part of v0.4.13
-- exact-release GitHub CI workflow `37089211650`: Install, Ruff and Compile passed, **698 passed, 2 warnings**
-- v0.4.13 was deployed and accepted through HMAC-verified Sentinel relay issue #77
-- final `/health` reports `version=0.4.13`
-- final live checkout HEAD is exactly `2863c01004341e9e7aa28bbc830c4e482e94c2df` and the production worktree is clean
+- deployed application version: **v0.4.14**
+- exact deployed Git SHA: `bc223ff2aa17306528300d4d3e31ad4180ca19fa`
+- exact release branch: `release/v0.4.14`
+- previous rollback checkpoint: v0.4.13 at `2863c01004341e9e7aa28bbc830c4e482e94c2df`
+- database migration head remains `0017_internet_source_evidence`; v0.4.14 has no DB migration
+- no dependency changes were part of v0.4.14
+- exact-release GitHub CI workflow `37092247093`: Install, Ruff and Compile passed, **698 passed, 2 warnings**
+- v0.4.14 was deployed and accepted through HMAC-verified Sentinel relay issue #78
+- final `/health` reports `version=0.4.14`
+- final live checkout HEAD is exactly `bc223ff2aa17306528300d4d3e31ad4180ca19fa` and the production worktree is clean
+- authenticated admin UI acceptance confirmed compact source cards, no legacy wide source table, collapsed diagnostics, and preserved Run-now / Enable / Disable controls
 - `falc-de` production bootstrap Run #5179 succeeded as bounded frontier-only acquisition: 8 pages, 10 listings seen/new, coverage intentionally degraded/non-authoritative for disappearance
 - authenticated admin source-operations acceptance passed: FALC automatic + runnable, RE/MAX manual-only with Turnstile reason, ImmoScout24 manual-only with challenge reason, Immowelt/iad automatic, exact HEAD clean, units active
 - RE/MAX diagnostic Run #5182 failed closed on the known browser challenge; ImmoScout24 diagnostic Run #5183 failed closed and preserved explicit browser/runtime error detail
@@ -63,7 +64,7 @@ Production is deployed and accepted on **v0.4.13**.
 - `immoscout24-de` remains unscheduled behind the explicit challenge boundary
 - `immowelt-de` remains the broad Germany portal source
 - `immonet.de` remains intentionally absent as a distinct source because it aliases/redirects into Immowelt
-- v0.4.13 is deployed with detailed admin source diagnostics/actions and operational `falc-de`; v0.4.14 now focuses only on making the source list compact and readable without removing diagnostics or controls
+- v0.4.14 is deployed with the compact source-card admin UI. v0.4.15 now audits every current German scraper against the latest acquisition model and hardens VON POLL so HTTP-403-blocked transport is manual-only and unstable fallback identities can never grant reconciliation authority
 
 v0.4.11 shipped:
 - branded provenance badges on house catalog cards and house detail, with all unique retained sources on deduplicated canonical properties;
