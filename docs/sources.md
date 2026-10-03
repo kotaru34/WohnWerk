@@ -32,9 +32,11 @@ second independent broker frontier while keeping each source's coverage authorit
 - `kleinanzeigen-de`: bounded newest-first public house frontier. Its nationwide
   corpus is much larger than the bounded scan, so it **never** gains disappearance
   authority from that frontier;
-- `von-poll-de`: adapter retained for diagnostics, but the production source is
-  disabled fail-closed after sequential live access reached HTTP 403; it must not be
-  treated as operational coverage until a supported transport is validated;
+- `von-poll-de`: adapter retained as **manual-only diagnostics** after sequential
+  target-host access reached HTTP 403. It is excluded from automatic scheduling until a
+  supported public transport is revalidated. URL-hash fallback identities may be retained
+  for non-authoritative discovery telemetry, but any such unstable identity explicitly
+  withholds reconciliation/disappearance authority;
 - `engel-voelkers-de`: v0.4.10 bounded newest-first frontier over the public
   Germany house corpus. Public expose UUIDs provide stable source identity and
   detail pages expose structured energy-source fields. The frontier never claims

@@ -40,9 +40,12 @@ def get_or_create_source() -> int:
         ),
         "sharding": "16 Bundeslaender/city-states, public pagination up to 100 pages each",
         "coverage": (
-            "authoritative only after every page of every state shard parses below the cap"
+            "diagnostic/manual-only while production transport remains HTTP-403 blocked; "
+            "even explicit reconciliation withholds authority when any listing identity is unstable"
         ),
         "rate_policy": "low-rate headed Chromium with >=2 second jittered spacing and bounded retries",
+        "operational_status": "production_http_403_blocked",
+        "scheduling": "manual-only fail-closed until supported transport is revalidated",
         "reconciliation_interval_hours": 24,
     }
     with SessionLocal() as session:
@@ -53,7 +56,7 @@ def get_or_create_source() -> int:
                 category=SourceCategory.PROPERTY,
                 adapter=ADAPTER_PATH,
                 base_url=BASE_URL,
-                enabled=True,
+                enabled=False,
                 poll_interval_minutes=180,
                 config=config,
             )
@@ -63,7 +66,9 @@ def get_or_create_source() -> int:
         else:
             source.adapter = ADAPTER_PATH
             source.base_url = BASE_URL
-            source.enabled = True
+            # Preserve the operator's current enabled/disabled state. A direct diagnostic
+            # run must never silently re-enable a source that production has disabled
+            # after an access-gate failure.
             source.config = {**(source.config or {}), **config}
             session.commit()
         return source.id
