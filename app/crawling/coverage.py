@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -20,6 +21,7 @@ from app.models import (
     Source,
     SourceShard,
 )
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 
 SHARD_STATUS_SKIPPED = "skipped"
 RUN_STATUS_PAUSED = "paused"
@@ -139,7 +141,16 @@ def create_run(session: Session, source: Source, mode: CrawlMode) -> CrawlRun:
             .order_by(SourceShard.priority, SourceShard.id)
         )
     )
-    run = CrawlRun(source_id=source.id, mode=mode, shards_total=len(shards))
+    run_metadata: dict[str, str] = {}
+    manual_request_id = os.environ.get(MANUAL_RUN_REQUEST_ENV, "").strip()
+    if manual_request_id:
+        run_metadata["manual_run_request_id"] = manual_request_id
+    run = CrawlRun(
+        source_id=source.id,
+        mode=mode,
+        shards_total=len(shards),
+        run_metadata=run_metadata,
+    )
     session.add(run)
     session.flush()
 
