@@ -86,6 +86,30 @@ async def test_bridge_defers_interactive_bv_without_calling_silent_solver(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_bridge_defers_interactive_fe_without_calling_silent_solver(tmp_path) -> None:
+    handler = ImmoweltDataDomeSolverHandler()
+    called = False
+
+    def fail_if_called(_url: str):
+        nonlocal called
+        called = True
+        raise AssertionError("silent solver must not be called for DataDome t=fe gates")
+
+    handler._solve = fail_if_called  # type: ignore[method-assign]
+    request = _request(tmp_path / "run-123" / "shard-7" / "handoff-1")
+    request.challenge["datadome_challenge_type"] = "fe"
+
+    result = await handler.handle(request)
+
+    assert result.action == "defer"
+    assert called is False
+    assert result.message is not None
+    assert "interactive verification" in result.message
+    assert "t=fe" in result.message
+    assert "harvest-only" in result.message
+
+
+@pytest.mark.asyncio
 async def test_bridge_stages_datadome_cookie_and_exact_user_agent(tmp_path) -> None:
     handler = ImmoweltDataDomeSolverHandler(max_candidates_per_navigation=2)
     handler._solve = lambda _url: {  # type: ignore[method-assign]
