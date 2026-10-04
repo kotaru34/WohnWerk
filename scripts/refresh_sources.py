@@ -16,7 +16,14 @@ from app.database import SessionLocal
 from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.live_events import queue_live_event
 from app.models import Source, SourceCategory
-from app.refresh import DueSourceRun, due_source_runs, source_run_plan
+from app.refresh import (
+    DueSourceRun,
+    MANUAL_RUN_BUSY_EXIT_CODE,
+    MANUAL_RUN_DEFERRED_EXIT_CODE,
+    MANUAL_RUN_REQUEST_ENV,
+    due_source_runs,
+    source_run_plan,
+)
 from app.version import __version__
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +75,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--run-request-id",
+        help=(
+            "Internal admin correlation token for a manual --source run. "
+            "Stored only in CrawlRun.run_metadata."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print due work without running source or post-processing commands.",
@@ -75,10 +89,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _run_command(label: str, args: list[str]) -> CommandResult:
+def _run_command(
+    label: str,
+    args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> CommandResult:
     print(f"===== {label} =====", flush=True)
     print("command=" + " ".join(args), flush=True)
-    completed = subprocess.run(args, cwd=PROJECT_ROOT, check=False)
+    completed = subprocess.run(args, cwd=PROJECT_ROOT, check=False, env=env)
     print(f"result[{label}]={completed.returncode}", flush=True)
     return CommandResult(label=label, returncode=completed.returncode)
 
@@ -171,14 +190,16 @@ def _publish_job_catalog_refresh(source_names: list[str]) -> None:
 
 def main() -> None:
     args = parse_args()
+    requested_source = getattr(args, "source", None)
     lock = _acquire_lock(args.lock_path)
     if lock is None:
         print("refresh_status=skipped reason=already_running")
+        if requested_source:
+            raise SystemExit(MANUAL_RUN_BUSY_EXIT_CODE)
         return
 
     try:
         with SessionLocal() as session:
-            requested_source = getattr(args, "source", None)
             if requested_source:
                 source = session.scalar(select(Source).where(Source.name == requested_source))
                 if source is None:
@@ -213,7 +234,15 @@ def main() -> None:
         runtime_ok, runtime_reason = _runtime_release_gate(args.health_url)
         if not runtime_ok:
             print(f"refresh_status=deferred reason={runtime_reason}")
+            if requested_source:
+                raise SystemExit(MANUAL_RUN_DEFERRED_EXIT_CODE)
             return
+
+        run_request_id = str(getattr(args, "run_request_id", "") or "").strip()
+        manual_source_env: dict[str, str] | None = None
+        if requested_source and run_request_id:
+            manual_source_env = os.environ.copy()
+            manual_source_env[MANUAL_RUN_REQUEST_ENV] = run_request_id
 
         failures: list[CommandResult] = []
         isolated_failures: list[CommandResult] = []
@@ -223,6 +252,11 @@ def main() -> None:
             result = _run_command(
                 f"source:{run.plan.source_name}:{run.mode}",
                 _source_command(run),
+                env=(
+                    manual_source_env
+                    if requested_source == run.plan.source_name
+                    else None
+                ),
             )
             result_class = _source_result_class(run, result)
             if result_class == "failure":
