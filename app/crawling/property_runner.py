@@ -228,6 +228,39 @@ def _record_challenge_result(
     run.run_metadata = metadata
 
 
+def _tag_manual_resume(run: CrawlRun, request_id: str) -> None:
+    request_id = request_id.strip()
+    if not request_id:
+        return
+    metadata = dict(run.run_metadata or {})
+    metadata["manual_run_request_id"] = request_id
+    metadata["manual_resume_requested_at"] = datetime.now(UTC).isoformat()
+    run.run_metadata = metadata
+
+
+def _begin_manual_challenge_revalidation(
+    run: CrawlRun,
+    shard_run: CrawlShardRun,
+    request: ChallengeRequest,
+) -> dict[str, Any]:
+    _record_challenge_result(
+        run,
+        request,
+        action="revalidate",
+        message="explicit manual retry requested fresh challenge revalidation",
+    )
+    metadata = dict(run.run_metadata or {})
+    metadata.pop("active_challenge", None)
+    run.run_metadata = metadata
+    shard_run.status = RunStatus.RUNNING
+    shard_run.finished_at = None
+    shard_run.error = None
+    run.status = RunStatus.RUNNING
+    run.coverage_status = CoverageStatus.UNKNOWN
+    return dict(request.resume_cursor)
+
+
+
 async def _ingest_partial_fetch(
     session: Session,
     *,
@@ -346,10 +379,7 @@ async def run_property_source(
             )
         ordered_shards = _restore_shard_order(run, shards)
         if manual_request_id:
-            metadata = dict(run.run_metadata or {})
-            metadata["manual_run_request_id"] = manual_request_id
-            metadata["manual_resume_requested_at"] = datetime.now(UTC).isoformat()
-            run.run_metadata = metadata
+            _tag_manual_resume(run, manual_request_id)
             session.commit()
 
     run_id = run.id
@@ -388,22 +418,12 @@ async def run_property_source(
                 # before the old challenge handler is consulted. If the gate is still live,
                 # the normal SourceChallenge path below checkpoints a new handoff and remains
                 # fail-closed. Scheduled resumes keep the existing handler-first semantics.
-                _record_challenge_result(
+                resume_cursor = _begin_manual_challenge_revalidation(
                     run,
+                    shard_run,
                     request,
-                    action="revalidate",
-                    message="explicit manual retry requested fresh challenge revalidation",
                 )
-                metadata = dict(run.run_metadata or {})
-                metadata.pop("active_challenge", None)
-                run.run_metadata = metadata
-                shard_run.status = RunStatus.RUNNING
-                shard_run.finished_at = None
-                shard_run.error = None
-                run.status = RunStatus.RUNNING
-                run.coverage_status = CoverageStatus.UNKNOWN
                 session.commit()
-                resume_cursor = dict(request.resume_cursor)
                 manual_revalidate_paused = False
             else:
                 result = await handler.handle(request)
