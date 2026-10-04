@@ -51,6 +51,34 @@ class FakeStarter:
         return self.playwright
 
 
+
+
+class DetailResponse:
+    status = 200
+
+
+class DetailPage:
+    def __init__(self) -> None:
+        self.url = "about:blank"
+        self.frames = []
+
+    async def goto(self, url: str, **_kwargs: object) -> DetailResponse:
+        self.url = url
+        return DetailResponse()
+
+    async def content(self) -> str:
+        return (
+            "<html><body><h1>Einfamilienhaus zum Kauf</h1>"
+            "<div>Heizungsart Ofen</div><div>Energieträger Öl</div>"
+            "</body></html>"
+        )
+
+    async def wait_for_selector(self, selector: str, **_kwargs: object) -> None:
+        assert selector == "h1"
+
+    async def wait_for_timeout(self, _milliseconds: int) -> None:
+        return None
+
 class HandoffContext:
     async def storage_state(self, *, path: str) -> None:
         Path(path).write_text('{"cookies": [], "origins": []}')
@@ -176,3 +204,24 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
         "storage_state": str(storage_state),
         "user_agent": "solver-exact-ua",
     }
+
+
+@pytest.mark.asyncio
+async def test_headed_adapter_loads_exact_immowelt_detail_without_search_state_validation() -> None:
+    source = ImmoweltHeadedPropertySource(request_delay_seconds=1.0)
+    source._page = DetailPage()  # type: ignore[assignment]
+
+    html, final_url = await source.load_detail_html(
+        "https://www.immowelt.de/expose/3ab853e6-84ef-4ef8-9008-db1c98e76ed4"
+    )
+
+    assert final_url.endswith("3ab853e6-84ef-4ef8-9008-db1c98e76ed4")
+    assert "Energieträger Öl" in html
+
+
+@pytest.mark.asyncio
+async def test_headed_adapter_rejects_non_immowelt_detail_url() -> None:
+    source = ImmoweltHeadedPropertySource()
+
+    with pytest.raises(ValueError, match="Unsupported Immowelt detail URL"):
+        await source.load_detail_html("https://example.com/expose/not-allowed")

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ DEFAULT_SOURCE_NAMES = (
     "falc-de",
 )
 SOURCE_ALLOWED_HOSTS: dict[str, frozenset[str]] = {
+    "immowelt-de": frozenset({"immowelt.de", "www.immowelt.de"}),
     "von-poll-de": frozenset({"von-poll.com", "www.von-poll.com"}),
     "kleinanzeigen-de": frozenset({"kleinanzeigen.de", "www.kleinanzeigen.de"}),
     "engel-voelkers-de": frozenset({"engelvoelkers.com", "www.engelvoelkers.com"}),
@@ -37,6 +39,9 @@ class HeatingEnrichmentStats:
     found: int = 0
     unknown: int = 0
     failed: int = 0
+
+
+HeatingHtmlFetcher = Callable[[str], Awaitable[tuple[str, str]]]
 
 
 def _parse_checked_at(payload: dict | None) -> datetime | None:
@@ -179,6 +184,90 @@ async def enrich_active_property_heating(
                 )
                 failed += 1
             session.commit()
+
+    return HeatingEnrichmentStats(
+        considered=considered,
+        fetched=fetched,
+        found=found,
+        unknown=unknown,
+        failed=failed,
+    )
+
+
+async def enrich_active_property_heating_with_fetcher(
+    session: Session,
+    *,
+    source_name: str,
+    fetch_html: HeatingHtmlFetcher,
+    limit: int = 12,
+    refresh_after: timedelta = timedelta(days=7),
+) -> HeatingEnrichmentStats:
+    """Enrich one source through a caller-owned browser/session transport.
+
+    This is used for Immowelt because direct HTTP receives DataDome on the production
+    exit. The fetcher returns rendered HTML and the final URL; only normalized heating
+    evidence is persisted, never the detail page body or contact information.
+    """
+    if source_name not in SOURCE_ALLOWED_HOSTS:
+        raise ValueError(f"Unsupported heating detail source: {source_name}")
+    if limit <= 0:
+        return HeatingEnrichmentStats()
+
+    rows = list(
+        session.scalars(
+            select(PropertyListing)
+            .join(Source, Source.id == PropertyListing.source_id)
+            .where(
+                PropertyListing.status == ListingStatus.ACTIVE,
+                Source.name == source_name,
+            )
+            .order_by(PropertyListing.id.desc())
+        )
+    )
+
+    now = datetime.now(UTC)
+    candidates = [
+        listing
+        for listing in rows
+        if _allowed_detail_url(source_name, listing.url)
+        and heating_detail_due(
+            listing.raw_payload,
+            now=now,
+            refresh_after=refresh_after,
+        )
+    ][:limit]
+
+    considered = len(candidates)
+    fetched = found = unknown = failed = 0
+    allowed_hosts = SOURCE_ALLOWED_HOSTS[source_name]
+
+    for listing in candidates:
+        checked_at = datetime.now(UTC)
+        try:
+            html, final_url = await fetch_html(listing.url)
+            final_host = (urlparse(final_url).hostname or "").casefold()
+            if final_host not in allowed_hosts:
+                raise RuntimeError(f"off-site redirect to {final_host or 'unknown host'}")
+            fetched += 1
+            listing.raw_payload = apply_heating_detail_html(
+                listing.raw_payload,
+                html,
+                checked_at=checked_at,
+            )
+            if listing.raw_payload.get("heating_types"):
+                found += 1
+            else:
+                unknown += 1
+        except (PlaywrightError, RuntimeError, ValueError) as exc:
+            # Browser challenges/timeouts are isolated enrichment failures. They must
+            # never turn a successful acquisition run into a false success/failure state.
+            listing.raw_payload = _with_error(
+                listing.raw_payload,
+                now=checked_at,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            failed += 1
+        session.commit()
 
     return HeatingEnrichmentStats(
         considered=considered,

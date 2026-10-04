@@ -92,6 +92,8 @@ class SourceOpsRow:
     scheduled: bool
     runnable: bool
     operational_note: str | None
+    latest_activity_at: datetime | None = None
+    latest_resume_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +141,69 @@ def _age_minutes(value: datetime | None, now: datetime) -> float | None:
     return max(0.0, (now - value.astimezone(UTC)).total_seconds() / 60.0)
 
 
+def _metadata_datetime(value: object | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _run_resume_at(run: CrawlRun | None) -> datetime | None:
+    if run is None:
+        return None
+    metadata = dict(getattr(run, "run_metadata", None) or {})
+    values: list[datetime] = []
+    manual = _metadata_datetime(metadata.get("manual_resume_requested_at"))
+    if manual is not None:
+        values.append(manual)
+    history = metadata.get("challenge_history")
+    if isinstance(history, list):
+        for item in history:
+            if not isinstance(item, dict) or item.get("action") != "revalidate":
+                continue
+            value = _metadata_datetime(item.get("at"))
+            if value is not None:
+                values.append(value)
+    return max(values) if values else None
+
+
+def _run_activity_at(run: CrawlRun | None) -> datetime | None:
+    if run is None:
+        return None
+    values: list[datetime] = []
+    started = getattr(run, "started_at", None)
+    if isinstance(started, datetime):
+        values.append(
+            started.replace(tzinfo=UTC)
+            if started.tzinfo is None
+            else started.astimezone(UTC)
+        )
+
+    metadata = dict(getattr(run, "run_metadata", None) or {})
+    explicit_activity = _metadata_datetime(metadata.get("last_activity_at"))
+    if explicit_activity is not None:
+        values.append(explicit_activity)
+
+    resume = _run_resume_at(run)
+    if resume is not None:
+        values.append(resume)
+
+    history = metadata.get("challenge_history")
+    if isinstance(history, list):
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            value = _metadata_datetime(item.get("at"))
+            if value is not None:
+                values.append(value)
+    return max(values) if values else None
+
+
 def source_ops_state(
     source: Source,
     latest: CrawlRun | None,
@@ -152,6 +217,8 @@ def source_ops_state(
         return "deaktiviert"
     if latest is not None and latest.status == RunStatus.RUNNING:
         return "läuft"
+    if latest is not None and str(latest.status) == "paused":
+        return "warnung"
     if runnable and not scheduled:
         return "warnung"
     if source.coverage_status in {CoverageStatus.DEGRADED, CoverageStatus.FAILED}:
@@ -194,7 +261,27 @@ def source_ops_reason(
         return "Vom Administrator deaktiviert; automatische und manuelle Läufe sind gesperrt."
 
     if latest is not None and latest.status == RunStatus.RUNNING:
+        activity = _run_activity_at(latest)
+        resume = _run_resume_at(latest)
+        if activity is not None and activity > latest.started_at:
+            suffix = " (fortgesetzter pausierter Lauf)" if resume is not None else ""
+            return (
+                f"Lauf #{latest.id} aktiv: Start {latest.started_at:%d.%m.%Y %H:%M}, "
+                f"letzte Aktivität {activity:%d.%m.%Y %H:%M}{suffix}."
+            )
         return f"Lauf #{latest.id} läuft seit {latest.started_at:%d.%m.%Y %H:%M}."
+
+    if latest is not None and str(latest.status) == "paused":
+        activity = _run_activity_at(latest)
+        activity_text = (
+            f", letzte Aktivität {activity:%d.%m.%Y %H:%M}"
+            if activity is not None and activity > latest.started_at
+            else ""
+        )
+        return (
+            f"Lauf #{latest.id} pausiert: Start {latest.started_at:%d.%m.%Y %H:%M}"
+            f"{activity_text}; wartet auf Challenge-Fortsetzung."
+        )
 
     latest_error = (
         getattr(latest, "error", None) if latest is not None else None
@@ -481,6 +568,8 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
                 scheduled=scheduled,
                 runnable=runnable,
                 operational_note=operational_note,
+                latest_activity_at=_run_activity_at(latest),
+                latest_resume_at=_run_resume_at(latest),
             )
         )
 

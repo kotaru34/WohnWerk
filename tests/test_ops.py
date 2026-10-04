@@ -58,6 +58,38 @@ def test_source_ops_state_flags_stale_and_failed_sources() -> None:
     ) == "deaktiviert"
 
 
+def test_source_ops_reason_surfaces_resumed_run_activity() -> None:
+    started = datetime(2026, 10, 3, 19, 37, tzinfo=UTC)
+    resumed = datetime(2026, 10, 4, 19, 42, tzinfo=UTC)
+    latest = SimpleNamespace(
+        id=591,
+        status=RunStatus.RUNNING,
+        started_at=started,
+        run_metadata={
+            "challenge_history": [
+                {
+                    "at": resumed.isoformat(),
+                    "action": "revalidate",
+                    "message": "paused challenge revalidation started",
+                }
+            ],
+            "last_activity_at": datetime(2026, 10, 4, 19, 55, tzinfo=UTC).isoformat(),
+        },
+    )
+
+    reason = source_ops_reason(
+        _source(),
+        latest,
+        0,
+        (),
+        now=datetime(2026, 10, 4, 20, 0, tzinfo=UTC),
+    )
+
+    assert "Start 03.10.2026 19:37" in reason
+    assert "letzte Aktivität 04.10.2026 19:55" in reason
+    assert "fortgesetzter pausierter Lauf" in reason
+
+
 def test_source_ops_reason_explains_manual_only_and_failed_runs() -> None:
     now = datetime(2026, 8, 30, 14, 0, tzinfo=UTC)
 
@@ -226,6 +258,8 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
                 scheduled=True,
                 runnable=True,
                 operational_note=None,
+                latest_activity_at=datetime(2026, 8, 30, 12, 25, tzinfo=UTC),
+                latest_resume_at=datetime(2026, 8, 30, 12, 20, tzinfo=UTC),
             ),
         ),
         unresolved_labels=(("Traboch", 2),),
@@ -276,6 +310,9 @@ def test_admin_health_page_renders_snapshot(monkeypatch) -> None:
             assert "Details &amp; Diagnose" in page.text
             assert "Coverage ok" in page.text
             assert "3 Seiten" in page.text
+            assert "letzte Aktivität: 30.08.2026 12:25" in page.text
+            assert "letztes Resume: 30.08.2026 12:20" in page.text
+            assert "letzter vollständig erfolgreicher Lauf" in page.text
             assert "1/1 Shards" in page.text
             assert "Jetzt ausführen" in page.text
             assert "Deaktivieren" in page.text

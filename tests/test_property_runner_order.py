@@ -11,6 +11,7 @@ from app.crawling.property_runner import (
     _set_active_challenge,
     _source_halt_reason,
     _tag_manual_resume,
+    _touch_run_activity,
 )
 from app.models import CoverageStatus, SourceShard
 from app.sources.base import SourceFetchError
@@ -80,6 +81,16 @@ def test_manual_resume_tags_existing_run_without_losing_metadata() -> None:
     assert run.run_metadata["shard_order"] == [{"id": 1}]
     assert run.run_metadata["manual_run_request_id"] == "manual-request-123"
     assert run.run_metadata["manual_resume_requested_at"]
+    assert run.run_metadata["last_activity_at"]
+
+
+def test_run_activity_touch_preserves_existing_metadata() -> None:
+    run = SimpleNamespace(run_metadata={"shard_order": [{"id": 1}]})
+
+    _touch_run_activity(run, at=datetime(2026, 10, 4, 20, 15, tzinfo=UTC))
+
+    assert run.run_metadata["shard_order"] == [{"id": 1}]
+    assert run.run_metadata["last_activity_at"] == "2026-10-04T20:15:00+00:00"
 
 
 def test_paused_resume_revalidation_preserves_checkpoint_until_success() -> None:

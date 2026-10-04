@@ -153,7 +153,7 @@
               · Coverage {{ row.coverage_status }}
             </div>
             <div class="source-meta">
-              letzter Erfolg:
+              letzter vollständig erfolgreicher Lauf:
               {{ row.last_success_at.strftime('%d.%m.%Y %H:%M') if row.last_success_at else 'nie' }}
             </div>
           </div>
@@ -165,7 +165,15 @@
                 <strong>#{{ row.latest_run_id }}</strong> · {{ row.latest_status }}
                 <span class="subtle">({{ row.latest_mode }})</span>
               </div>
-              <div class="source-meta">{{ row.latest_started_at.strftime('%d.%m.%Y %H:%M') if row.latest_started_at else '' }}</div>
+              <div class="source-meta">
+                Start: {{ row.latest_started_at.strftime('%d.%m.%Y %H:%M') if row.latest_started_at else '–' }}
+                {% if row.latest_activity_at and row.latest_activity_at != row.latest_started_at %}
+                  <br>letzte Aktivität: {{ row.latest_activity_at.strftime('%d.%m.%Y %H:%M') }}
+                {% endif %}
+                {% if row.latest_resume_at %}
+                  <br>letztes Resume: {{ row.latest_resume_at.strftime('%d.%m.%Y %H:%M') }}
+                {% endif %}
+              </div>
               <div class="run-metrics">
                 {{ row.latest_items_seen if row.latest_items_seen is not none else '–' }} gesehen ·
                 {{ row.latest_items_new if row.latest_items_new is not none else '–' }} neu ·

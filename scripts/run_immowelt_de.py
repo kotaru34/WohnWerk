@@ -13,6 +13,7 @@ from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
 from app.models import CrawlMode, CrawlRun, Source, SourceCategory
+from app.property_heating_enrichment import enrich_active_property_heating_with_fetcher
 from app.sources.property.immowelt_de import BASE_URL
 from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
@@ -29,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--incremental-pages", type=int, default=2)
     parser.add_argument("--delay", type=float, default=15.0)
     parser.add_argument("--hard-max-pages", type=int, default=250)
+    parser.add_argument(
+        "--heating-limit",
+        type=int,
+        default=12,
+        help="Maximum due Immowelt detail pages to read for normalized heating evidence.",
+    )
     parser.add_argument(
         "--challenge-handler",
         default=os.environ.get("WOHNWERK_IMMOWELT_CHALLENGE_HANDLER"),
@@ -57,10 +64,14 @@ def get_or_create_source() -> int:
         "country_code": "DE",
         "scope": "Germany houses for sale priced EUR 30,000 through EUR 200,000",
         "acquisition": (
-            "public browser-rendered search pages; no detail pages or login; explicit challenge "
-            "detection with persisted same-run handoff"
+            "public browser-rendered search pages plus bounded same-session detail reads for "
+            "normalized heating evidence; no login; explicit challenge detection with persisted "
+            "same-run handoff"
         ),
-        "retention": "title, price, area, PLZ, city and source URL only; no contact data or photos",
+        "retention": (
+            "title, price, area, PLZ, city, source URL, source-backed thumbnail URL and normalized "
+            "heating evidence only; no contact data or detail-page body"
+        ),
         "auction_policy": (
             "request distributionTypes=Buy only; retain explicit auction marker evidence and "
             "reject any leaked auction listing locally"
@@ -137,8 +148,10 @@ def _challenge_handler(args: argparse.Namespace):
 
 async def async_main() -> int:
     args = parse_args()
-    if args.incremental_pages <= 0 or args.hard_max_pages <= 0:
-        raise SystemExit("--incremental-pages and --hard-max-pages must be positive")
+    if args.incremental_pages <= 0 or args.hard_max_pages <= 0 or args.heating_limit <= 0:
+        raise SystemExit(
+            "--incremental-pages, --hard-max-pages and --heating-limit must be positive"
+        )
 
     source_id = get_or_create_source()
     adapter = ImmoweltHeadedPropertySource(
@@ -188,6 +201,21 @@ async def async_main() -> int:
                 print(f"disappeared={run.items_disappeared}")
             elif reconciliation:
                 print("disappeared=0 authority=withheld")
+
+            if summary.run_status not in {"failed", RUN_STATUS_PAUSED}:
+                heating = await enrich_active_property_heating_with_fetcher(
+                    session,
+                    source_name=SOURCE_NAME,
+                    fetch_html=adapter.load_detail_html,
+                    limit=args.heating_limit,
+                )
+                print(
+                    "heating="
+                    f"considered={heating.considered} fetched={heating.fetched} "
+                    f"found={heating.found} unknown={heating.unknown} failed={heating.failed}"
+                )
+            else:
+                print(f"heating=skipped run_status={summary.run_status}")
         return 0 if summary.run_status != "failed" else 1
     finally:
         await adapter.aclose()

@@ -14,6 +14,39 @@ _BAD_IMAGE_MARKERS = (
     "profile",
     "sprite",
 )
+_POSITIVE_CONTAINER_MARKERS = (
+    "gallery",
+    "image",
+    "media",
+    "photo",
+    "picture",
+    "carousel",
+)
+_NEGATIVE_CONTAINER_MARKERS = (
+    "agent",
+    "broker",
+    "brand",
+    "company",
+    "contact",
+    "logo",
+    "makler",
+    "profile",
+    "provider",
+)
+_LISTING_TOKEN_RE = re.compile(r"[a-z0-9äöüß]+", re.IGNORECASE)
+_LISTING_STOPWORDS = {
+    "zum",
+    "zur",
+    "kauf",
+    "haus",
+    "häuser",
+    "einfamilienhaus",
+    "mehrfamilienhaus",
+    "reihenhaus",
+    "doppelhaushälfte",
+    "zimmer",
+    "grundstück",
+}
 
 
 def _balanced_srcset_url(value: str) -> str | None:
@@ -78,10 +111,61 @@ def _numeric_dimension(value: str | None) -> float | None:
     return float(match.group(1)) if match else None
 
 
-def card_thumbnail_url(card: Any, *, page_url: str) -> str | None:
-    """Choose a balanced, source-backed preview image from one result card."""
+def _semantic_tokens(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {
+        token
+        for token in _LISTING_TOKEN_RE.findall(value.casefold())
+        if len(token) >= 3 and token not in _LISTING_STOPWORDS
+    }
 
-    ranked: list[tuple[int, int, str]] = []
+
+def _container_marker_text(node: Any, *, depth: int = 5) -> str:
+    parts: list[str] = []
+    current = getattr(node, "parent", None)
+    for _ in range(depth):
+        if current is None:
+            break
+        attrs = getattr(current, "attrs", {}) or {}
+        parts.extend(
+            (
+                str(attrs.get("data-testid", "")),
+                str(attrs.get("class", "")),
+                str(attrs.get("aria-label", "")),
+            )
+        )
+        current = getattr(current, "parent", None)
+    return " ".join(parts).casefold()
+
+
+def _listing_affinity(attributes: dict[str, str], listing_text: str | None) -> tuple[int, bool]:
+    listing_tokens = _semantic_tokens(listing_text)
+    candidate_text = " ".join(
+        (attributes.get("alt", ""), attributes.get("title", ""))
+    ).strip()
+    candidate_tokens = _semantic_tokens(candidate_text)
+    overlap = len(listing_tokens & candidate_tokens)
+
+    # Immowelt's real-estate photo alt text commonly carries listing facts while
+    # broker logos carry only the provider name. Numeric listing evidence makes
+    # that distinction stronger without hard-coding any broker brand.
+    has_listing_measure = bool(
+        re.search(r"\b\d[\d.,]*\s*(?:€|m(?:²|2))\b", candidate_text, re.IGNORECASE)
+    )
+    strong = overlap >= 2 or (overlap >= 1 and has_listing_measure)
+    return overlap, strong
+
+
+def card_thumbnail_url(
+    card: Any,
+    *,
+    page_url: str,
+    listing_text: str | None = None,
+) -> str | None:
+    """Choose the property photo, not arbitrary branding inside a result card."""
+
+    ranked: list[tuple[int, int, int, str]] = []
     for index, node in enumerate(card.walk()):
         if node.tag not in {"img", "source"}:
             continue
@@ -108,6 +192,9 @@ def card_thumbnail_url(card: Any, *, page_url: str) -> str | None:
         if width is not None and height is not None and max(width, height) < 120:
             continue
 
+        container_text = _container_marker_text(node)
+        overlap, strong_listing_match = _listing_affinity(attributes, listing_text)
+
         score = 0
         if from_srcset:
             score += 6
@@ -117,11 +204,23 @@ def card_thumbnail_url(card: Any, *, page_url: str) -> str | None:
             score += 2
         if any(token in marker_text for token in ("image", "photo", "gallery", "property")):
             score += 1
+        if any(token in container_text for token in _POSITIVE_CONTAINER_MARKERS):
+            score += 4
+        if any(token in container_text for token in _NEGATIVE_CONTAINER_MARKERS):
+            score -= 12
+        score += min(12, overlap * 3)
         if width is not None and width >= 300:
             score += 1
+        if width is not None and height is not None:
+            smaller = min(width, height)
+            larger = max(width, height)
+            if larger <= 220 and smaller / max(larger, 1) >= 0.75:
+                score -= 5
 
-        ranked.append((score, -index, image_url))
+        # A semantic match with the exact card title outranks generic branding even
+        # when the branding appears earlier in the DOM and has its own srcset.
+        ranked.append((1 if strong_listing_match else 0, score, -index, image_url))
 
     if not ranked:
         return None
-    return max(ranked)[2]
+    return max(ranked)[3]

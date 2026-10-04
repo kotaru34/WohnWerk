@@ -227,10 +227,46 @@ def reset_non_cached_image_retries(session: Session) -> int:
     return int(result.rowcount or 0)
 
 
+def _cached_thumbnail_needs_refresh(
+    image_row: PropertyImage,
+    listing: PropertyListing,
+) -> bool:
+    current_url = _payload_image_url(listing.raw_payload)
+    return bool(current_url and current_url != image_row.source_image_url)
+
+
 def _candidate_property_ids(session: Session, *, limit: int) -> list[int]:
     profile = get_seed_profile(session)
     hidden = hidden_property_ids(session, profile.id) if profile is not None else set()
     now = datetime.now(UTC)
+
+    # A source parser can legitimately improve its thumbnail choice after an image has
+    # already been cached. Keep serving the old file until the worker atomically replaces
+    # it, but prioritize such rows for refresh when the exact source listing now points at
+    # a different source-backed thumbnail URL.
+    stale_cached: list[int] = []
+    stale_rows = session.execute(
+        select(PropertyImage, PropertyListing)
+        .join(
+            PropertyListing,
+            PropertyListing.id == PropertyImage.property_listing_id,
+        )
+        .join(Property, Property.id == PropertyImage.property_id)
+        .where(
+            Property.status == ListingStatus.ACTIVE,
+            PropertyListing.status == ListingStatus.ACTIVE,
+            PropertyImage.status == "cached",
+            PropertyImage.local_filename.is_not(None),
+        )
+        .order_by(PropertyImage.updated_at.asc(), PropertyImage.property_id)
+        .limit(limit * 4)
+    )
+    for image_row, listing in stale_rows:
+        if _cached_thumbnail_needs_refresh(image_row, listing):
+            stale_cached.append(int(image_row.property_id))
+            if len(stale_cached) >= limit:
+                break
+
     retryable = or_(
         PropertyImage.id.is_(None),
         and_(
@@ -249,10 +285,18 @@ def _candidate_property_ids(session: Session, *, limit: int) -> list[int]:
         .order_by(Property.first_seen_at.desc(), Property.id.desc())
         .limit(limit * 3)
     )
-    ids = [int(value) for value in session.scalars(stmt)]
-    if hidden:
-        ids = [value for value in ids if value not in hidden]
-    return ids[:limit]
+    retryable_ids = [int(value) for value in session.scalars(stmt)]
+
+    ordered: list[int] = []
+    seen: set[int] = set()
+    for value in (*stale_cached, *retryable_ids):
+        if value in seen or value in hidden:
+            continue
+        seen.add(value)
+        ordered.append(value)
+        if len(ordered) >= limit:
+            break
+    return ordered
 
 
 def _active_listings(session: Session, property_id: int) -> list[PropertyListing]:
