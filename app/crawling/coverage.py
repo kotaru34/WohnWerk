@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.refresh import MANUAL_RUN_REQUEST_ENV
 from app.models import (
     CoverageStatus,
     CrawlMode,
@@ -22,6 +21,7 @@ from app.models import (
     Source,
     SourceShard,
 )
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 
 SHARD_STATUS_SKIPPED = "skipped"
 RUN_STATUS_PAUSED = "paused"
