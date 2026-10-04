@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -42,6 +43,7 @@ from app.models import (
 )
 from app.property_acquisition import annotate_property_items_by_budget
 from app.property_liveness import prepare_immmo_item_liveness
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 from app.sources.base import (
     PropertySource,
     RawProperty,
@@ -325,6 +327,7 @@ async def run_property_source(
     specs_by_key = {spec.key: spec for spec in specs}
     mode = CrawlMode.RECONCILIATION if reconciliation else CrawlMode.INCREMENTAL
     source_id = source.id
+    manual_request_id = os.environ.get(MANUAL_RUN_REQUEST_ENV, "").strip()
 
     if resume_run_id is None:
         run = create_run(session, source, mode)
@@ -342,8 +345,15 @@ async def run_property_source(
                 f"Run {run.id} mode {run.mode!r} does not match requested mode {mode!r}"
             )
         ordered_shards = _restore_shard_order(run, shards)
+        if manual_request_id:
+            metadata = dict(run.run_metadata or {})
+            metadata["manual_run_request_id"] = manual_request_id
+            metadata["manual_resume_requested_at"] = datetime.now(UTC).isoformat()
+            run.run_metadata = metadata
+            session.commit()
 
     run_id = run.id
+    manual_revalidate_paused = bool(resume_run_id is not None and manual_request_id)
     handler = challenge_handler or DeferredChallengeHandler()
     handoff_count = _challenge_handoff_count(run)
 
@@ -371,47 +381,72 @@ async def run_property_source(
             if payload is None or int(payload.get("shard_id") or -1) != shard_id:
                 raise RuntimeError(f"Paused run {run_id} lost active challenge metadata")
             request = _challenge_request_from_payload(payload)
-            result = await handler.handle(request)
-            _record_challenge_result(
-                run,
-                request,
-                action=result.action,
-                message=result.message,
-            )
-            if result.action == "defer":
-                _set_active_challenge(run, request)
-                summary = checkpoint_paused_run(session, run)
-                current_source = session.get(Source, source_id)
-                if current_source is not None:
-                    _queue_house_refresh(session, current_source, run, summary)
-                    session.commit()
-                return run, summary
-            if result.action == "abort":
-                shard_run.status = RunStatus.FAILED
-                shard_run.finished_at = datetime.now(UTC)
-                shard_run.coverage_complete = False
-                shard_run.error = result.message or "user challenge handler aborted"
-                shard.consecutive_failures += 1
-                _mark_unattempted_after_source_halt(
-                    session,
-                    run_id=run_id,
-                    source_name=source.name,
-                    failed_spec_key=spec.key,
-                    remaining_shards=ordered_shards[index + 1 :],
-                    reason=shard_run.error,
+
+            if manual_revalidate_paused:
+                # A persisted challenge can become stale while a run is paused. An explicit
+                # operator retry gets exactly one fresh navigation in a clean browser context
+                # before the old challenge handler is consulted. If the gate is still live,
+                # the normal SourceChallenge path below checkpoints a new handoff and remains
+                # fail-closed. Scheduled resumes keep the existing handler-first semantics.
+                _record_challenge_result(
+                    run,
+                    request,
+                    action="revalidate",
+                    message="explicit manual retry requested fresh challenge revalidation",
                 )
+                metadata = dict(run.run_metadata or {})
+                metadata.pop("active_challenge", None)
+                run.run_metadata = metadata
+                shard_run.status = RunStatus.RUNNING
+                shard_run.finished_at = None
+                shard_run.error = None
+                run.status = RunStatus.RUNNING
+                run.coverage_status = CoverageStatus.UNKNOWN
                 session.commit()
-                break
-            if result.retry_after_seconds:
-                await asyncio.sleep(result.retry_after_seconds)
-            await adapter.restore_challenge_handoff(request.handoff_state)
-            shard_run.status = RunStatus.RUNNING
-            shard_run.finished_at = None
-            shard_run.error = None
-            run.status = RunStatus.RUNNING
-            run.coverage_status = CoverageStatus.UNKNOWN
-            session.commit()
-            resume_cursor = request.resume_cursor
+                resume_cursor = dict(request.resume_cursor)
+                manual_revalidate_paused = False
+            else:
+                result = await handler.handle(request)
+                _record_challenge_result(
+                    run,
+                    request,
+                    action=result.action,
+                    message=result.message,
+                )
+                if result.action == "defer":
+                    _set_active_challenge(run, request)
+                    summary = checkpoint_paused_run(session, run)
+                    current_source = session.get(Source, source_id)
+                    if current_source is not None:
+                        _queue_house_refresh(session, current_source, run, summary)
+                        session.commit()
+                    return run, summary
+                if result.action == "abort":
+                    shard_run.status = RunStatus.FAILED
+                    shard_run.finished_at = datetime.now(UTC)
+                    shard_run.coverage_complete = False
+                    shard_run.error = result.message or "user challenge handler aborted"
+                    shard.consecutive_failures += 1
+                    _mark_unattempted_after_source_halt(
+                        session,
+                        run_id=run_id,
+                        source_name=source.name,
+                        failed_spec_key=spec.key,
+                        remaining_shards=ordered_shards[index + 1 :],
+                        reason=shard_run.error,
+                    )
+                    session.commit()
+                    break
+                if result.retry_after_seconds:
+                    await asyncio.sleep(result.retry_after_seconds)
+                await adapter.restore_challenge_handoff(request.handoff_state)
+                shard_run.status = RunStatus.RUNNING
+                shard_run.finished_at = None
+                shard_run.error = None
+                run.status = RunStatus.RUNNING
+                run.coverage_status = CoverageStatus.UNKNOWN
+                session.commit()
+                resume_cursor = request.resume_cursor
 
         while True:
             halt_reason: str | None = None
