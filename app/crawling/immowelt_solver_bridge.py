@@ -133,11 +133,12 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
                 message="challenge is not positively identified as an Immowelt DataDome gate",
             )
 
-        if _datadome_challenge_type(request) == "bv":
+        challenge_type = _datadome_challenge_type(request)
+        if challenge_type in {"bv", "fe"}:
             return ChallengeResult(
                 action="defer",
                 message=(
-                    "DataDome requires interactive verification (t=bv); "
+                    f"DataDome requires interactive verification (t={challenge_type}); "
                     "the configured local solver is silent-clearance harvest-only"
                 ),
             )
