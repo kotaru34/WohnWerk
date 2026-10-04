@@ -184,11 +184,15 @@ def _run_activity_at(run: CrawlRun | None) -> datetime | None:
             else started.astimezone(UTC)
         )
 
+    metadata = dict(getattr(run, "run_metadata", None) or {})
+    explicit_activity = _metadata_datetime(metadata.get("last_activity_at"))
+    if explicit_activity is not None:
+        values.append(explicit_activity)
+
     resume = _run_resume_at(run)
     if resume is not None:
         values.append(resume)
 
-    metadata = dict(getattr(run, "run_metadata", None) or {})
     history = metadata.get("challenge_history")
     if isinstance(history, list):
         for item in history:
