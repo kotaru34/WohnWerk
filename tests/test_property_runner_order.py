@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 from app.crawling.challenge import ChallengeRequest
 from app.crawling.property_runner import (
-    _begin_manual_challenge_revalidation,
+    _begin_paused_challenge_revalidation,
     _ordered_shards,
+    _record_challenge_result,
+    _set_active_challenge,
     _source_halt_reason,
     _tag_manual_resume,
 )
@@ -80,7 +82,7 @@ def test_manual_resume_tags_existing_run_without_losing_metadata() -> None:
     assert run.run_metadata["manual_resume_requested_at"]
 
 
-def test_manual_resume_revalidates_stale_challenge_before_handler() -> None:
+def test_paused_resume_revalidation_preserves_checkpoint_until_success() -> None:
     request = ChallengeRequest(
         source="immowelt-de",
         run_id=77,
@@ -99,20 +101,63 @@ def test_manual_resume_revalidates_stale_challenge_before_handler() -> None:
         status="paused",
         coverage_status=CoverageStatus.DEGRADED,
     )
-    shard_run = SimpleNamespace(
-        status="paused",
-        finished_at=datetime.now(UTC),
-        error="old challenge",
-    )
-
-    cursor = _begin_manual_challenge_revalidation(run, shard_run, request)
+    cursor = _begin_paused_challenge_revalidation(run, request)
 
     assert cursor == {"_resume_same_run": True, "resume_page": 1}
-    assert "active_challenge" not in run.run_metadata
+    assert run.run_metadata["active_challenge"] == request.to_payload()
     assert run.run_metadata["challenge_handoff_count"] == 1
     assert run.run_metadata["challenge_history"][-1]["action"] == "revalidate"
-    assert run.status == RunStatus.RUNNING
-    assert run.coverage_status == CoverageStatus.UNKNOWN
-    assert shard_run.status == RunStatus.RUNNING
-    assert shard_run.finished_at is None
-    assert shard_run.error is None
+    assert run.status == "paused"
+    assert run.coverage_status == CoverageStatus.DEGRADED
+
+    _record_challenge_result(
+        run,
+        request,
+        action="resolved",
+        message="challenge absent on resume revalidation",
+    )
+    assert "active_challenge" not in run.run_metadata
+
+
+def test_persistent_revalidation_replaces_checkpoint_and_stays_fail_closed() -> None:
+    request = ChallengeRequest(
+        source="immoscout24-de",
+        run_id=88,
+        shard_id=10,
+        shard_key="sachsen:030000-099999",
+        shard_params={"region_key": "sachsen"},
+        mode="incremental",
+        reason="old verification",
+        challenge={"kind": "challenge_content"},
+        resume_cursor={"_resume_same_run": True, "resume_page": 1},
+        handoff_state={"state_dir": "/tmp/old-handoff"},
+        handoff_id="immoscout24-de:run-88:shard-10:handoff-1",
+    )
+    run = SimpleNamespace(
+        run_metadata={"active_challenge": request.to_payload(), "challenge_handoff_count": 1}
+    )
+    _begin_paused_challenge_revalidation(run, request)
+    _record_challenge_result(
+        run,
+        request,
+        action="defer",
+        message="challenge still present on resume revalidation",
+    )
+    replacement = ChallengeRequest(
+        source=request.source,
+        run_id=request.run_id,
+        shard_id=request.shard_id,
+        shard_key=request.shard_key,
+        shard_params=request.shard_params,
+        mode=request.mode,
+        reason="fresh verification",
+        challenge={"kind": "challenge_content", "http_status": 401},
+        resume_cursor=request.resume_cursor,
+        handoff_state={"state_dir": "/tmp/new-handoff"},
+        handoff_id="immoscout24-de:run-88:shard-10:handoff-2",
+    )
+    _set_active_challenge(run, replacement, handoff_count=2)
+
+    assert run.run_metadata["active_challenge"] == replacement.to_payload()
+    assert run.run_metadata["challenge_handoff_count"] == 2
+    assert run.run_metadata["challenge_history"][-1]["action"] == "defer"

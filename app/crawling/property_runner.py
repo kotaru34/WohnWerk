@@ -238,25 +238,17 @@ def _tag_manual_resume(run: CrawlRun, request_id: str) -> None:
     run.run_metadata = metadata
 
 
-def _begin_manual_challenge_revalidation(
+def _begin_paused_challenge_revalidation(
     run: CrawlRun,
-    shard_run: CrawlShardRun,
     request: ChallengeRequest,
 ) -> dict[str, Any]:
+    """Record one bounded fresh retry while preserving the fail-closed checkpoint."""
     _record_challenge_result(
         run,
         request,
         action="revalidate",
-        message="explicit manual retry requested fresh challenge revalidation",
+        message="paused challenge revalidation started",
     )
-    metadata = dict(run.run_metadata or {})
-    metadata.pop("active_challenge", None)
-    run.run_metadata = metadata
-    shard_run.status = RunStatus.RUNNING
-    shard_run.finished_at = None
-    shard_run.error = None
-    run.status = RunStatus.RUNNING
-    run.coverage_status = CoverageStatus.UNKNOWN
     return dict(request.resume_cursor)
 
 
@@ -383,7 +375,8 @@ async def run_property_source(
             session.commit()
 
     run_id = run.id
-    manual_revalidate_paused = bool(resume_run_id is not None and manual_request_id)
+    revalidate_paused = resume_run_id is not None
+    revalidated_request: ChallengeRequest | None = None
     handler = challenge_handler or DeferredChallengeHandler()
     handoff_count = _challenge_handoff_count(run)
 
@@ -412,19 +405,15 @@ async def run_property_source(
                 raise RuntimeError(f"Paused run {run_id} lost active challenge metadata")
             request = _challenge_request_from_payload(payload)
 
-            if manual_revalidate_paused:
-                # A persisted challenge can become stale while a run is paused. An explicit
-                # operator retry gets exactly one fresh navigation in a clean browser context
-                # before the old challenge handler is consulted. If the gate is still live,
-                # the normal SourceChallenge path below checkpoints a new handoff and remains
-                # fail-closed. Scheduled resumes keep the existing handler-first semantics.
-                resume_cursor = _begin_manual_challenge_revalidation(
-                    run,
-                    shard_run,
-                    request,
-                )
+            if revalidate_paused:
+                # A persisted challenge can become stale while a run is paused. Every resume
+                # gets exactly one fresh navigation before the old handler is consulted.
+                # Keep the previous active_challenge until that navigation has actually
+                # succeeded or a new SourceChallenge checkpoint replaces it.
+                revalidated_request = request
+                resume_cursor = _begin_paused_challenge_revalidation(run, request)
                 session.commit()
-                manual_revalidate_paused = False
+                revalidate_paused = False
             else:
                 result = await handler.handle(request)
                 _record_challenge_result(
@@ -539,6 +528,14 @@ async def run_property_source(
                 current_shard.consecutive_failures = 0
                 if reconciliation and coverage_complete and not batch.result_cap_hit:
                     current_shard.last_full_scan_at = now
+                if revalidated_request is not None:
+                    _record_challenge_result(
+                        current_run,
+                        revalidated_request,
+                        action="resolved",
+                        message="challenge absent on resume revalidation",
+                    )
+                    revalidated_request = None
                 session.commit()
                 resume_cursor = None
                 break
@@ -565,6 +562,15 @@ async def run_property_source(
                     raise RuntimeError(
                         f"Could not reload challenged run state for {source.name}/{spec.key}"
                     ) from exc
+
+                if revalidated_request is not None:
+                    _record_challenge_result(
+                        paused_run,
+                        revalidated_request,
+                        action="defer",
+                        message="challenge still present on resume revalidation",
+                    )
+                    revalidated_request = None
 
                 _apply_attempt_metrics(
                     paused_shard_run,
