@@ -227,6 +227,14 @@ def reset_non_cached_image_retries(session: Session) -> int:
     return int(result.rowcount or 0)
 
 
+def _cached_thumbnail_needs_refresh(
+    image_row: PropertyImage,
+    listing: PropertyListing,
+) -> bool:
+    current_url = _payload_image_url(listing.raw_payload)
+    return bool(current_url and current_url != image_row.source_image_url)
+
+
 def _candidate_property_ids(session: Session, *, limit: int) -> list[int]:
     profile = get_seed_profile(session)
     hidden = hidden_property_ids(session, profile.id) if profile is not None else set()
@@ -254,8 +262,7 @@ def _candidate_property_ids(session: Session, *, limit: int) -> list[int]:
         .limit(limit * 4)
     )
     for image_row, listing in stale_rows:
-        current_url = _payload_image_url(listing.raw_payload)
-        if current_url and current_url != image_row.source_image_url:
+        if _cached_thumbnail_needs_refresh(image_row, listing):
             stale_cached.append(int(image_row.property_id))
             if len(stale_cached) >= limit:
                 break
