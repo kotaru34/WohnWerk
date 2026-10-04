@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import secrets
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -31,7 +33,13 @@ from app.models import (
     SourceCategory,
     SourceShard,
 )
-from app.refresh import source_is_scheduled, source_operational_note, source_run_plan
+from app.refresh import (
+    MANUAL_RUN_BUSY_EXIT_CODE,
+    MANUAL_RUN_DEFERRED_EXIT_CODE,
+    source_is_scheduled,
+    source_operational_note,
+    source_run_plan,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -42,7 +50,14 @@ NOTICE_LABELS = {
     "source_disabled": "Quelle deaktiviert.",
     "run_started": "Manueller Quellenlauf wurde gestartet.",
     "already_running": "Für diese Quelle läuft bereits ein Crawl.",
+    "refresh_busy": "Ein anderer Refresh läuft bereits; der manuelle Lauf wurde nicht gestartet.",
+    "run_deferred": "Der manuelle Lauf wurde vom Runtime-Gate zurückgestellt und nicht gestartet.",
+    "run_failed": "Der manuelle Quellenlauf konnte nicht gestartet werden.",
+    "run_pending": "Der manuelle Start läuft, aber eine neue Lauf-ID ist noch nicht sichtbar.",
 }
+
+RUN_START_CONFIRM_TIMEOUT_SECONDS = 3.0
+RUN_START_POLL_SECONDS = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -520,8 +535,23 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
     )
 
 
-def _health_redirect(notice: str) -> RedirectResponse:
-    return RedirectResponse(f"/admin/health?{urlencode({'hinweis': notice})}", status_code=303)
+def _health_redirect(notice: str, *, run_id: int | None = None) -> RedirectResponse:
+    query: dict[str, str] = {"hinweis": notice}
+    if run_id is not None:
+        query["run_id"] = str(run_id)
+    return RedirectResponse(f"/admin/health?{urlencode(query)}", status_code=303)
+
+
+def _manual_run_id(db: Session, *, source_id: int, request_id: str) -> int | None:
+    return db.scalar(
+        select(CrawlRun.id)
+        .where(
+            CrawlRun.source_id == source_id,
+            CrawlRun.run_metadata["manual_run_request_id"].as_string() == request_id,
+        )
+        .order_by(CrawlRun.id.desc())
+        .limit(1)
+    )
 
 
 @router.post("/sources/{source_id}/enabled")
@@ -568,13 +598,16 @@ def run_source_now(
     if running is not None:
         return _health_redirect("already_running")
 
+    request_id = secrets.token_urlsafe(18)
     try:
-        subprocess.Popen(
+        process = subprocess.Popen(
             [
                 sys.executable,
                 str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
                 "--source",
                 source.name,
+                "--run-request-id",
+                request_id,
             ],
             cwd=PROJECT_ROOT,
             stdout=subprocess.DEVNULL,
@@ -587,7 +620,24 @@ def run_source_now(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Quellenlauf konnte nicht gestartet werden: {exc}",
         ) from exc
-    return _health_redirect("run_started")
+
+    deadline = time.monotonic() + RUN_START_CONFIRM_TIMEOUT_SECONDS
+    while True:
+        run_id = _manual_run_id(db, source_id=source.id, request_id=request_id)
+        if run_id is not None:
+            return _health_redirect("run_started", run_id=run_id)
+
+        returncode = process.poll()
+        if returncode is not None:
+            if returncode == MANUAL_RUN_BUSY_EXIT_CODE:
+                return _health_redirect("refresh_busy")
+            if returncode == MANUAL_RUN_DEFERRED_EXIT_CODE:
+                return _health_redirect("run_deferred")
+            return _health_redirect("run_failed")
+
+        if time.monotonic() >= deadline:
+            return _health_redirect("run_pending")
+        time.sleep(RUN_START_POLL_SECONDS)
 
 
 @router.get("/health")
@@ -596,13 +646,17 @@ def admin_health_page(
     _: AdminDependency,
     db: DbDependency,
     hinweis: str | None = None,
+    run_id: int | None = None,
 ):
+    notice = NOTICE_LABELS.get(hinweis or "")
+    if hinweis == "run_started" and run_id is not None:
+        notice = f"Manueller Quellenlauf #{run_id} wurde gestartet."
     return templates.TemplateResponse(
         request=request,
         name="admin_health.html",
         context={
             "snapshot": collect_ops_snapshot(db),
             "csrf_token": _csrf_token(),
-            "notice": NOTICE_LABELS.get(hinweis or ""),
+            "notice": notice,
         },
     )
