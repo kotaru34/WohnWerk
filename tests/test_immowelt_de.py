@@ -95,6 +95,32 @@ def test_parser_keeps_only_minimal_public_facts_and_leading_zero_plz() -> None:
     assert item.raw_payload["thumbnail_semantics"] == "source_search_card"
 
 
+def test_parser_prefers_property_photo_over_broker_branding() -> None:
+    html = _page_html().replace(
+        '<img\n              src="https://images.example.test/house-320.jpg"',
+        (
+            '<div class="provider-branding">'
+            '<img '
+            'src="https://images.example.test/sparkasse-320.jpg" '
+            'srcset="https://images.example.test/sparkasse-320.jpg 320w, '
+            'https://images.example.test/sparkasse-720.jpg 720w" '
+            'alt="Sparkasse Tauberfranken">'
+            '</div>'
+            '<img\n              src="https://images.example.test/house-320.jpg"'
+        ),
+    )
+    page = parse_immowelt_search_page(
+        html,
+        page_url="https://www.immowelt.de/classified-search",
+        region_key="sachsen",
+        price_band_key="030000-099999",
+    )
+
+    assert page.items[0].raw_payload["thumbnail_url"] == (
+        "https://images.example.test/house-720.jpg"
+    )
+
+
 def test_parser_accepts_observed_short_public_expose_identity() -> None:
     page = parse_immowelt_search_page(
         _page_html(
