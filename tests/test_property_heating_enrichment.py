@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.property_heating_enrichment import (
     DEFAULT_SOURCE_NAMES,
+    SOURCE_ALLOWED_HOSTS,
     apply_heating_detail_html,
     heating_detail_due,
 )
@@ -58,3 +59,31 @@ def test_default_heating_enrichment_skips_von_poll_blocked_details() -> None:
         "iad-de",
         "falc-de",
     )
+
+
+def test_immowelt_heating_labels_extract_public_energy_carrier_without_description() -> None:
+    checked_at = datetime(2026, 10, 4, 20, 0, tzinfo=UTC)
+    payload = apply_heating_detail_html(
+        {"format": "immowelt-public-search-v2"},
+        """
+        <html><body>
+          <h2>Bausubstanz und Energie</h2>
+          <div>Heizungsart</div><div>Ofen</div>
+          <div>Energieträger</div><div>Öl</div>
+          <h2>Über den Anbieter</h2>
+          <p>Broker contact details must not be retained.</p>
+        </body></html>
+        """,
+        checked_at=checked_at,
+    )
+
+    assert payload["heating_types"] == ["oil"]
+    assert payload["heating_enrichment_status"] == "found"
+    assert "Broker contact details" not in str(payload)
+
+
+def test_immowelt_is_allowed_only_for_caller_owned_browser_transport() -> None:
+    assert SOURCE_ALLOWED_HOSTS["immowelt-de"] == frozenset(
+        {"immowelt.de", "www.immowelt.de"}
+    )
+    assert "immowelt-de" not in DEFAULT_SOURCE_NAMES
