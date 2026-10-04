@@ -2,9 +2,10 @@ from app.crawling.coverage import (
     RUN_STATUS_PAUSED,
     SHARD_STATUS_SKIPPED,
     ShardOutcome,
+    create_run,
     summarize_shards,
 )
-from app.models import CoverageStatus, RunStatus
+from app.models import CoverageStatus, CrawlMode, RunStatus
 
 
 def test_complete_shards_produce_ok_coverage() -> None:
@@ -117,3 +118,33 @@ def test_empty_source_is_failure_not_false_success() -> None:
 
     assert summary.run_status == RunStatus.FAILED
     assert summary.coverage_status == CoverageStatus.FAILED
+
+
+
+class _CreateRunSession:
+    def __init__(self) -> None:
+        self.added = []
+        self.commits = 0
+
+    def scalars(self, _statement):
+        return []
+
+    def add(self, value) -> None:
+        self.added.append(value)
+
+    def flush(self) -> None:
+        return None
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+def test_create_run_carries_manual_request_id_from_runner_environment(monkeypatch) -> None:
+    session = _CreateRunSession()
+    source = type("SourceStub", (), {"id": 17})()
+    monkeypatch.setenv("WOHNWERK_MANUAL_RUN_REQUEST_ID", "manual-test-123")
+
+    run = create_run(session, source, CrawlMode.INCREMENTAL)
+
+    assert run.run_metadata == {"manual_run_request_id": "manual-test-123"}
+    assert session.commits == 1
