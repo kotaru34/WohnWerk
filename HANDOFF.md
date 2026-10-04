@@ -1,11 +1,11 @@
 # WohnWerk handoff checkpoint
 
-**Checkpoint date:** 2026-10-03  
+**Checkpoint date:** 2026-10-04  
 **Project:** WohnWerk  
 **Repository:** `kotaru34/WohnWerk`  
-**Active development branch:** `release/v0.4.16`  
-**Production release:** `release/v0.4.15`; deployed code SHA `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`  
-**Active PR:** #37 — `Release v0.4.16 loop-safe Immowelt DataDome solver bridge`  
+**Active development branch:** `release/v0.4.17`  
+**Production release:** `release/v0.4.17`; deployed code SHA `e24e4d448c5281e363c77ef5e04c24465ba9e13a`  
+**Active PR:** #40 — `Release v0.4.17 DataDome banned-visitor fail-closed hardening`  
 **Frozen Austria baseline:** `release/v1-austria` at `89f1833f`
 
 This file is the authoritative recovery point for a fresh context. Read
@@ -34,7 +34,25 @@ The active Germany phase is now **house-only**.
 
 ## Release/runtime state
 
-Production is deployed and accepted on **v0.4.15**.
+Production is deployed and accepted on **v0.4.17**.
+
+### v0.4.17 production proof
+
+- exact deployed SHA: `e24e4d448c5281e363c77ef5e04c24465ba9e13a`;
+- release branch: `release/v0.4.17`; release PR #40;
+- exact-release CI #37153639252: Install, Ruff, Compile and full Tests passed, **714 passed, 2 warnings**;
+- no DB migration or dependency change;
+- rollback ref `refs/wohnwerk/rollback-v0.4.16-pre-v0.4.17` points to `c9029e0c4b8db9f0bab80a29af65140f3838adbc`;
+- final production tree is clean and `/health` reports `status=ok`, `version=0.4.17`;
+- `wohnwerk.service`, `wohnwerk-refresh.timer`, `wohnwerk-images.timer`, `wohnwerk-liveness.timer`, and `captcha-solver.service` are active;
+- refresh selects `WOHNWERK_IMMOWELT_SOLVER_URL=http://127.0.0.1:8877`; the legacy external handler remains inactive;
+- solver health is OK with DataDome support and its listener is loopback-only at `127.0.0.1:8877`;
+- live target acceptance received HTTP 403 with DataDome `rt=c`, `t=bv`; v0.4.17 returned `defer` in about 0.001 s with `solver_called=no` and did not persist inline cookie/cid/hash/signature;
+- `t=bv` remains intentionally fail-closed: it does not gain reconciliation/disappearance authority and is not misreported as solved;
+- temporary broad sudo bootstrap was removed after acceptance; only the permanent narrow Sentinel consumer sudo permission remains;
+- machine-level proof is recorded in `/home/sentinel-ai/WohnWerk_MACHINE_HANDOFF.md` and Sentinel relay issue #91.
+
+### Historical v0.4.15 production proof
 
 - deployed application version: **v0.4.15**
 - exact deployed Git SHA: `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`
@@ -580,10 +598,11 @@ The deployed v0.4.4 release introduces migration `0014_candidate_workplace`:
 13. **DONE:** v0.4.13 deployed at `2863c01004341e9e7aa28bbc830c4e482e94c2df`: `/admin/health` source-state reasons, run/shard diagnostics, safe Run-now and Enable/Disable controls, plus operational `falc-de` bounded Germany broker-network source.
 14. **DONE:** v0.4.14 deployed at `bc223ff2aa17306528300d4d3e31ad4180ca19fa`: compact responsive admin source cards with collapsed diagnostics; source semantics and controls unchanged.
 15. **DONE:** v0.4.15 deployed at `abdec02fee6e0f984d9f298d6b7e7ef8879dea87`: German source-model audit hardening; VON POLL manual-only after HTTP 403 and unstable fallback identity cannot grant reconciliation authority.
-16. **CURRENT:** v0.4.16 adds an opt-in, Immowelt-only DataDome bridge to the localhost solver with exact User-Agent replay, persisted browser-patch validation and bounded repeat-candidate loop prevention. External handler commands retain precedence; generic Cloudflare/Turnstile replay remains fail-closed.
-17. After v0.4.16, continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
-18. Keep Germany jobs paused until an explicit operator decision reopens them.
-19. Run #990 remains retained for audit continuity and incompatible with the newer Immowelt shard contract.
+16. **DONE:** v0.4.16 deployed and production-accepted at `c9029e0c4b8db9f0bab80a29af65140f3838adbc`: opt-in Immowelt-only DataDome bridge with exact User-Agent replay, persisted browser-patch validation and bounded repeat-candidate loop prevention.
+17. **DONE:** v0.4.17 deployed and production-accepted at `e24e4d448c5281e363c77ef5e04c24465ba9e13a`: safe DataDome bootstrap classification and immediate fail-closed handling for `t=bv` without invoking the silent solver or persisting sensitive bootstrap fields.
+18. Continue evaluating additional independent broker/regional sources only where they add inventory rather than merely alias existing portals.
+19. Keep Germany jobs paused until an explicit operator decision reopens them.
+20. Run #990 remains retained for audit continuity and incompatible with the newer Immowelt shard contract.
 
 ## Fresh-context recovery order
 
