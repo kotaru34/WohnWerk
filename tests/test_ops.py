@@ -72,7 +72,8 @@ def test_source_ops_reason_surfaces_resumed_run_activity() -> None:
                     "action": "revalidate",
                     "message": "paused challenge revalidation started",
                 }
-            ]
+            ],
+            "last_activity_at": datetime(2026, 10, 4, 19, 55, tzinfo=UTC).isoformat(),
         },
     )
 
@@ -85,7 +86,7 @@ def test_source_ops_reason_surfaces_resumed_run_activity() -> None:
     )
 
     assert "Start 03.10.2026 19:37" in reason
-    assert "letzte Aktivität 04.10.2026 19:42" in reason
+    assert "letzte Aktivität 04.10.2026 19:55" in reason
     assert "fortgesetzter pausierter Lauf" in reason
 
 
