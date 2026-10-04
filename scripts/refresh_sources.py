@@ -17,10 +17,10 @@ from app.jobs.concept_catalog import EXTRACTOR_VERSION
 from app.live_events import queue_live_event
 from app.models import Source, SourceCategory
 from app.refresh import (
-    DueSourceRun,
     MANUAL_RUN_BUSY_EXIT_CODE,
     MANUAL_RUN_DEFERRED_EXIT_CODE,
     MANUAL_RUN_REQUEST_ENV,
+    DueSourceRun,
     due_source_runs,
     source_run_plan,
 )
