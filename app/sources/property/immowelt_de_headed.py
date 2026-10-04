@@ -7,8 +7,11 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
-from app.sources.base import SourceChallenge
-from app.sources.property.immowelt_de import ImmoweltGermanyPropertySource
+from app.sources.base import SourceChallenge, SourceFetchError
+from app.sources.property.immowelt_de import (
+    ImmoweltGermanyPropertySource,
+    _canonical_expose_url,
+)
 
 
 class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
@@ -48,6 +51,66 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         await self._context.route("**/*", block_heavy_assets)
         self._page = await self._context.new_page()
         return self._page
+
+    async def load_detail_html(self, url: str) -> tuple[str, str]:
+        """Load one exact public Immowelt expose through the active headed session.
+
+        This deliberately reuses the crawl browser context so a clearance already
+        established for the search run also applies to the bounded heating lookup.
+        It never solves a newly encountered challenge here; callers must fail soft.
+        """
+        canonical = _canonical_expose_url(url)
+        if canonical is None:
+            raise ValueError(f"Unsupported Immowelt detail URL: {url!r}")
+        requested_url, listing_id = canonical
+
+        if self._requests_made:
+            await self._sleep()
+        self._requests_made += 1
+
+        page = await self._ensure_page()
+        response = await page.goto(
+            requested_url,
+            wait_until="domcontentloaded",
+            timeout=int(self.timeout_seconds * 1000),
+        )
+        if response is None:
+            raise RuntimeError("Immowelt detail navigation returned no response")
+
+        status = response.status
+        challenge = await self._challenge_probe(
+            page=page,
+            requested_url=requested_url,
+            status=status,
+        )
+        if challenge is not None:
+            raise SourceChallenge(
+                f"Immowelt detail access challenge detected ({challenge['kind']})",
+                challenge=challenge,
+            )
+        if status == 429:
+            raise SourceFetchError("Immowelt detail HTTP 429 rate limit", halt_source=True)
+        if status >= 400:
+            raise RuntimeError(f"Immowelt detail HTTP {status}")
+
+        final = _canonical_expose_url(page.url)
+        if final is None or final[1] != listing_id:
+            raise RuntimeError(f"Immowelt detail redirected unexpectedly: {page.url!r}")
+
+        await page.wait_for_selector("h1", timeout=int(self.timeout_seconds * 1000))
+        await page.wait_for_timeout(500)
+
+        challenge = await self._challenge_probe(
+            page=page,
+            requested_url=requested_url,
+            status=status,
+        )
+        if challenge is not None:
+            raise SourceChallenge(
+                f"Immowelt detail access challenge detected ({challenge['kind']})",
+                challenge=challenge,
+            )
+        return await page.content(), page.url
 
     async def prepare_challenge_handoff(
         self,
