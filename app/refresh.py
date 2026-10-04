@@ -28,6 +28,11 @@ class DueSourceRun:
         return CrawlMode.RECONCILIATION if self.reconciliation else CrawlMode.INCREMENTAL
 
 
+MANUAL_RUN_BUSY_EXIT_CODE = 75
+MANUAL_RUN_DEFERRED_EXIT_CODE = 76
+MANUAL_RUN_REQUEST_ENV = "WOHNWERK_MANUAL_RUN_REQUEST_ID"
+
+
 # Only sources validated in production belong here. Discovery/frontier sources deliberately
 # have no reconciliation authority: disappearing from a first-page/search frontier is not
 # evidence that an advert has closed. Disabled candidate sources may be registered ahead of
