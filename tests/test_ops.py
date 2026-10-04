@@ -15,6 +15,7 @@ from app.ops import (
     source_ops_state,
     split_unresolved_location_labels,
 )
+from app.refresh_runtime import REFRESH_LOCK_PATH
 
 
 def _source(**overrides):
@@ -378,6 +379,8 @@ def test_admin_run_now_waits_for_correlated_crawl_run(monkeypatch) -> None:
         assert "run_id=321" in response.headers["location"]
         assert len(calls) == 1
         argv, kwargs = calls[0]
+        assert "--lock-path" in argv
+        assert argv[argv.index("--lock-path") + 1] == str(REFRESH_LOCK_PATH)
         assert "--source" in argv
         assert argv[argv.index("--source") + 1] == "falc-de"
         assert "--run-request-id" in argv

@@ -115,9 +115,16 @@ def test_manual_source_lock_conflict_is_not_reported_as_success(monkeypatch) -> 
             dry_run=False,
         ),
     )
+    prepared: list[bool] = []
+    monkeypatch.setattr(
+        refresh_sources,
+        "prepare_refresh_environment",
+        lambda: prepared.append(True) or {},
+    )
     monkeypatch.setattr(refresh_sources, "_acquire_lock", lambda _path: None)
 
     with pytest.raises(SystemExit) as exc:
         refresh_sources.main()
 
     assert exc.value.code == MANUAL_RUN_BUSY_EXIT_CODE
+    assert prepared == [True]

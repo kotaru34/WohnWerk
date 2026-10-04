@@ -24,10 +24,11 @@ from app.refresh import (
     due_source_runs,
     source_run_plan,
 )
+from app.refresh_runtime import REFRESH_LOCK_PATH, prepare_refresh_environment
 from app.version import __version__
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LOCK_PATH = Path("/run/wohnwerk-refresh/refresh.lock")
+DEFAULT_LOCK_PATH = REFRESH_LOCK_PATH
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/health"
 HEATING_ENRICHMENT_SOURCES = frozenset(
     {"kleinanzeigen-de", "engel-voelkers-de", "iad-de", "falc-de"}
@@ -191,6 +192,10 @@ def _publish_job_catalog_refresh(source_names: list[str]) -> None:
 def main() -> None:
     args = parse_args()
     requested_source = getattr(args, "source", None)
+    if requested_source:
+        # Admin/manual launches do not run inside wohnwerk-refresh.service, so they
+        # must establish the browser/runtime environment that systemd normally supplies.
+        os.environ.update(prepare_refresh_environment())
     lock = _acquire_lock(args.lock_path)
     if lock is None:
         print("refresh_status=skipped reason=already_running")
