@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from app.property_thumbnail_cache import (
     _balanced_srcset_url,
+    _cached_thumbnail_needs_refresh,
     _comparison_url,
     _LinkedThumbnailParser,
 )
@@ -73,3 +76,21 @@ def test_thumbnail_parser_ignores_data_uri_placeholder() -> None:
     )
 
     assert parser.images == {}
+
+
+def test_cached_thumbnail_is_refreshed_when_exact_listing_preview_changes() -> None:
+    image = SimpleNamespace(source_image_url="https://img.example/broker-logo.jpg")
+    listing = SimpleNamespace(
+        raw_payload={"thumbnail_url": "https://img.example/property-house.jpg"}
+    )
+
+    assert _cached_thumbnail_needs_refresh(image, listing)
+
+
+def test_cached_thumbnail_is_not_refreshed_when_source_preview_is_unchanged() -> None:
+    image = SimpleNamespace(source_image_url="https://img.example/property-house.jpg")
+    listing = SimpleNamespace(
+        raw_payload={"thumbnail_url": "https://img.example/property-house.jpg"}
+    )
+
+    assert not _cached_thumbnail_needs_refresh(image, listing)
