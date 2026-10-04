@@ -12,7 +12,7 @@ from app.crawling.property_runner import (
     _source_halt_reason,
     _tag_manual_resume,
 )
-from app.models import CoverageStatus, RunStatus, SourceShard
+from app.models import CoverageStatus, SourceShard
 from app.sources.base import SourceFetchError
 
 
