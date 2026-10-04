@@ -392,6 +392,54 @@ def test_admin_run_now_waits_for_correlated_crawl_run(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
+
+def test_admin_run_now_surfaces_resumed_paused_run(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+
+    class _PausedDb(_SourceControlDb):
+        def __init__(self, source):
+            super().__init__(source)
+            self.scalar_calls = 0
+
+        def scalar(self, _statement):
+            self.scalar_calls += 1
+            if self.scalar_calls == 1:
+                return None
+            if self.scalar_calls == 2:
+                return 444
+            return None
+
+    db = _PausedDb(source)
+
+    def override_db():
+        yield db
+
+    class _Process:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(
+        "app.ops.source_run_plan",
+        lambda name: SimpleNamespace(source_name=name) if name == "immowelt-de" else None,
+    )
+    monkeypatch.setattr("app.ops.subprocess.Popen", lambda *_args, **_kwargs: _Process())
+    monkeypatch.setattr("app.ops._manual_run_id", lambda *_args, **_kwargs: 444)
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/run",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert "hinweis=run_resumed" in response.headers["location"]
+        assert "run_id=444" in response.headers["location"]
+    finally:
+        app.dependency_overrides.clear()
+
 def test_admin_run_now_reports_global_refresh_lock_conflict(monkeypatch) -> None:
     source = SimpleNamespace(id=10, name="falc-de", enabled=True)
     db = _SourceControlDb(source)
@@ -448,5 +496,33 @@ def test_admin_health_run_started_notice_includes_run_id(monkeypatch) -> None:
 
         assert page.status_code == 200
         assert "Manueller Quellenlauf #321 wurde gestartet." in page.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+
+def test_admin_health_run_resumed_notice_includes_run_id(monkeypatch) -> None:
+    snapshot = OpsSnapshot(
+        active_properties=0,
+        active_jobs=0,
+        unresolved_job_locations=0,
+        enabled_sources=0,
+        sources=(),
+        unresolved_labels=(),
+    )
+
+    def override_db():
+        yield object()
+
+    monkeypatch.setattr("app.ops.collect_ops_snapshot", lambda _db: snapshot)
+    monkeypatch.setattr("app.ops._csrf_token", lambda: "test-csrf")
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    try:
+        with TestClient(app) as client:
+            page = client.get("/admin/health?hinweis=run_resumed&run_id=444")
+
+        assert page.status_code == 200
+        assert "Pausierter Quellenlauf #444 wurde manuell fortgesetzt." in page.text
     finally:
         app.dependency_overrides.clear()
