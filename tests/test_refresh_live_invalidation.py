@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.models import SourceCategory
-from app.refresh import DueSourceRun, SourceRefreshPlan
+from app.refresh import MANUAL_RUN_BUSY_EXIT_CODE, DueSourceRun, SourceRefreshPlan
 
 _SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "refresh_sources.py"
 _SPEC = importlib.util.spec_from_file_location("wohnwerk_test_refresh_sources", _SCRIPT_PATH)
@@ -57,7 +57,8 @@ def _configure_main(monkeypatch, *, postprocess_failure: str | None):
     monkeypatch.setattr(refresh_sources, "_runtime_release_gate", lambda _url: (True, "ok"))
     monkeypatch.setattr(refresh_sources, "_source_category", lambda _name: SourceCategory.JOB)
 
-    def fake_run_command(label: str, _args: list[str]):
+    def fake_run_command(label: str, _args: list[str], *, env=None):
+        del env
         calls.append(label)
         rc = 1 if label == postprocess_failure else 0
         return refresh_sources.CommandResult(label=label, returncode=rc)
@@ -98,3 +99,25 @@ def test_failed_job_postprocess_does_not_publish_intermediate_invalidation(monke
     assert exc.value.code == 1
     assert published == []
     assert lock.closed is True
+
+
+
+def test_manual_source_lock_conflict_is_not_reported_as_success(monkeypatch) -> None:
+    monkeypatch.setattr(
+        refresh_sources,
+        "parse_args",
+        lambda: SimpleNamespace(
+            lock_path=None,
+            reconciliation_retry_minutes=180,
+            health_url="http://test/health",
+            source="falc-de",
+            run_request_id="manual-request-test",
+            dry_run=False,
+        ),
+    )
+    monkeypatch.setattr(refresh_sources, "_acquire_lock", lambda _path: None)
+
+    with pytest.raises(SystemExit) as exc:
+        refresh_sources.main()
+
+    assert exc.value.code == MANUAL_RUN_BUSY_EXIT_CODE

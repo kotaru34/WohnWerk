@@ -137,8 +137,8 @@ class ImmoweltDataDomeSolverHandler(ChallengeHandler):
             return ChallengeResult(
                 action="defer",
                 message=(
-                    "DataDome reports banned visitor for this exit IP; "
-                    "same-IP local solver cannot produce replayable clearance"
+                    "DataDome requires interactive verification (t=bv); "
+                    "the configured local solver is silent-clearance harvest-only"
                 ),
             )
 

@@ -339,7 +339,7 @@ def test_admin_can_disable_and_enable_source() -> None:
         app.dependency_overrides.clear()
 
 
-def test_admin_run_now_uses_registered_refresh_runner(monkeypatch) -> None:
+def test_admin_run_now_waits_for_correlated_crawl_run(monkeypatch) -> None:
     source = SimpleNamespace(id=10, name="falc-de", enabled=True)
     db = _SourceControlDb(source)
     calls = []
@@ -347,15 +347,22 @@ def test_admin_run_now_uses_registered_refresh_runner(monkeypatch) -> None:
     def override_db():
         yield db
 
+    class _Process:
+        pid = 123
+
+        def poll(self):
+            return None
+
     def fake_popen(argv, **kwargs):
         calls.append((argv, kwargs))
-        return SimpleNamespace(pid=123)
+        return _Process()
 
     monkeypatch.setattr(
         "app.ops.source_run_plan",
         lambda name: SimpleNamespace(source_name=name) if name == "falc-de" else None,
     )
     monkeypatch.setattr("app.ops.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("app.ops._manual_run_id", lambda *_args, **_kwargs: 321)
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[require_admin] = lambda: None
     app.dependency_overrides[require_csrf] = lambda: None
@@ -367,12 +374,76 @@ def test_admin_run_now_uses_registered_refresh_runner(monkeypatch) -> None:
             )
 
         assert response.status_code == 303
-        assert response.headers["location"].endswith("hinweis=run_started")
+        assert "hinweis=run_started" in response.headers["location"]
+        assert "run_id=321" in response.headers["location"]
         assert len(calls) == 1
         argv, kwargs = calls[0]
-        assert argv[-2:] == ["--source", "falc-de"]
-        assert argv[-3].endswith("scripts/refresh_sources.py")
+        assert "--source" in argv
+        assert argv[argv.index("--source") + 1] == "falc-de"
+        assert "--run-request-id" in argv
+        assert argv[argv.index("--run-request-id") + 1]
+        assert any(item.endswith("scripts/refresh_sources.py") for item in argv)
         assert kwargs["start_new_session"] is True
         assert kwargs["close_fds"] is True
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_run_now_reports_global_refresh_lock_conflict(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="falc-de", enabled=True)
+    db = _SourceControlDb(source)
+
+    def override_db():
+        yield db
+
+    class _Process:
+        def poll(self):
+            return 75
+
+    monkeypatch.setattr(
+        "app.ops.source_run_plan",
+        lambda name: SimpleNamespace(source_name=name) if name == "falc-de" else None,
+    )
+    monkeypatch.setattr("app.ops.subprocess.Popen", lambda *_args, **_kwargs: _Process())
+    monkeypatch.setattr("app.ops._manual_run_id", lambda *_args, **_kwargs: None)
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/run",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("hinweis=refresh_busy")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_admin_health_run_started_notice_includes_run_id(monkeypatch) -> None:
+    snapshot = OpsSnapshot(
+        active_properties=0,
+        active_jobs=0,
+        unresolved_job_locations=0,
+        enabled_sources=0,
+        sources=(),
+        unresolved_labels=(),
+    )
+
+    def override_db():
+        yield object()
+
+    monkeypatch.setattr("app.ops.collect_ops_snapshot", lambda _db: snapshot)
+    monkeypatch.setattr("app.ops._csrf_token", lambda: "test-csrf")
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    try:
+        with TestClient(app) as client:
+            page = client.get("/admin/health?hinweis=run_started&run_id=321")
+
+        assert page.status_code == 200
+        assert "Manueller Quellenlauf #321 wurde gestartet." in page.text
     finally:
         app.dependency_overrides.clear()

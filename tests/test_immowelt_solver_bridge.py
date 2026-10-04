@@ -63,14 +63,14 @@ async def test_bridge_defers_unidentified_direct_403_without_calling_solver(tmp_
 
 
 @pytest.mark.asyncio
-async def test_bridge_defers_banned_visitor_without_calling_solver(tmp_path) -> None:
+async def test_bridge_defers_interactive_bv_without_calling_silent_solver(tmp_path) -> None:
     handler = ImmoweltDataDomeSolverHandler()
     called = False
 
     def fail_if_called(_url: str):
         nonlocal called
         called = True
-        raise AssertionError("solver must not be called for DataDome banned-visitor gates")
+        raise AssertionError("silent solver must not be called for DataDome t=bv gates")
 
     handler._solve = fail_if_called  # type: ignore[method-assign]
     request = _request(tmp_path / "run-123" / "shard-7" / "handoff-1")
@@ -81,7 +81,8 @@ async def test_bridge_defers_banned_visitor_without_calling_solver(tmp_path) -> 
     assert result.action == "defer"
     assert called is False
     assert result.message is not None
-    assert "banned visitor" in result.message
+    assert "interactive verification" in result.message
+    assert "harvest-only" in result.message
 
 
 @pytest.mark.asyncio
