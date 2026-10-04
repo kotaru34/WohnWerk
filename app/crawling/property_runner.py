@@ -203,6 +203,12 @@ def _set_active_challenge(
     run.run_metadata = metadata
 
 
+def _touch_run_activity(run: CrawlRun, *, at: datetime | None = None) -> None:
+    metadata = dict(run.run_metadata or {})
+    metadata["last_activity_at"] = (at or datetime.now(UTC)).astimezone(UTC).isoformat()
+    run.run_metadata = metadata
+
+
 def _record_challenge_result(
     run: CrawlRun,
     request: ChallengeRequest,
@@ -210,11 +216,12 @@ def _record_challenge_result(
     action: str,
     message: str | None,
 ) -> None:
+    now = datetime.now(UTC)
     metadata = dict(run.run_metadata or {})
     history = list(metadata.get("challenge_history") or [])
     history.append(
         {
-            "at": datetime.now(UTC).isoformat(),
+            "at": now.isoformat(),
             "shard_id": request.shard_id,
             "shard_key": request.shard_key,
             "resume_page": request.resume_cursor.get("resume_page"),
@@ -225,6 +232,7 @@ def _record_challenge_result(
     metadata["challenge_history"] = history[-100:]
     if action in {"resolved", "abort"}:
         metadata.pop("active_challenge", None)
+    metadata["last_activity_at"] = now.isoformat()
     run.run_metadata = metadata
 
 
@@ -232,9 +240,11 @@ def _tag_manual_resume(run: CrawlRun, request_id: str) -> None:
     request_id = request_id.strip()
     if not request_id:
         return
+    now = datetime.now(UTC)
     metadata = dict(run.run_metadata or {})
     metadata["manual_run_request_id"] = request_id
-    metadata["manual_resume_requested_at"] = datetime.now(UTC).isoformat()
+    metadata["manual_resume_requested_at"] = now.isoformat()
+    metadata["last_activity_at"] = now.isoformat()
     run.run_metadata = metadata
 
 
@@ -277,6 +287,7 @@ async def _ingest_partial_fetch(
             partial_cursor,
         )
         partial_seen = len(partial_items)
+        _touch_run_activity(partial_run)
         partial_new, partial_updated = ingest_properties(
             session,
             source=partial_source,
@@ -483,6 +494,7 @@ async def run_property_source(
                     batch.items,
                     batch.next_cursor,
                 )
+                _touch_run_activity(current_run)
                 new_count, updated_count = ingest_properties(
                     session,
                     source=current_source,
