@@ -108,7 +108,7 @@ The v0.4.16 local-solver integration is deliberately narrower than the generic h
 
 - it is enabled only by explicit `WOHNWERK_IMMOWELT_SOLVER_URL` configuration;
 - it only acts on positively identified Immowelt **DataDome** gates;
-- v0.4.17 preserves only non-sensitive DataDome bootstrap classification (`rt`, `t`, challenge host) and fails closed immediately when `t=bv` reports a banned visitor; it never persists the inline DataDome cookie/cid/hash/signature;
+- v0.4.17+ preserves only non-sensitive DataDome bootstrap classification (`rt`, `t`, challenge host). Current live/operator evidence shows `t=bv` is an interactive verification gate in this deployment and is not sufficient to conclude an irreversible IP-only ban. Because the installed local DataDome implementation is `HARVEST-ONLY` and supports silent clearance only, `t=bv` is still deferred before invoking that solver; inline DataDome cookie/cid/hash/signature are never persisted;
 - it does not treat a generic HTTP 403 as solvable without DataDome frame/content evidence;
 - it calls the loopback solver for a DataDome clearance candidate and requires a cookie scoped to
   Immowelt plus the exact solver browser User-Agent;
@@ -156,13 +156,24 @@ Before enabling the local bridge in production:
    successfully retries the saved navigation point. A repeated gate remains paused/deferred rather
    than restarting from page 1.
 
-## v0.4.17 live-bridge hardening
+## v0.4.17/v0.4.18 live DataDome interpretation
 
-A live target-host acceptance on 2026-10-03 proved the current Immowelt search request returns
-HTTP 403 with a DataDome bootstrap classified as `rt=c`, `t=bv`. The local solver's DataDome
-implementation is a silent-clearance harvester, so repeatedly calling it for a banned-visitor gate
-only consumes its bounded timeout and cannot produce a replayable same-IP clearance.
+Target-host acceptance on 2026-10-03 and a fresh recheck on 2026-10-04 proved the exact Immowelt
+search request returns HTTP 403 with a DataDome bootstrap classified as `rt=c`, `t=bv`, hosted
+by `geo.captcha-delivery.com`.
 
-v0.4.17 therefore treats `t=bv` as an explicit fail-closed condition before invoking the solver.
-The run remains paused/resumable and retains no reconciliation authority. This does not add proxy
-rotation, generic challenge bypass, or a claim that an unsolved third-party gate was resolved.
+The earlier wording that treated `t=bv` as proof of an exit-IP-only ban was too strong. The
+operator subsequently completed Immowelt's interactive slider from a normal mobile browser using
+the same external public IP and obtained normal site access. Therefore `t=bv` is treated here as
+an interactive verification requirement, not as sufficient evidence that the public IP is
+irrecoverably blocked.
+
+The installed sidecar remains intentionally narrower: its deployed `datadome/solve.py` identifies
+itself as `HARVEST-ONLY`, waits for a **silent** DataDome pass and contains no click/drag/slider
+interaction path. A real target-host solve against the same Immowelt URL on 2026-10-04 reached the
+configured 20-second deadline and returned HTTP 408. That result confirms the sidecar is healthy
+enough to launch the solve path, but cannot satisfy the current interactive verification.
+
+WohnWerk therefore continues to defer `t=bv` before calling this silent-only solver. The run
+remains paused/resumable and retains no reconciliation authority. This does not add proxy rotation,
+generic challenge bypass, or a claim that an unsolved third-party gate was resolved.
