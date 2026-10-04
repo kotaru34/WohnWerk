@@ -353,7 +353,11 @@ def parse_immowelt_search_page(
         living_area, plot_area = _areas(raw_title)
         postal_code = _postal_from_card(card)
         auction_evidence = _auction_evidence(card, raw_title)
-        thumbnail_url = card_thumbnail_url(card, page_url=page_url)
+        thumbnail_url = card_thumbnail_url(
+            card,
+            page_url=page_url,
+            listing_text=raw_title,
+        )
 
         items.append(
             RawProperty(
