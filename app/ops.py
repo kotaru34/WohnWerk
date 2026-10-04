@@ -50,6 +50,7 @@ NOTICE_LABELS = {
     "source_enabled": "Quelle aktiviert.",
     "source_disabled": "Quelle deaktiviert.",
     "run_started": "Manueller Quellenlauf wurde gestartet.",
+    "run_resumed": "Pausierter Quellenlauf wurde manuell fortgesetzt.",
     "already_running": "Für diese Quelle läuft bereits ein Crawl.",
     "refresh_busy": "Ein anderer Refresh läuft bereits; der manuelle Lauf wurde nicht gestartet.",
     "run_deferred": "Der manuelle Lauf wurde vom Runtime-Gate zurückgestellt und nicht gestartet.",
@@ -599,6 +600,17 @@ def run_source_now(
     if running is not None:
         return _health_redirect("already_running")
 
+    paused_run_id = db.scalar(
+        select(CrawlRun.id)
+        .where(
+            CrawlRun.source_id == source.id,
+            CrawlRun.status == "paused",
+            CrawlRun.finished_at.is_(None),
+        )
+        .order_by(CrawlRun.id.desc())
+        .limit(1)
+    )
+
     request_id = secrets.token_urlsafe(18)
     try:
         process = subprocess.Popen(
@@ -628,7 +640,8 @@ def run_source_now(
     while True:
         run_id = _manual_run_id(db, source_id=source.id, request_id=request_id)
         if run_id is not None:
-            return _health_redirect("run_started", run_id=run_id)
+            notice = "run_resumed" if paused_run_id == run_id else "run_started"
+            return _health_redirect(notice, run_id=run_id)
 
         returncode = process.poll()
         if returncode is not None:
@@ -654,6 +667,8 @@ def admin_health_page(
     notice = NOTICE_LABELS.get(hinweis or "")
     if hinweis == "run_started" and run_id is not None:
         notice = f"Manueller Quellenlauf #{run_id} wurde gestartet."
+    elif hinweis == "run_resumed" and run_id is not None:
+        notice = f"Pausierter Quellenlauf #{run_id} wurde manuell fortgesetzt."
     return templates.TemplateResponse(
         request=request,
         name="admin_health.html",
