@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 import httpx
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -257,7 +258,7 @@ async def enrich_active_property_heating_with_fetcher(
                 found += 1
             else:
                 unknown += 1
-        except Exception as exc:
+        except (PlaywrightError, RuntimeError, ValueError) as exc:
             # Browser challenges/timeouts are isolated enrichment failures. They must
             # never turn a successful acquisition run into a false success/failure state.
             listing.raw_payload = _with_error(
