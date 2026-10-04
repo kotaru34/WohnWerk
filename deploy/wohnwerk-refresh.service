@@ -20,7 +20,7 @@ Environment=XDG_RUNTIME_DIR=/run/wohnwerk-refresh/runtime
 RuntimeDirectory=wohnwerk-refresh
 RuntimeDirectoryMode=0750
 ExecStartPre=/usr/bin/install -d -m 700 /run/wohnwerk-refresh/home /run/wohnwerk-refresh/config /run/wohnwerk-refresh/cache /run/wohnwerk-refresh/runtime
-ExecStart=/opt/wohnwerk/.venv/bin/python /opt/wohnwerk/scripts/refresh_sources.py --lock-path /run/wohnwerk-refresh/refresh.lock
+ExecStart=/opt/wohnwerk/.venv/bin/python /opt/wohnwerk/scripts/refresh_sources.py --lock-path /var/lib/wohnwerk/refresh-runtime/refresh.lock
 TimeoutStartSec=2h
 Nice=10
 IOSchedulingClass=best-effort

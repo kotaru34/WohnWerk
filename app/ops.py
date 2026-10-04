@@ -40,6 +40,7 @@ from app.refresh import (
     source_operational_note,
     source_run_plan,
 )
+from app.refresh_runtime import REFRESH_LOCK_PATH
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -604,6 +605,8 @@ def run_source_now(
             [
                 sys.executable,
                 str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
+                "--lock-path",
+                str(REFRESH_LOCK_PATH),
                 "--source",
                 source.name,
                 "--run-request-id",
