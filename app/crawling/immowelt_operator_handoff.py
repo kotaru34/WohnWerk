@@ -57,7 +57,7 @@ def _challenge_type_from_payload(payload: dict[str, Any]) -> str | None:
 def _state_dir_from_payload(payload: dict[str, Any]) -> Path:
     handoff = payload.get("handoff_state")
     if not isinstance(handoff, dict):
-        raise ValueError("challenge handoff state is missing")
+        raise TypeError("challenge handoff state is missing")
     raw = handoff.get("state_dir")
     if not raw:
         raise ValueError("challenge handoff state directory is missing")
