@@ -177,6 +177,7 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
     source = ImmoweltHeadedPropertySource()
     await source.restore_challenge_handoff(
         {
+            "state_dir": str(tmp_path),
             "storage_state_path": str(storage_state),
             "browser_patch_path": str(patch_path),
         }
@@ -233,3 +234,27 @@ async def test_headed_adapter_rejects_non_immowelt_detail_url() -> None:
 
     with pytest.raises(ValueError, match="Unsupported Immowelt detail URL"):
         await source.load_detail_html("https://example.com/expose/not-allowed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("foreign_key", ["storage_state_path", "browser_patch_path", "screenshot_path"])
+async def test_headed_adapter_rejects_foreign_handoff_paths(
+    tmp_path: Path,
+    foreign_key: str,
+) -> None:
+    state_dir = tmp_path / "handoff"
+    state_dir.mkdir()
+    storage_state = state_dir / "storage-state.json"
+    storage_state.write_text('{"cookies":[],"origins":[]}\n')
+    patch_path = state_dir / "browser-patch.json"
+    handoff = {
+        "state_dir": str(state_dir),
+        "storage_state_path": str(storage_state),
+        "browser_patch_path": str(patch_path),
+        "screenshot_path": str(state_dir / "challenge.png"),
+    }
+    handoff[foreign_key] = str(tmp_path / "foreign-artifact")
+
+    source = ImmoweltHeadedPropertySource()
+    with pytest.raises(RuntimeError, match="escaped state directory"):
+        await source.restore_challenge_handoff(handoff)
