@@ -11,6 +11,7 @@ from app.ops import (
     JobSourceValueRow,
     OpsSnapshot,
     SourceOpsRow,
+    _manual_refresh_argv,
     source_ops_reason,
     source_ops_state,
     split_unresolved_location_labels,
@@ -375,6 +376,20 @@ def test_admin_can_disable_and_enable_source() -> None:
             assert db.commits == 2
     finally:
         app.dependency_overrides.clear()
+
+
+def test_manual_immowelt_run_gets_private_xvfb_wrapper() -> None:
+    argv = _manual_refresh_argv("immowelt-de", "request-123")
+
+    assert argv[:4] == [
+        "/usr/bin/xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1920x1080x24",
+    ]
+    assert "--source" in argv
+    assert argv[argv.index("--source") + 1] == "immowelt-de"
+    assert argv[argv.index("--run-request-id") + 1] == "request-123"
 
 
 def test_admin_run_now_waits_for_correlated_crawl_run(monkeypatch) -> None:
