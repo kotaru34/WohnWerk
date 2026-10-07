@@ -193,8 +193,7 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             self._pending_storage_state_path = str(path)
 
         patch_path = _confined_path("browser_patch_path")
-        if patch_path is not None:
-            if patch_path.is_file():
+        if patch_path is not None and patch_path.is_file():
                 if path is None:
                     raise RuntimeError("Browser patch cannot be applied without storage state")
                 try:
