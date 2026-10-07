@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import app.crawling.immowelt_operator_handoff as operator_module
 from app.crawling.challenge import ChallengeRequest, ChallengeResult
 from app.crawling.immowelt_operator_handoff import (
     ImmoweltOperatorChallengeHandler,
@@ -153,3 +154,87 @@ async def test_armed_interactive_challenge_uses_operator_session(tmp_path: Path)
     assert fallback.calls == 0
     assert len(calls) == 1
     assert calls[0][1] == tmp_path / "run-123"
+
+
+class _TimeoutPage:
+    def __init__(self) -> None:
+        self.url = "about:blank"
+        self.frames = []
+
+    async def goto(self, url: str, **_kwargs: object) -> None:
+        self.url = url
+
+    async def close(self) -> None:
+        return None
+
+
+class _TimeoutContext:
+    def __init__(self) -> None:
+        self.page = _TimeoutPage()
+
+    async def new_page(self) -> _TimeoutPage:
+        return self.page
+
+    async def close(self) -> None:
+        return None
+
+
+class _TimeoutBrowser:
+    def __init__(self) -> None:
+        self.context = _TimeoutContext()
+
+    async def new_context(self, **_kwargs: object) -> _TimeoutContext:
+        return self.context
+
+    async def close(self) -> None:
+        return None
+
+
+class _TimeoutChromium:
+    def __init__(self) -> None:
+        self.browser = _TimeoutBrowser()
+
+    async def launch(self, **_kwargs: object) -> _TimeoutBrowser:
+        return self.browser
+
+
+class _TimeoutPlaywright:
+    def __init__(self) -> None:
+        self.chromium = _TimeoutChromium()
+
+    async def stop(self) -> None:
+        return None
+
+
+class _TimeoutStarter:
+    def __init__(self, playwright: _TimeoutPlaywright) -> None:
+        self.playwright = playwright
+
+    async def start(self) -> _TimeoutPlaywright:
+        return self.playwright
+
+
+@pytest.mark.asyncio
+async def test_operator_session_timeout_defers_without_clearance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    state_dir = Path(str(request.handoff_state["state_dir"]))
+    run_dir = tmp_path / "run-123"
+    fake = _TimeoutPlaywright()
+    ticks = iter((0.0, 100.0))
+
+    monkeypatch.setattr(operator_module, "async_playwright", lambda: _TimeoutStarter(fake))
+    monkeypatch.setattr(operator_module.time, "monotonic", lambda: next(ticks))
+
+    handler = ImmoweltOperatorChallengeHandler(_Fallback(), root=tmp_path)
+    result = await handler._run_session(
+        request,
+        state_dir=state_dir,
+        run_dir=run_dir,
+    )
+
+    assert result.action == "defer"
+    assert result.message == "operator handoff timed out without completed verification"
+    assert read_operator_status(run_dir)["state"] == "timeout"
