@@ -191,6 +191,9 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             if not path.is_file():
                 raise RuntimeError(f"Challenge storage state is missing: {path}")
             self._pending_storage_state_path = str(path)
+            handoff_user_agent = str(handoff_state.get("user_agent") or "").strip()
+            if handoff_user_agent:
+                self._pending_user_agent = handoff_user_agent
 
         patch_path = _confined_path("browser_patch_path")
         if patch_path is not None and patch_path.is_file():
