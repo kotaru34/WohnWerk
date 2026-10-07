@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,61 @@ DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
 IMMOWELT_HOSTS = {"immowelt.de", "www.immowelt.de"}
 OPERATOR_SESSION_TTL = timedelta(minutes=15)
+DEFAULT_OPERATOR_ARM_GRACE_SECONDS = 120.0
 DEFAULT_OPERATOR_VIEWPORT = {"width": 1280, "height": 720}
+
+
+@dataclass(slots=True)
+class _LiveOperatorBrowserSession:
+    context: Any
+    page: Any
+
+
+_LIVE_OPERATOR_BROWSER_SESSIONS: dict[str, _LiveOperatorBrowserSession] = {}
+
+
+def _live_operator_session_key(state_dir: Path) -> str:
+    return str(state_dir.resolve())
+
+
+def register_live_operator_session(
+    state_dir: Path,
+    *,
+    context: Any,
+    page: Any,
+) -> None:
+    _LIVE_OPERATOR_BROWSER_SESSIONS[_live_operator_session_key(state_dir)] = (
+        _LiveOperatorBrowserSession(context=context, page=page)
+    )
+
+
+def unregister_live_operator_session(
+    state_dir: Path,
+    *,
+    page: Any | None = None,
+) -> None:
+    key = _live_operator_session_key(state_dir)
+    current = _LIVE_OPERATOR_BROWSER_SESSIONS.get(key)
+    if current is None:
+        return
+    if page is not None and current.page is not page:
+        return
+    _LIVE_OPERATOR_BROWSER_SESSIONS.pop(key, None)
+
+
+def live_operator_session(state_dir: Path) -> _LiveOperatorBrowserSession | None:
+    key = _live_operator_session_key(state_dir)
+    current = _LIVE_OPERATOR_BROWSER_SESSIONS.get(key)
+    if current is None:
+        return None
+    try:
+        closed = bool(current.page.is_closed())
+    except (AttributeError, TypeError):
+        closed = False
+    if closed:
+        _LIVE_OPERATOR_BROWSER_SESSIONS.pop(key, None)
+        return None
+    return current
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -253,10 +308,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         fallback: ChallengeHandler,
         *,
         timeout_seconds: float = 900.0,
+        arm_grace_seconds: float = DEFAULT_OPERATOR_ARM_GRACE_SECONDS,
         root: Path = DEFAULT_OPERATOR_ROOT,
     ) -> None:
         self.fallback = fallback
         self.timeout_seconds = max(30.0, float(timeout_seconds))
+        self.arm_grace_seconds = max(0.0, float(arm_grace_seconds))
         self.root = root
 
     async def handle(self, request: ChallengeRequest) -> ChallengeResult:
@@ -278,10 +335,46 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         except ValueError:
             return ChallengeResult(action="defer", message="invalid operator handoff state directory")
 
+        live_session = live_operator_session(state_dir)
         if not _approval_is_active(request.run_id, run_dir):
-            return await self.fallback.handle(request)
+            if live_session is None or self.arm_grace_seconds <= 0:
+                return await self.fallback.handle(request)
 
-        return await self._run_session(request, state_dir=state_dir, run_dir=run_dir)
+            _atomic_json(
+                operator_status_path(run_dir),
+                {
+                    "version": 1,
+                    "state": "awaiting_approval",
+                    "run_id": request.run_id,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            approval_deadline = time.monotonic() + self.arm_grace_seconds
+            while time.monotonic() < approval_deadline:
+                if _approval_is_active(request.run_id, run_dir):
+                    live_session = live_operator_session(state_dir)
+                    if live_session is not None:
+                        break
+                    return await self.fallback.handle(request)
+                await asyncio.sleep(0.25)
+            else:
+                _atomic_json(
+                    operator_status_path(run_dir),
+                    {
+                        "version": 1,
+                        "state": "approval_timeout",
+                        "run_id": request.run_id,
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    },
+                )
+                return await self.fallback.handle(request)
+
+        return await self._run_session(
+            request,
+            state_dir=state_dir,
+            run_dir=run_dir,
+            live_session=live_session,
+        )
 
     async def _run_session(
         self,
@@ -289,6 +382,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         *,
         state_dir: Path,
         run_dir: Path,
+        live_session: _LiveOperatorBrowserSession | None = None,
     ) -> ChallengeResult:
         storage_state_path = state_dir / "storage-state.json"
         frame_path = operator_frame_path(run_dir)
@@ -309,39 +403,45 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
             "WOHNWERK_IMMOWELT_OPERATOR_DISPLAY",
             ":97",
         )
-        playwright = browser = context = page = None
+        owns_browser = live_session is None
+        playwright = browser = None
+        context = live_session.context if live_session is not None else None
+        page = live_session.page if live_session is not None else None
         event_offset = 0
         started = time.monotonic()
         last_frame = 0.0
         try:
-            playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(
-                headless=False,
-                args=["--disable-crash-reporter"],
-                env={**os.environ, "DISPLAY": display},
-            )
             viewport = _operator_viewport(request.handoff_state)
-            context_kwargs: dict[str, Any] = {
-                "locale": "de-DE",
-                "viewport": dict(viewport),
-            }
-            handoff_user_agent = str(
-                request.handoff_state.get("user_agent") or ""
-            ).strip()
-            if handoff_user_agent:
-                context_kwargs["user_agent"] = handoff_user_agent
-            if storage_state_path.is_file():
-                context_kwargs["storage_state"] = str(storage_state_path)
-            context = await browser.new_context(**context_kwargs)
-            page = await context.new_page()
-            try:
-                await page.goto(
-                    requested_url,
-                    wait_until="domcontentloaded",
-                    timeout=45_000,
+            if owns_browser:
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(
+                    headless=False,
+                    args=["--disable-crash-reporter"],
+                    env={**os.environ, "DISPLAY": display},
                 )
-            except PlaywrightError:
-                pass
+                context_kwargs: dict[str, Any] = {
+                    "locale": "de-DE",
+                    "viewport": dict(viewport),
+                }
+                handoff_user_agent = str(
+                    request.handoff_state.get("user_agent") or ""
+                ).strip()
+                if handoff_user_agent:
+                    context_kwargs["user_agent"] = handoff_user_agent
+                if storage_state_path.is_file():
+                    context_kwargs["storage_state"] = str(storage_state_path)
+                context = await browser.new_context(**context_kwargs)
+                page = await context.new_page()
+                try:
+                    await page.goto(
+                        requested_url,
+                        wait_until="domcontentloaded",
+                        timeout=45_000,
+                    )
+                except PlaywrightError:
+                    pass
+            if context is None or page is None:
+                raise RuntimeError("operator handoff browser session is unavailable")
 
             _atomic_json(
                 operator_status_path(run_dir),
@@ -472,11 +572,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 message=f"operator handoff browser failed: {type(exc).__name__}",
             )
         finally:
-            if page is not None:
-                await page.close()
-            if context is not None:
-                await context.close()
-            if browser is not None:
-                await browser.close()
-            if playwright is not None:
-                await playwright.stop()
+            if owns_browser:
+                if page is not None:
+                    await page.close()
+                if context is not None:
+                    await context.close()
+                if browser is not None:
+                    await browser.close()
+                if playwright is not None:
+                    await playwright.stop()

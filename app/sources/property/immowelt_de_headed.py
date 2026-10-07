@@ -3,14 +3,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
+from app.crawling.immowelt_operator_handoff import (
+    live_operator_session,
+    register_live_operator_session,
+    unregister_live_operator_session,
+)
 from app.sources.base import SourceChallenge, SourceFetchError
 from app.sources.property.immowelt_de import (
     ImmoweltGermanyPropertySource,
     _canonical_expose_url,
+    _validate_search_state,
 )
 
 
@@ -18,9 +25,10 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
     """Immowelt adapter using ordinary headed Chromium on an X display.
 
     Challenge detection and crawl orchestration live in the base adapter/runner. This class
-    only exposes browser state at a persisted handoff boundary so an operator-provided
-    external handler can act, then reloads the returned storage state before WohnWerk
-    retries the exact navigation point. No challenge-solving implementation lives here.
+    exposes a persisted browser-state boundary for crash/restart fallback, while an armed
+    human handoff may reuse the live crawler BrowserContext/Page in-process and then consume
+    the already-open protected page without re-navigation. No challenge-solving
+    implementation lives here.
     """
 
     async def _ensure_page(self) -> Page:
@@ -34,6 +42,9 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             args=["--disable-crash-reporter"],
         )
         context_kwargs: dict[str, Any] = {"locale": "de-DE"}
+        pending_viewport = getattr(self, "_pending_viewport", None)
+        if isinstance(pending_viewport, dict):
+            context_kwargs["viewport"] = dict(pending_viewport)
         storage_state_path = getattr(self, "_pending_storage_state_path", None)
         if storage_state_path and Path(storage_state_path).is_file():
             context_kwargs["storage_state"] = storage_state_path
@@ -41,16 +52,50 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if pending_user_agent:
             context_kwargs["user_agent"] = str(pending_user_agent)
         self._context = await self._browser.new_context(**context_kwargs)
-
-        async def block_heavy_assets(route: Any) -> None:
-            if route.request.resource_type in {"font", "image", "media"}:
-                await route.abort()
-            else:
-                await route.continue_()
-
-        await self._context.route("**/*", block_heavy_assets)
         self._page = await self._context.new_page()
         return self._page
+
+    async def aclose(self) -> None:
+        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+        if live_state_dir is not None:
+            unregister_live_operator_session(
+                Path(live_state_dir),
+                page=self._page,
+            )
+            self._live_operator_state_dir = None
+        await super().aclose()
+
+    async def _load_html(self, url: str) -> tuple[str, str]:
+        if getattr(self, "_reuse_current_page_once", False) and self._page is not None:
+            self._reuse_current_page_once = False
+            page = self._page
+            challenge = await self._challenge_probe(
+                page=page,
+                requested_url=url,
+                status=200,
+            )
+            if challenge is not None:
+                raise SourceChallenge(
+                    f"Immowelt access challenge detected ({challenge['kind']})",
+                    challenge=challenge,
+                )
+            host = urlparse(page.url).hostname or ""
+            if host.casefold() in {"immowelt.de", "www.immowelt.de"}:
+                try:
+                    _validate_search_state(url, page.url)
+                except RuntimeError:
+                    pass
+                else:
+                    if await page.locator("h1").count() > 0:
+                        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+                        if live_state_dir is not None:
+                            unregister_live_operator_session(
+                                Path(live_state_dir),
+                                page=page,
+                            )
+                            self._live_operator_state_dir = None
+                        return await page.content(), page.url
+        return await super()._load_html(url)
 
     async def load_detail_html(self, url: str) -> tuple[str, str]:
         """Load one exact public Immowelt expose through the active headed session.
@@ -164,6 +209,19 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             handoff["viewport"] = viewport
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
+        if self._context is not None and self._page is not None:
+            previous_live_state_dir = getattr(self, "_live_operator_state_dir", None)
+            if previous_live_state_dir is not None and Path(previous_live_state_dir) != state_dir:
+                unregister_live_operator_session(
+                    Path(previous_live_state_dir),
+                    page=self._page,
+                )
+            register_live_operator_session(
+                state_dir,
+                context=self._context,
+                page=self._page,
+            )
+            self._live_operator_state_dir = state_dir
         return handoff
 
     async def restore_challenge_handoff(self, handoff_state: dict[str, Any]) -> None:
@@ -171,6 +229,15 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if not state_dir_raw:
             raise RuntimeError("Challenge handoff state directory is missing")
         state_dir = Path(str(state_dir_raw)).resolve()
+        raw_viewport = handoff_state.get("viewport")
+        if isinstance(raw_viewport, dict):
+            try:
+                width = int(raw_viewport.get("width"))
+                height = int(raw_viewport.get("height"))
+            except (TypeError, ValueError):
+                width = height = 0
+            if 320 <= width <= 4096 and 240 <= height <= 2160:
+                self._pending_viewport = {"width": width, "height": height}
 
         def _confined_path(key: str) -> Path | None:
             raw = handoff_state.get(key)
@@ -195,62 +262,82 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             if handoff_user_agent:
                 self._pending_user_agent = handoff_user_agent
 
+        patch_applied = False
         patch_path = _confined_path("browser_patch_path")
         if patch_path is not None and patch_path.is_file():
-                if path is None:
-                    raise RuntimeError("Browser patch cannot be applied without storage state")
-                try:
-                    patch = json.loads(patch_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(f"Invalid challenge browser patch JSON: {patch_path}") from exc
-                if (
-                    not isinstance(patch, dict)
-                    or patch.get("version") != 1
-                    or patch.get("kind") != "immowelt_datadome_clearance"
-                ):
-                    raise RuntimeError("Unsupported challenge browser patch")
-                user_agent = str(patch.get("user_agent") or "").strip()
-                cookie = patch.get("cookie")
-                if not user_agent or not isinstance(cookie, dict):
-                    raise RuntimeError("Incomplete DataDome browser patch")
-                if cookie.get("name") != "datadome":
-                    raise RuntimeError("Challenge browser patch contains unexpected cookie")
-                domain = str(cookie.get("domain") or "").casefold().lstrip(".")
-                if domain not in {"immowelt.de", "www.immowelt.de"} and not domain.endswith(
+            if path is None:
+                raise RuntimeError("Browser patch cannot be applied without storage state")
+            try:
+                patch = json.loads(patch_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid challenge browser patch JSON: {patch_path}") from exc
+            if (
+                not isinstance(patch, dict)
+                or patch.get("version") != 1
+                or patch.get("kind") != "immowelt_datadome_clearance"
+            ):
+                raise RuntimeError("Unsupported challenge browser patch")
+            user_agent = str(patch.get("user_agent") or "").strip()
+            cookie = patch.get("cookie")
+            if not user_agent or not isinstance(cookie, dict):
+                raise RuntimeError("Incomplete DataDome browser patch")
+            if cookie.get("name") != "datadome":
+                raise RuntimeError("Challenge browser patch contains unexpected cookie")
+            domain = str(cookie.get("domain") or "").casefold().lstrip(".")
+            if domain not in {"immowelt.de", "www.immowelt.de"} and not domain.endswith(
+                ".immowelt.de"
+            ):
+                raise RuntimeError("Challenge browser patch cookie is not scoped to Immowelt")
+
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid challenge storage state JSON: {path}") from exc
+            cookies = list(state.get("cookies") or [])
+
+            def _immowelt_cookie_domain(value: object) -> bool:
+                normalized = str(value or "").casefold().lstrip(".")
+                return normalized in {"immowelt.de", "www.immowelt.de"} or normalized.endswith(
                     ".immowelt.de"
-                ):
-                    raise RuntimeError("Challenge browser patch cookie is not scoped to Immowelt")
-
-                try:
-                    state = json.loads(path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(f"Invalid challenge storage state JSON: {path}") from exc
-                cookies = list(state.get("cookies") or [])
-
-                def _immowelt_cookie_domain(value: object) -> bool:
-                    normalized = str(value or "").casefold().lstrip(".")
-                    return normalized in {"immowelt.de", "www.immowelt.de"} or normalized.endswith(
-                        ".immowelt.de"
-                    )
-
-                cookies = [
-                    item
-                    for item in cookies
-                    if not (
-                        isinstance(item, dict)
-                        and item.get("name") == "datadome"
-                        and _immowelt_cookie_domain(item.get("domain"))
-                    )
-                ]
-                cookies.append(dict(cookie))
-                state["cookies"] = cookies
-                path.write_text(
-                    json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n",
-                    encoding="utf-8",
                 )
-                path.chmod(0o600)
-                self._pending_user_agent = user_agent
-                patch_path.unlink()
+
+            cookies = [
+                item
+                for item in cookies
+                if not (
+                    isinstance(item, dict)
+                    and item.get("name") == "datadome"
+                    and _immowelt_cookie_domain(item.get("domain"))
+                )
+            ]
+            cookies.append(dict(cookie))
+            state["cookies"] = cookies
+            path.write_text(
+                json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            path.chmod(0o600)
+            self._pending_user_agent = user_agent
+            patch_path.unlink()
+            patch_applied = True
+
+        live = live_operator_session(state_dir)
+        if (
+            not patch_applied
+            and live is not None
+            and self._context is live.context
+            and self._page is live.page
+        ):
+            self._reuse_current_page_once = True
+            return
+
+        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+        if live_state_dir is not None:
+            unregister_live_operator_session(
+                Path(live_state_dir),
+                page=self._page,
+            )
+            self._live_operator_state_dir = None
 
         if self._page is not None:
             await self._page.close()

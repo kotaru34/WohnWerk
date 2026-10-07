@@ -116,7 +116,7 @@ async def test_immowelt_launches_plain_headed_chromium(monkeypatch: pytest.Monke
         "args": ["--disable-crash-reporter"],
     }
     assert fake.chromium.browser.context_kwargs == {"locale": "de-DE"}
-    assert fake.chromium.browser.context.pattern == "**/*"
+    assert not hasattr(fake.chromium.browser.context, "pattern")
 
 
 def test_headed_adapter_keeps_confirmed_direct_search_urls() -> None:
@@ -229,6 +229,7 @@ async def test_headed_adapter_preserves_manual_handoff_user_agent(
             "state_dir": str(tmp_path),
             "storage_state_path": str(storage_state),
             "user_agent": "manual-handoff-exact-ua",
+            "viewport": {"width": 1440, "height": 900},
         }
     )
 
@@ -238,6 +239,7 @@ async def test_headed_adapter_preserves_manual_handoff_user_agent(
 
     assert fake.chromium.browser.context_kwargs == {
         "locale": "de-DE",
+        "viewport": {"width": 1440, "height": 900},
         "storage_state": str(storage_state),
         "user_agent": "manual-handoff-exact-ua",
     }
@@ -286,3 +288,97 @@ async def test_headed_adapter_rejects_foreign_handoff_paths(
     source = ImmoweltHeadedPropertySource()
     with pytest.raises(RuntimeError, match="escaped state directory"):
         await source.restore_challenge_handoff(handoff)
+
+
+class _LiveLocator:
+    async def count(self) -> int:
+        return 1
+
+
+class _LiveResumePage:
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.frames = []
+        self.goto_calls = 0
+        self.closed = False
+
+    def is_closed(self) -> bool:
+        return self.closed
+
+    async def evaluate(self, script: str):
+        if script == "navigator.userAgent":
+            return "same-context-user-agent"
+        return {"width": 1280, "height": 720}
+
+    async def screenshot(self, *, path: str, full_page: bool) -> None:
+        assert full_page is True
+        Path(path).write_bytes(b"png")
+
+    async def content(self) -> str:
+        return (
+            "<html><body><h1>1 Haus zum Kauf in Sachsen</h1>"
+            '<div data-testid="serp-core-classified-card-testid"></div>'
+            "</body></html>"
+        )
+
+    def locator(self, selector: str) -> _LiveLocator:
+        assert selector == "h1"
+        return _LiveLocator()
+
+    async def goto(self, *_args, **_kwargs):
+        self.goto_calls += 1
+        raise AssertionError("same-context resume must not navigate again")
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _LiveResumeContext:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def storage_state(self, *, path: str) -> None:
+        Path(path).write_text('{"cookies":[],"origins":[]}\n')
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_live_handoff_resume_reuses_same_page_without_second_navigation(
+    tmp_path: Path,
+) -> None:
+    source = ImmoweltHeadedPropertySource()
+    requested_url = source._page_url("sachsen", "030000-099999", 1)
+    page = _LiveResumePage(requested_url)
+    context = _LiveResumeContext()
+    source._page = page  # type: ignore[assignment]
+    source._context = context  # type: ignore[assignment]
+    challenge = SourceChallenge(
+        "gate",
+        challenge={
+            "kind": "http_403",
+            "requested_url": requested_url,
+            "datadome_challenge_type": "fe",
+        },
+    )
+
+    handoff = await source.prepare_challenge_handoff(
+        state_dir=tmp_path / "run-1" / "handoff-1",
+        challenge=challenge,
+    )
+    await source.restore_challenge_handoff(handoff)
+
+    assert source._page is page
+    assert source._context is context
+    assert source._reuse_current_page_once is True
+    assert page.closed is False
+    assert context.closed is False
+
+    html, final_url = await source._load_html(requested_url)
+
+    assert final_url == requested_url
+    assert "Haus zum Kauf" in html
+    assert page.goto_calls == 0
+
+    await source.aclose()

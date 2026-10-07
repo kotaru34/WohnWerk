@@ -18,6 +18,8 @@ from app.crawling.immowelt_operator_handoff import (
     operator_approval_path,
     operator_events_path,
     read_operator_status,
+    register_live_operator_session,
+    unregister_live_operator_session,
 )
 
 
@@ -145,8 +147,8 @@ async def test_armed_interactive_challenge_uses_operator_session(tmp_path: Path)
 
     calls = []
 
-    async def fake_session(_request, *, state_dir, run_dir):
-        calls.append((state_dir, run_dir))
+    async def fake_session(_request, *, state_dir, run_dir, live_session=None):
+        calls.append((state_dir, run_dir, live_session))
         return ChallengeResult(action="resolved", message="human completed")
 
     handler._run_session = fake_session  # type: ignore[method-assign]
@@ -157,6 +159,7 @@ async def test_armed_interactive_challenge_uses_operator_session(tmp_path: Path)
     assert fallback.calls == 0
     assert len(calls) == 1
     assert calls[0][1] == tmp_path / "run-123"
+    assert calls[0][2] is None
 
 
 class _TimeoutPage:
@@ -249,3 +252,86 @@ async def test_operator_session_timeout_defers_without_clearance(
     assert result.action == "defer"
     assert result.message == "operator handoff timed out without completed verification"
     assert read_operator_status(run_dir)["state"] == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_armed_interactive_challenge_reuses_registered_live_browser(tmp_path: Path) -> None:
+    fallback = _Fallback()
+    handler = ImmoweltOperatorChallengeHandler(fallback, root=tmp_path)
+    request = _request(tmp_path)
+    state_dir = Path(str(request.handoff_state["state_dir"]))
+    arm_operator_handoff(request.run_id, _active_payload(request), root=tmp_path)
+
+    context = object()
+
+    class Page:
+        def is_closed(self) -> bool:
+            return False
+
+    page = Page()
+    register_live_operator_session(state_dir, context=context, page=page)
+    captured = []
+
+    async def fake_session(_request, *, state_dir, run_dir, live_session=None):
+        captured.append(live_session)
+        return ChallengeResult(action="resolved", message="same browser")
+
+    handler._run_session = fake_session  # type: ignore[method-assign]
+    try:
+        result = await handler.handle(request)
+    finally:
+        unregister_live_operator_session(state_dir, page=page)
+
+    assert result.action == "resolved"
+    assert fallback.calls == 0
+    assert len(captured) == 1
+    assert captured[0] is not None
+    assert captured[0].context is context
+    assert captured[0].page is page
+
+
+@pytest.mark.asyncio
+async def test_live_browser_waits_for_explicit_operator_approval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fallback = _Fallback()
+    handler = ImmoweltOperatorChallengeHandler(
+        fallback,
+        root=tmp_path,
+        arm_grace_seconds=30,
+    )
+    request = _request(tmp_path)
+    state_dir = Path(str(request.handoff_state["state_dir"]))
+    context = object()
+
+    class Page:
+        def is_closed(self) -> bool:
+            return False
+
+    page = Page()
+    register_live_operator_session(state_dir, context=context, page=page)
+    approval_checks = iter((False, True))
+    monkeypatch.setattr(
+        operator_module,
+        "_approval_is_active",
+        lambda *_args, **_kwargs: next(approval_checks),
+    )
+    captured = []
+
+    async def fake_session(_request, *, state_dir, run_dir, live_session=None):
+        captured.append(live_session)
+        return ChallengeResult(action="resolved", message="approved live session")
+
+    handler._run_session = fake_session  # type: ignore[method-assign]
+    try:
+        result = await handler.handle(request)
+    finally:
+        unregister_live_operator_session(state_dir, page=page)
+
+    assert result.action == "resolved"
+    assert fallback.calls == 0
+    assert len(captured) == 1
+    assert captured[0] is not None
+    assert captured[0].context is context
+    assert captured[0].page is page

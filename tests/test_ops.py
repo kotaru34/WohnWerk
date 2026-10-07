@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -576,5 +577,65 @@ def test_admin_health_run_resumed_notice_includes_run_id(monkeypatch) -> None:
 
         assert page.status_code == 200
         assert "Pausierter Quellenlauf #444 wurde manuell fortgesetzt." in page.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+    run = SimpleNamespace(
+        id=5854,
+        source_id=10,
+        status="paused",
+        finished_at=None,
+        run_metadata={
+            "active_challenge": {
+                "challenge": {"datadome_challenge_type": "fe"},
+                "handoff_state": {"state_dir": "/tmp/ignored"},
+            }
+        },
+    )
+
+    class Db(_SourceControlDb):
+        def scalar(self, _statement):
+            return run
+
+    db = Db(source)
+    state = {"value": "awaiting_approval"}
+    popen_calls = []
+
+    def override_db():
+        yield db
+
+    def fake_arm(_run_id, _active):
+        state["value"] = "active"
+        return Path("/tmp/run-5854")
+
+    monkeypatch.setattr("app.ops.operator_run_dir", lambda _run_id: Path("/tmp/run-5854"))
+    monkeypatch.setattr(
+        "app.ops.read_operator_status",
+        lambda _run_dir: {"state": state["value"]},
+    )
+    monkeypatch.setattr("app.ops.arm_operator_handoff", fake_arm)
+    monkeypatch.setattr(
+        "app.ops.subprocess.Popen",
+        lambda *args, **kwargs: popen_calls.append((args, kwargs)),
+    )
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/challenge/approve",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/admin/challenges/5854"
+        assert popen_calls == []
+        assert db.commits == 1
+        assert run.run_metadata["operator_handoff_armed_at"]
     finally:
         app.dependency_overrides.clear()
