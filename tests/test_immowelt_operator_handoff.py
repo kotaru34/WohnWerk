@@ -4,6 +4,7 @@ import json
 import stat
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -228,7 +229,11 @@ async def test_operator_session_timeout_defers_without_clearance(
     ticks = iter((0.0, 100.0))
 
     monkeypatch.setattr(operator_module, "async_playwright", lambda: _TimeoutStarter(fake))
-    monkeypatch.setattr(operator_module.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(
+        operator_module,
+        "time",
+        SimpleNamespace(monotonic=lambda: next(ticks)),
+    )
 
     handler = ImmoweltOperatorChallengeHandler(_Fallback(), root=tmp_path)
     result = await handler._run_session(
