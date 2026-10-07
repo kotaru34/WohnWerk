@@ -8,6 +8,7 @@ import pytest
 from app.crawling.challenge import ChallengeRequest
 from app.crawling.property_runner import (
     _begin_paused_challenge_revalidation,
+    _complete_paused_challenge_revalidation,
     _ordered_shards,
     _prepare_paused_challenge_revalidation,
     _record_challenge_result,
@@ -218,3 +219,31 @@ async def test_paused_resume_restores_browser_state_before_revalidation() -> Non
     assert restored == [request.handoff_state]
     assert cursor["resume_page"] == 2
     assert run.run_metadata["challenge_history"][-1]["action"] == "revalidate"
+
+
+def test_successful_paused_revalidation_marks_run_running_before_clearing_checkpoint() -> None:
+    request = ChallengeRequest(
+        source="immowelt-de",
+        run_id=5854,
+        shard_id=9,
+        shard_key="sachsen:030000-099999",
+        shard_params={"region_key": "sachsen"},
+        mode="incremental",
+        reason="fresh DataDome verification",
+        challenge={"kind": "http_403", "datadome_challenge_type": "fe"},
+        resume_cursor={"_resume_same_run": True, "resume_page": 1},
+        handoff_state={"state_dir": "/tmp/run-5854/handoff-1"},
+        handoff_id="immowelt-de:run-5854:shard-9:handoff-1",
+    )
+    run = SimpleNamespace(
+        run_metadata={"active_challenge": request.to_payload()},
+        status="paused",
+        coverage_status=CoverageStatus.DEGRADED,
+    )
+
+    _complete_paused_challenge_revalidation(run, request)
+
+    assert run.status == "running"
+    assert run.coverage_status == CoverageStatus.UNKNOWN
+    assert "active_challenge" not in run.run_metadata
+    assert run.run_metadata["challenge_history"][-1]["action"] == "resolved"
