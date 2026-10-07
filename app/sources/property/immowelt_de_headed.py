@@ -128,11 +128,23 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             await self._context.storage_state(path=str(storage_state_path))
             storage_state_path.chmod(0o600)
         user_agent: str | None = None
+        viewport: dict[str, int] | None = None
         if self._page is not None:
             try:
                 user_agent = str(await self._page.evaluate("navigator.userAgent"))
             except PlaywrightError:
                 user_agent = None
+            try:
+                raw_viewport = await self._page.evaluate(
+                    "() => ({width: window.innerWidth, height: window.innerHeight})"
+                )
+                if isinstance(raw_viewport, dict):
+                    viewport = {
+                        "width": int(raw_viewport["width"]),
+                        "height": int(raw_viewport["height"]),
+                    }
+            except (KeyError, TypeError, ValueError, PlaywrightError):
+                viewport = None
             try:
                 await self._page.screenshot(path=str(screenshot_path), full_page=True)
                 screenshot_path.chmod(0o600)
@@ -148,6 +160,8 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         }
         if user_agent:
             handoff["user_agent"] = user_agent
+        if viewport:
+            handoff["viewport"] = viewport
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
         return handoff
