@@ -235,7 +235,11 @@ async def test_operator_session_timeout_defers_without_clearance(
         SimpleNamespace(monotonic=lambda: next(ticks)),
     )
 
-    handler = ImmoweltOperatorChallengeHandler(_Fallback(), root=tmp_path)
+    handler = ImmoweltOperatorChallengeHandler(
+        _Fallback(),
+        root=tmp_path,
+        timeout_seconds=30,
+    )
     result = await handler._run_session(
         request,
         state_dir=state_dir,
