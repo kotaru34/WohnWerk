@@ -140,7 +140,11 @@ def arm_operator_handoff(
     return run_dir
 
 
-def read_operator_status(run_dir: Path) -> dict[str, Any]:
+def read_operator_status(
+    run_dir: Path,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     payload = _read_json(operator_status_path(run_dir))
     if payload is not None:
         return payload
@@ -150,7 +154,7 @@ def read_operator_status(run_dir: Path) -> dict[str, Any]:
             run_id = int(approval.get("run_id"))
         except (TypeError, ValueError):
             return {"state": "invalid"}
-        if _approval_is_active(run_id, run_dir):
+        if _approval_is_active(run_id, run_dir, now=now):
             return {"state": "armed", "run_id": run_id}
         return {"state": "expired", "run_id": run_id}
     return {"state": "idle"}
