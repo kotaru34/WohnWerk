@@ -639,3 +639,67 @@ def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None
         assert run.run_metadata["operator_handoff_armed_at"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_challenge_approve_refreshes_stale_datadome_before_resume(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+    active = {
+        "challenge": {"datadome_challenge_type": "fe"},
+        "handoff_state": {"state_dir": "/tmp/run-5854/handoff-1"},
+    }
+    run = SimpleNamespace(
+        id=5854,
+        source_id=10,
+        status="paused",
+        finished_at=None,
+        run_metadata={"active_challenge": active},
+    )
+
+    class Db(_SourceControlDb):
+        def scalar(self, _statement):
+            return run
+
+    db = Db(source)
+    fresh_calls = []
+    popen_calls = []
+
+    def override_db():
+        yield db
+
+    monkeypatch.setattr("app.ops.operator_run_dir", lambda _run_id: Path("/tmp/run-5854"))
+    monkeypatch.setattr(
+        "app.ops.read_operator_status",
+        lambda _run_dir: {"state": "idle"},
+    )
+    monkeypatch.setattr(
+        "app.ops.prepare_fresh_operator_reverification",
+        lambda run_id, payload: fresh_calls.append((run_id, payload)) or 1,
+    )
+    monkeypatch.setattr(
+        "app.ops.arm_operator_handoff",
+        lambda _run_id, _active: Path("/tmp/run-5854"),
+    )
+    monkeypatch.setattr(
+        "app.ops.subprocess.Popen",
+        lambda *args, **kwargs: popen_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr("app.ops._manual_refresh_env", lambda _source_name: {})
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/challenge/approve",
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/admin/challenges/5854"
+        assert fresh_calls == [(5854, active)]
+        assert len(popen_calls) == 1
+        assert run.run_metadata["operator_reverification_stale_datadome_removed"] == 1
+        assert db.commits == 1
+    finally:
+        app.dependency_overrides.clear()
