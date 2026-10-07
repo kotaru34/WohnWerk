@@ -9,6 +9,7 @@ import pytest
 from app.crawling.challenge import ChallengeRequest, ChallengeResult
 from app.crawling.immowelt_operator_handoff import (
     ImmoweltOperatorChallengeHandler,
+    _has_immowelt_datadome_cookie,
     arm_operator_handoff,
     enqueue_operator_pointer,
     operator_approval_path,
@@ -54,6 +55,26 @@ def _request(root: Path, *, challenge_type: str = "fe") -> ChallengeRequest:
 
 def _active_payload(request: ChallengeRequest) -> dict:
     return request.to_payload()
+
+
+@pytest.mark.asyncio
+async def test_clearance_requires_immowelt_datadome_cookie() -> None:
+    class _Context:
+        def __init__(self, cookies):
+            self._cookies = cookies
+
+        async def cookies(self):
+            return self._cookies
+
+    assert await _has_immowelt_datadome_cookie(
+        _Context([{"name": "datadome", "value": "ok", "domain": ".immowelt.de"}])
+    )
+    assert not await _has_immowelt_datadome_cookie(
+        _Context([{"name": "datadome", "value": "ok", "domain": ".example.com"}])
+    )
+    assert not await _has_immowelt_datadome_cookie(
+        _Context([{"name": "other", "value": "ok", "domain": ".immowelt.de"}])
+    )
 
 
 def test_arm_operator_handoff_is_explicit_and_run_scoped(tmp_path: Path) -> None:
