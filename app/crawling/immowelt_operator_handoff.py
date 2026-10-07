@@ -19,7 +19,7 @@ DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
 IMMOWELT_HOSTS = {"immowelt.de", "www.immowelt.de"}
 OPERATOR_SESSION_TTL = timedelta(minutes=15)
-OPERATOR_VIEWPORT = {"width": 1280, "height": 900}
+DEFAULT_OPERATOR_VIEWPORT = {"width": 1280, "height": 720}
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -146,7 +146,13 @@ def read_operator_status(run_dir: Path) -> dict[str, Any]:
         return payload
     approval = _read_json(operator_approval_path(run_dir))
     if approval is not None:
-        return {"state": "armed", "run_id": approval.get("run_id")}
+        try:
+            run_id = int(approval.get("run_id"))
+        except (TypeError, ValueError):
+            return {"state": "invalid"}
+        if _approval_is_active(run_id, run_dir):
+            return {"state": "armed", "run_id": run_id}
+        return {"state": "expired", "run_id": run_id}
     return {"state": "idle"}
 
 
@@ -172,6 +178,19 @@ def enqueue_operator_pointer(
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
     path.chmod(0o600)
+
+
+def _operator_viewport(handoff_state: dict[str, Any]) -> dict[str, int]:
+    raw = handoff_state.get("viewport")
+    if isinstance(raw, dict):
+        try:
+            width = int(raw.get("width"))
+            height = int(raw.get("height"))
+        except (TypeError, ValueError):
+            width = height = 0
+        if 320 <= width <= 4096 and 240 <= height <= 2160:
+            return {"width": width, "height": height}
+    return dict(DEFAULT_OPERATOR_VIEWPORT)
 
 
 def _approval_is_active(run_id: int, run_dir: Path, *, now: datetime | None = None) -> bool:
@@ -296,9 +315,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 args=["--disable-crash-reporter"],
                 env={**os.environ, "DISPLAY": display},
             )
+            viewport = _operator_viewport(request.handoff_state)
             context_kwargs: dict[str, Any] = {
                 "locale": "de-DE",
-                "viewport": dict(OPERATOR_VIEWPORT),
+                "viewport": dict(viewport),
             }
             handoff_user_agent = str(
                 request.handoff_state.get("user_agent") or ""
@@ -325,7 +345,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "state": "active",
                     "run_id": request.run_id,
                     "started_at": datetime.now(UTC).isoformat(),
-                    "viewport": dict(OPERATOR_VIEWPORT),
+                    "viewport": dict(viewport),
                 },
             )
 
@@ -356,12 +376,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         if phase not in {"down", "move", "up"}:
                             continue
                         try:
-                            x = float(event.get("x")) * OPERATOR_VIEWPORT["width"]
-                            y = float(event.get("y")) * OPERATOR_VIEWPORT["height"]
+                            x = float(event.get("x")) * viewport["width"]
+                            y = float(event.get("y")) * viewport["height"]
                         except (TypeError, ValueError):
                             continue
-                        x = min(max(x, 0.0), float(OPERATOR_VIEWPORT["width"] - 1))
-                        y = min(max(y, 0.0), float(OPERATOR_VIEWPORT["height"] - 1))
+                        x = min(max(x, 0.0), float(viewport["width"] - 1))
+                        y = min(max(y, 0.0), float(viewport["height"] - 1))
                         await page.mouse.move(x, y)
                         if phase == "down":
                             await page.mouse.down(button="left")
@@ -390,6 +410,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 )
                 page_host = (urlparse(page.url).hostname or "").casefold()
 
+                clearance_present = await _has_immowelt_datadome_cookie(context)
+                content_present = await page.locator("h1").count() > 0
+
                 _atomic_json(
                     operator_status_path(run_dir),
                     {
@@ -401,12 +424,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "challenge_present": challenge_present,
                         "clearance_present": clearance_present,
                         "content_present": content_present,
-                        "viewport": dict(OPERATOR_VIEWPORT),
+                        "viewport": dict(viewport),
                     },
                 )
-
-                clearance_present = await _has_immowelt_datadome_cookie(context)
-                content_present = await page.locator("h1").count() > 0
                 if (
                     not challenge_present
                     and page_host in IMMOWELT_HOSTS
