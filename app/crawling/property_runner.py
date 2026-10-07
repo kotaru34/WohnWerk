@@ -262,6 +262,15 @@ def _begin_paused_challenge_revalidation(
     return dict(request.resume_cursor)
 
 
+async def _prepare_paused_challenge_revalidation(
+    adapter: PropertySource,
+    run: CrawlRun,
+    request: ChallengeRequest,
+) -> dict[str, Any]:
+    """Restore the persisted browser boundary before the bounded resume navigation."""
+    await adapter.restore_challenge_handoff(request.handoff_state)
+    return _begin_paused_challenge_revalidation(run, request)
+
 
 async def _ingest_partial_fetch(
     session: Session,
@@ -420,13 +429,16 @@ async def run_property_source(
                 # Restore the persisted browser/session boundary before the one bounded
                 # fresh navigation. This keeps UA/storage/viewport continuity across the
                 # process restart that necessarily occurs while a run is paused.
-                await adapter.restore_challenge_handoff(request.handoff_state)
                 # A persisted challenge can become stale while a run is paused. Every resume
                 # gets exactly one fresh navigation before the old handler is consulted.
                 # Keep the previous active_challenge until that navigation has actually
                 # succeeded or a new SourceChallenge checkpoint replaces it.
                 revalidated_request = request
-                resume_cursor = _begin_paused_challenge_revalidation(run, request)
+                resume_cursor = await _prepare_paused_challenge_revalidation(
+                    adapter,
+                    run,
+                    request,
+                )
                 session.commit()
                 revalidate_paused = False
             else:
