@@ -87,6 +87,12 @@ class HandoffContext:
 class HandoffPage:
     url = "https://www.immowelt.de/classified-search?page=2"
 
+    async def evaluate(self, script: str):
+        if script == "navigator.userAgent":
+            return "headed-test-user-agent"
+        assert "window.innerWidth" in script
+        return {"width": 1280, "height": 720}
+
     async def screenshot(self, *, path: str, full_page: bool) -> None:
         assert full_page is True
         Path(path).write_bytes(b"png")
@@ -142,6 +148,8 @@ async def test_headed_adapter_exports_browser_state_for_external_handler(tmp_pat
     assert handoff["browser_patch_path"].endswith("browser-patch.json")
     assert handoff["current_url"].endswith("page=2")
     assert handoff["challenge"]["kind"] == "http_403"
+    assert handoff["user_agent"] == "headed-test-user-agent"
+    assert handoff["viewport"] == {"width": 1280, "height": 720}
 
 
 
