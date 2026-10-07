@@ -7,6 +7,11 @@ from typing import Any
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
 
+from app.crawling.immowelt_operator_handoff import (
+    live_operator_session,
+    register_live_operator_session,
+    unregister_live_operator_session,
+)
 from app.sources.base import SourceChallenge, SourceFetchError
 from app.sources.property.immowelt_de import (
     ImmoweltGermanyPropertySource,
@@ -34,6 +39,9 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             args=["--disable-crash-reporter"],
         )
         context_kwargs: dict[str, Any] = {"locale": "de-DE"}
+        pending_viewport = getattr(self, "_pending_viewport", None)
+        if isinstance(pending_viewport, dict):
+            context_kwargs["viewport"] = dict(pending_viewport)
         storage_state_path = getattr(self, "_pending_storage_state_path", None)
         if storage_state_path and Path(storage_state_path).is_file():
             context_kwargs["storage_state"] = storage_state_path
@@ -41,16 +49,41 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if pending_user_agent:
             context_kwargs["user_agent"] = str(pending_user_agent)
         self._context = await self._browser.new_context(**context_kwargs)
-
-        async def block_heavy_assets(route: Any) -> None:
-            if route.request.resource_type in {"font", "image", "media"}:
-                await route.abort()
-            else:
-                await route.continue_()
-
-        await self._context.route("**/*", block_heavy_assets)
         self._page = await self._context.new_page()
         return self._page
+
+    async def aclose(self) -> None:
+        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+        if live_state_dir is not None:
+            unregister_live_operator_session(
+                Path(live_state_dir),
+                page=self._page,
+            )
+            self._live_operator_state_dir = None
+        await super().aclose()
+
+    async def _load_html(self, url: str) -> tuple[str, str]:
+        if getattr(self, "_reuse_current_page_once", False) and self._page is not None:
+            self._reuse_current_page_once = False
+            page = self._page
+            challenge = await self._challenge_probe(
+                page=page,
+                requested_url=url,
+                status=200,
+            )
+            if challenge is not None:
+                raise SourceChallenge(
+                    f"Immowelt access challenge detected ({challenge['kind']})",
+                    challenge=challenge,
+                )
+            host = __import__("urllib.parse").parse.urlparse(page.url).hostname or ""
+            if host.casefold() in {"immowelt.de", "www.immowelt.de"}:
+                expected = __import__("urllib.parse").parse.urlparse(url)
+                actual = __import__("urllib.parse").parse.urlparse(page.url)
+                if expected.path == actual.path and expected.query == actual.query:
+                    if await page.locator("h1").count() > 0:
+                        return await page.content(), page.url
+        return await super()._load_html(url)
 
     async def load_detail_html(self, url: str) -> tuple[str, str]:
         """Load one exact public Immowelt expose through the active headed session.
@@ -164,6 +197,13 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             handoff["viewport"] = viewport
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
+        if self._context is not None and self._page is not None:
+            register_live_operator_session(
+                state_dir,
+                context=self._context,
+                page=self._page,
+            )
+            self._live_operator_state_dir = state_dir
         return handoff
 
     async def restore_challenge_handoff(self, handoff_state: dict[str, Any]) -> None:
@@ -171,6 +211,15 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if not state_dir_raw:
             raise RuntimeError("Challenge handoff state directory is missing")
         state_dir = Path(str(state_dir_raw)).resolve()
+        raw_viewport = handoff_state.get("viewport")
+        if isinstance(raw_viewport, dict):
+            try:
+                width = int(raw_viewport.get("width"))
+                height = int(raw_viewport.get("height"))
+            except (TypeError, ValueError):
+                width = height = 0
+            if 320 <= width <= 4096 and 240 <= height <= 2160:
+                self._pending_viewport = {"width": width, "height": height}
 
         def _confined_path(key: str) -> Path | None:
             raw = handoff_state.get(key)
@@ -195,6 +244,7 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             if handoff_user_agent:
                 self._pending_user_agent = handoff_user_agent
 
+        patch_applied = False
         patch_path = _confined_path("browser_patch_path")
         if patch_path is not None and patch_path.is_file():
                 if path is None:
@@ -251,6 +301,17 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
                 path.chmod(0o600)
                 self._pending_user_agent = user_agent
                 patch_path.unlink()
+                patch_applied = True
+
+        live = live_operator_session(state_dir)
+        if (
+            not patch_applied
+            and live is not None
+            and self._context is live.context
+            and self._page is live.page
+        ):
+            self._reuse_current_page_once = True
+            return
 
         if self._page is not None:
             await self._page.close()
