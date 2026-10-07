@@ -24,6 +24,7 @@ from app.crawling.immowelt_operator_handoff import (
     challenge_state_for_run,
     enqueue_operator_pointer,
     operator_frame_path,
+    operator_run_dir,
     read_operator_status,
 )
 from app.jobs.location_resolution import is_non_point_location_scope
@@ -771,16 +772,26 @@ def run_source_now(
         time.sleep(RUN_START_POLL_SECONDS)
 
 
+def _immowelt_run_context(
+    db: Session,
+    run_id: int,
+) -> tuple[CrawlRun, Source]:
+    run = db.get(CrawlRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Immowelt-Lauf nicht gefunden.")
+    source = db.get(Source, run.source_id)
+    if source is None or source.name != "immowelt-de":
+        raise HTTPException(status_code=404, detail="Interaktive Übergabe ist nur für Immowelt verfügbar.")
+    return run, source
+
+
 def _immowelt_challenge_context(
     db: Session,
     run_id: int,
 ) -> tuple[CrawlRun, Source, dict, Path, Path]:
-    run = db.get(CrawlRun, run_id)
-    if run is None or str(run.status) != "paused" or run.finished_at is not None:
-        raise HTTPException(status_code=404, detail="Pausierter Lauf nicht gefunden.")
-    source = db.get(Source, run.source_id)
-    if source is None or source.name != "immowelt-de":
-        raise HTTPException(status_code=404, detail="Interaktive Übergabe ist nur für Immowelt verfügbar.")
+    run, source = _immowelt_run_context(db, run_id)
+    if str(run.status) != "paused" or run.finished_at is not None:
+        raise HTTPException(status_code=409, detail="Immowelt-Lauf wartet nicht auf eine Challenge.")
     active = dict(run.run_metadata or {}).get("active_challenge")
     if not isinstance(active, dict):
         raise HTTPException(status_code=409, detail="Der Lauf hat keine aktive Challenge.")
@@ -882,7 +893,8 @@ def challenge_handoff_status(
     _: AdminDependency,
     db: DbDependency,
 ):
-    _run, _source, _active, _state_dir, run_dir = _immowelt_challenge_context(db, run_id)
+    _run, _source = _immowelt_run_context(db, run_id)
+    run_dir = operator_run_dir(run_id)
     return JSONResponse(read_operator_status(run_dir), headers={"Cache-Control": "no-store"})
 
 
@@ -892,19 +904,26 @@ def challenge_handoff_frame(
     _: AdminDependency,
     db: DbDependency,
 ):
-    _run, _source, active, state_dir, run_dir = _immowelt_challenge_context(db, run_id)
+    run, _source = _immowelt_run_context(db, run_id)
+    run_dir = operator_run_dir(run_id)
     frame = operator_frame_path(run_dir)
     if not frame.is_file():
-        handoff = active.get("handoff_state")
-        screenshot = handoff.get("screenshot_path") if isinstance(handoff, dict) else None
-        if screenshot:
-            candidate = Path(str(screenshot)).resolve()
+        active = dict(run.run_metadata or {}).get("active_challenge")
+        if isinstance(active, dict):
             try:
-                candidate.relative_to(state_dir)
+                state_dir, _ = challenge_state_for_run(run.id, active)
             except ValueError:
-                candidate = Path()
-            if candidate.is_file():
-                frame = candidate
+                state_dir = Path()
+            handoff = active.get("handoff_state")
+            screenshot = handoff.get("screenshot_path") if isinstance(handoff, dict) else None
+            if screenshot and state_dir:
+                candidate = Path(str(screenshot)).resolve()
+                try:
+                    candidate.relative_to(state_dir)
+                except ValueError:
+                    candidate = Path()
+                if candidate.is_file():
+                    frame = candidate
     if not frame.is_file():
         raise HTTPException(status_code=404, detail="Noch kein Challenge-Bild verfügbar.")
     return FileResponse(
