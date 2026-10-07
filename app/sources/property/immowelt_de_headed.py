@@ -25,9 +25,10 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
     """Immowelt adapter using ordinary headed Chromium on an X display.
 
     Challenge detection and crawl orchestration live in the base adapter/runner. This class
-    only exposes browser state at a persisted handoff boundary so an operator-provided
-    external handler can act, then reloads the returned storage state before WohnWerk
-    retries the exact navigation point. No challenge-solving implementation lives here.
+    exposes a persisted browser-state boundary for crash/restart fallback, while an armed
+    human handoff may reuse the live crawler BrowserContext/Page in-process and then consume
+    the already-open protected page without re-navigation. No challenge-solving
+    implementation lives here.
     """
 
     async def _ensure_page(self) -> Page:
@@ -264,61 +265,61 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         patch_applied = False
         patch_path = _confined_path("browser_patch_path")
         if patch_path is not None and patch_path.is_file():
-                if path is None:
-                    raise RuntimeError("Browser patch cannot be applied without storage state")
-                try:
-                    patch = json.loads(patch_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(f"Invalid challenge browser patch JSON: {patch_path}") from exc
-                if (
-                    not isinstance(patch, dict)
-                    or patch.get("version") != 1
-                    or patch.get("kind") != "immowelt_datadome_clearance"
-                ):
-                    raise RuntimeError("Unsupported challenge browser patch")
-                user_agent = str(patch.get("user_agent") or "").strip()
-                cookie = patch.get("cookie")
-                if not user_agent or not isinstance(cookie, dict):
-                    raise RuntimeError("Incomplete DataDome browser patch")
-                if cookie.get("name") != "datadome":
-                    raise RuntimeError("Challenge browser patch contains unexpected cookie")
-                domain = str(cookie.get("domain") or "").casefold().lstrip(".")
-                if domain not in {"immowelt.de", "www.immowelt.de"} and not domain.endswith(
+            if path is None:
+                raise RuntimeError("Browser patch cannot be applied without storage state")
+            try:
+                patch = json.loads(patch_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid challenge browser patch JSON: {patch_path}") from exc
+            if (
+                not isinstance(patch, dict)
+                or patch.get("version") != 1
+                or patch.get("kind") != "immowelt_datadome_clearance"
+            ):
+                raise RuntimeError("Unsupported challenge browser patch")
+            user_agent = str(patch.get("user_agent") or "").strip()
+            cookie = patch.get("cookie")
+            if not user_agent or not isinstance(cookie, dict):
+                raise RuntimeError("Incomplete DataDome browser patch")
+            if cookie.get("name") != "datadome":
+                raise RuntimeError("Challenge browser patch contains unexpected cookie")
+            domain = str(cookie.get("domain") or "").casefold().lstrip(".")
+            if domain not in {"immowelt.de", "www.immowelt.de"} and not domain.endswith(
+                ".immowelt.de"
+            ):
+                raise RuntimeError("Challenge browser patch cookie is not scoped to Immowelt")
+
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid challenge storage state JSON: {path}") from exc
+            cookies = list(state.get("cookies") or [])
+
+            def _immowelt_cookie_domain(value: object) -> bool:
+                normalized = str(value or "").casefold().lstrip(".")
+                return normalized in {"immowelt.de", "www.immowelt.de"} or normalized.endswith(
                     ".immowelt.de"
-                ):
-                    raise RuntimeError("Challenge browser patch cookie is not scoped to Immowelt")
-
-                try:
-                    state = json.loads(path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(f"Invalid challenge storage state JSON: {path}") from exc
-                cookies = list(state.get("cookies") or [])
-
-                def _immowelt_cookie_domain(value: object) -> bool:
-                    normalized = str(value or "").casefold().lstrip(".")
-                    return normalized in {"immowelt.de", "www.immowelt.de"} or normalized.endswith(
-                        ".immowelt.de"
-                    )
-
-                cookies = [
-                    item
-                    for item in cookies
-                    if not (
-                        isinstance(item, dict)
-                        and item.get("name") == "datadome"
-                        and _immowelt_cookie_domain(item.get("domain"))
-                    )
-                ]
-                cookies.append(dict(cookie))
-                state["cookies"] = cookies
-                path.write_text(
-                    json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n",
-                    encoding="utf-8",
                 )
-                path.chmod(0o600)
-                self._pending_user_agent = user_agent
-                patch_path.unlink()
-                patch_applied = True
+
+            cookies = [
+                item
+                for item in cookies
+                if not (
+                    isinstance(item, dict)
+                    and item.get("name") == "datadome"
+                    and _immowelt_cookie_domain(item.get("domain"))
+                )
+            ]
+            cookies.append(dict(cookie))
+            state["cookies"] = cookies
+            path.write_text(
+                json.dumps(state, ensure_ascii=False, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            path.chmod(0o600)
+            self._pending_user_agent = user_agent
+            patch_path.unlink()
+            patch_applied = True
 
         live = live_operator_session(state_dir)
         if (
@@ -329,6 +330,14 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         ):
             self._reuse_current_page_once = True
             return
+
+        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+        if live_state_dir is not None:
+            unregister_live_operator_session(
+                Path(live_state_dir),
+                page=self._page,
+            )
+            self._live_operator_state_dir = None
 
         if self._page is not None:
             await self._page.close()
