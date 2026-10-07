@@ -175,6 +175,14 @@ def _challenge_handoff_count(run: CrawlRun) -> int:
         return 0
 
 
+def _persisted_same_run_cursor(shard_run: CrawlShardRun) -> dict[str, Any] | None:
+    """Reuse an exact in-run checkpoint when an interrupted shard is explicitly reopened."""
+    value = shard_run.next_cursor
+    if not isinstance(value, dict) or value.get("_resume_same_run") is not True:
+        return None
+    return dict(value)
+
+
 def _challenge_request_from_payload(payload: dict[str, Any]) -> ChallengeRequest:
     return ChallengeRequest(
         source=str(payload["source"]),
@@ -432,7 +440,7 @@ async def run_property_source(
 
         shard_id = shard.id
         shard_run_id = shard_run.id
-        resume_cursor: dict[str, Any] | None = None
+        resume_cursor: dict[str, Any] | None = _persisted_same_run_cursor(shard_run)
 
         if shard_run.status == RUN_STATUS_PAUSED:
             payload = _active_challenge(run)
