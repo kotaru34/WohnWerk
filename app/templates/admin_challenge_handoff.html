@@ -54,6 +54,7 @@
   const frame = document.getElementById("challenge-frame");
   const status = document.getElementById("status");
   let dragging = false;
+  let interactive = false;
   let lastMove = 0;
   let pointerQueue = Promise.resolve();
 
@@ -84,6 +85,7 @@
   }
 
   frame.addEventListener("pointerdown", (event) => {
+    if (!interactive) return;
     dragging = true;
     frame.setPointerCapture(event.pointerId);
     sendPointer("down", event);
@@ -121,6 +123,8 @@
         const payload = await response.json();
         const state = payload.state || "unknown";
         const message = payload.message || "";
+        interactive = state === "active";
+        frame.style.cursor = interactive ? "crosshair" : "wait";
         status.textContent = `state=${state}${message ? "\n" + message : ""}`;
         if (state === "resolved") {
           status.textContent += "\nPrüfung abgeschlossen. Der pausierte Lauf wird fortgesetzt …";
