@@ -68,6 +68,10 @@ def _run_dir(run_id: int, *, root: Path = DEFAULT_OPERATOR_ROOT) -> Path:
     return (root / f"run-{int(run_id)}").resolve()
 
 
+def operator_run_dir(run_id: int, *, root: Path = DEFAULT_OPERATOR_ROOT) -> Path:
+    return _run_dir(run_id, root=root)
+
+
 def validate_state_dir(
     run_id: int,
     state_dir: Path,
@@ -270,9 +274,6 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
             "WOHNWERK_IMMOWELT_OPERATOR_DISPLAY",
             ":97",
         )
-        previous_display = os.environ.get("DISPLAY")
-        os.environ["DISPLAY"] = display
-
         playwright = browser = context = page = None
         event_offset = 0
         started = time.monotonic()
@@ -282,6 +283,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
             browser = await playwright.chromium.launch(
                 headless=False,
                 args=["--disable-crash-reporter"],
+                env={**os.environ, "DISPLAY": display},
             )
             context_kwargs: dict[str, Any] = {
                 "locale": "de-DE",
@@ -428,7 +430,3 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 await browser.close()
             if playwright is not None:
                 await playwright.stop()
-            if previous_display is None:
-                os.environ.pop("DISPLAY", None)
-            else:
-                os.environ["DISPLAY"] = previous_display
