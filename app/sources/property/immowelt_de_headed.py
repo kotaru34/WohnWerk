@@ -167,17 +167,33 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         return handoff
 
     async def restore_challenge_handoff(self, handoff_state: dict[str, Any]) -> None:
-        storage_state = handoff_state.get("storage_state_path")
-        path: Path | None = None
-        if storage_state:
-            path = Path(str(storage_state))
+        state_dir_raw = handoff_state.get("state_dir")
+        if not state_dir_raw:
+            raise RuntimeError("Challenge handoff state directory is missing")
+        state_dir = Path(str(state_dir_raw)).resolve()
+
+        def _confined_path(key: str) -> Path | None:
+            raw = handoff_state.get(key)
+            if not raw:
+                return None
+            candidate = Path(str(raw)).resolve()
+            try:
+                candidate.relative_to(state_dir)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Challenge handoff path escaped state directory: {key}"
+                ) from exc
+            return candidate
+
+        _confined_path("screenshot_path")
+        path = _confined_path("storage_state_path")
+        if path is not None:
             if not path.is_file():
                 raise RuntimeError(f"Challenge storage state is missing: {path}")
             self._pending_storage_state_path = str(path)
 
-        browser_patch = handoff_state.get("browser_patch_path")
-        if browser_patch:
-            patch_path = Path(str(browser_patch))
+        patch_path = _confined_path("browser_patch_path")
+        if patch_path is not None:
             if patch_path.is_file():
                 if path is None:
                     raise RuntimeError("Browser patch cannot be applied without storage state")
