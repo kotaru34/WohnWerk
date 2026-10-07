@@ -124,6 +124,7 @@ def arm_operator_handoff(
 
     _state_dir, run_dir = challenge_state_for_run(run_id, active_challenge, root=root)
     run_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    run_dir.chmod(0o700)
     now = (now or datetime.now(UTC)).astimezone(UTC)
     approval = {
         "version": 1,
