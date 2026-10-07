@@ -913,16 +913,16 @@ def challenge_handoff_frame(
             try:
                 state_dir, _ = challenge_state_for_run(run.id, active)
             except ValueError:
-                state_dir = Path()
+                state_dir = None
             handoff = active.get("handoff_state")
             screenshot = handoff.get("screenshot_path") if isinstance(handoff, dict) else None
-            if screenshot and state_dir:
+            if screenshot and state_dir is not None:
                 candidate = Path(str(screenshot)).resolve()
                 try:
                     candidate.relative_to(state_dir)
                 except ValueError:
-                    candidate = Path()
-                if candidate.is_file():
+                    candidate = None
+                if candidate is not None and candidate.is_file():
                     frame = candidate
     if not frame.is_file():
         raise HTTPException(status_code=404, detail="Noch kein Challenge-Bild verfügbar.")
