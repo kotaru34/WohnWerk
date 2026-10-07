@@ -189,7 +189,7 @@ def prepare_fresh_operator_reverification(
 
     raw_cookies = state.get("cookies")
     if not isinstance(raw_cookies, list):
-        raise ValueError("challenge storage state cookies are invalid")
+        raise TypeError("challenge storage state cookies are invalid")
 
     removed = 0
     cookies: list[Any] = []
