@@ -58,6 +58,21 @@ def _with_blank_card_shell(html: str) -> str:
     )
 
 
+def _with_noncanonical_card(html: str) -> str:
+    return html.replace(
+        '<button aria-label="zu seite 1">1</button>',
+        (
+            '<div data-testid="serp-core-classified-card-testid">'
+            '<a data-testid="card-mfe-covering-link-testid" '
+            'href="https://www.immowelt.de/ratgeber/hauskauf" '
+            'title="Weitere Immowelt Inhalte"></a>'
+            '<div>Weitere Immowelt Inhalte</div>'
+            '</div>'
+            '<button aria-label="zu seite 1">1</button>'
+        ),
+    )
+
+
 def test_parser_keeps_only_minimal_public_facts_and_leading_zero_plz() -> None:
     page = parse_immowelt_search_page(
         _page_html(),
@@ -286,6 +301,24 @@ async def test_single_page_reconciliation_is_authoritative_without_browser() -> 
     assert batch.next_cursor["discovery_cards_total"] == 1
     assert batch.next_cursor["discovery_project_cards_skipped"] == 0
     assert batch.next_cursor["discovery_blank_cards_skipped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_noncanonical_card_preserves_valid_items_but_blocks_authority() -> None:
+    class ProbeSource(ImmoweltGermanyPropertySource):
+        async def _load_html(self, url: str) -> tuple[str, str]:
+            return _with_noncanonical_card(_page_html(total=2)), url
+
+    source = ProbeSource(request_delay_seconds=1.0)
+    shard = next(shard for shard in source.default_shards() if shard.key.startswith("sachsen:"))
+    batch = await source.fetch_shard(shard, reconciliation=True)
+
+    assert batch.pages_fetched == 1
+    assert len(batch.items) == 1
+    assert batch.next_cursor["discovery_cards_seen"] == 2
+    assert batch.next_cursor["discovery_cards_parsed"] == 1
+    assert batch.next_cursor["discovery_unparsed_cards_skipped"] == 1
+    assert batch.coverage_complete is False
 
 
 @pytest.mark.asyncio
