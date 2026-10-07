@@ -189,6 +189,17 @@ def _approval_is_active(run_id: int, run_dir: Path, *, now: datetime | None = No
     return (now or datetime.now(UTC)).astimezone(UTC) < expires.astimezone(UTC)
 
 
+async def _has_immowelt_datadome_cookie(context: Any) -> bool:
+    cookies = await context.cookies()
+    for cookie in cookies:
+        if cookie.get("name") != "datadome" or not cookie.get("value"):
+            continue
+        domain = str(cookie.get("domain") or "").casefold().lstrip(".")
+        if domain in IMMOWELT_HOSTS or domain.endswith(".immowelt.de"):
+            return True
+    return False
+
+
 def _finish_operator_state(run_dir: Path, *, state: str, message: str) -> None:
     _atomic_json(
         operator_status_path(run_dir),
@@ -289,6 +300,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 "locale": "de-DE",
                 "viewport": dict(OPERATOR_VIEWPORT),
             }
+            handoff_user_agent = str(
+                request.handoff_state.get("user_agent") or ""
+            ).strip()
+            if handoff_user_agent:
+                context_kwargs["user_agent"] = handoff_user_agent
             if storage_state_path.is_file():
                 context_kwargs["storage_state"] = str(storage_state_path)
             context = await browser.new_context(**context_kwargs)
@@ -383,11 +399,20 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "updated_at": datetime.now(UTC).isoformat(),
                         "page_url": page.url,
                         "challenge_present": challenge_present,
+                        "clearance_present": clearance_present,
+                        "content_present": content_present,
                         "viewport": dict(OPERATOR_VIEWPORT),
                     },
                 )
 
-                if not challenge_present and page_host in IMMOWELT_HOSTS:
+                clearance_present = await _has_immowelt_datadome_cookie(context)
+                content_present = await page.locator("h1").count() > 0
+                if (
+                    not challenge_present
+                    and page_host in IMMOWELT_HOSTS
+                    and clearance_present
+                    and content_present
+                ):
                     await context.storage_state(path=str(storage_state_path))
                     storage_state_path.chmod(0o600)
                     _finish_operator_state(
