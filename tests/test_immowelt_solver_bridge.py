@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.crawling.challenge import ChallengeRequest, ExternalCommandChallengeHandler
+from app.crawling.immowelt_operator_handoff import ImmoweltOperatorChallengeHandler
 from app.crawling.immowelt_solver_bridge import (
     ImmoweltDataDomeSolverHandler,
     configured_immowelt_challenge_handler,
@@ -181,15 +182,13 @@ async def test_bridge_rejects_cookie_for_unexpected_domain(tmp_path) -> None:
     assert "unexpected" in result.message
 
 
-def test_runner_uses_local_solver_bridge_only_when_explicitly_configured() -> None:
-    assert (
-        configured_immowelt_challenge_handler(
-            external_command=None,
-            solver_url=None,
-            timeout_seconds=90.0,
-        )
-        is None
+def test_runner_wraps_fail_closed_fallback_with_operator_handoff() -> None:
+    handler_without_solver = configured_immowelt_challenge_handler(
+        external_command=None,
+        solver_url=None,
+        timeout_seconds=90.0,
     )
+    assert isinstance(handler_without_solver, ImmoweltOperatorChallengeHandler)
 
     handler = configured_immowelt_challenge_handler(
         external_command=None,
@@ -197,9 +196,10 @@ def test_runner_uses_local_solver_bridge_only_when_explicitly_configured() -> No
         timeout_seconds=900.0,
     )
 
-    assert isinstance(handler, ImmoweltDataDomeSolverHandler)
-    assert handler.solver_url == "http://127.0.0.1:8877"
-    assert handler.timeout_seconds == 90.0
+    assert isinstance(handler, ImmoweltOperatorChallengeHandler)
+    assert isinstance(handler.fallback, ImmoweltDataDomeSolverHandler)
+    assert handler.fallback.solver_url == "http://127.0.0.1:8877"
+    assert handler.fallback.timeout_seconds == 90.0
 
 
 def test_explicit_operator_handler_keeps_precedence_over_local_solver() -> None:

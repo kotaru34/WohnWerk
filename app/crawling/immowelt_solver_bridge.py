@@ -17,8 +17,10 @@ from app.crawling.challenge import (
     ChallengeHandler,
     ChallengeRequest,
     ChallengeResult,
+    DeferredChallengeHandler,
     ExternalCommandChallengeHandler,
 )
+from app.crawling.immowelt_operator_handoff import ImmoweltOperatorChallengeHandler
 
 IMMOWELT_HOSTS = {"immowelt.de", "www.immowelt.de"}
 DATADOME_HOST_SUFFIXES = ("captcha-delivery.com", "captcha-delivery.net")
@@ -334,9 +336,16 @@ def configured_immowelt_challenge_handler(
             )
 
     local_url = str(solver_url or "").strip()
-    if not local_url:
-        return None
-    return ImmoweltDataDomeSolverHandler(
-        local_url,
-        timeout_seconds=min(90.0, max(5.0, float(timeout_seconds))),
+    fallback: ChallengeHandler
+    if local_url:
+        fallback = ImmoweltDataDomeSolverHandler(
+            local_url,
+            timeout_seconds=min(90.0, max(5.0, float(timeout_seconds))),
+        )
+    else:
+        fallback = DeferredChallengeHandler()
+
+    return ImmoweltOperatorChallengeHandler(
+        fallback,
+        timeout_seconds=max(30.0, float(timeout_seconds)),
     )

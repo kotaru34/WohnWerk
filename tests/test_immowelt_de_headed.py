@@ -87,6 +87,12 @@ class HandoffContext:
 class HandoffPage:
     url = "https://www.immowelt.de/classified-search?page=2"
 
+    async def evaluate(self, script: str):
+        if script == "navigator.userAgent":
+            return "headed-test-user-agent"
+        assert "window.innerWidth" in script
+        return {"width": 1280, "height": 720}
+
     async def screenshot(self, *, path: str, full_page: bool) -> None:
         assert full_page is True
         Path(path).write_bytes(b"png")
@@ -142,6 +148,8 @@ async def test_headed_adapter_exports_browser_state_for_external_handler(tmp_pat
     assert handoff["browser_patch_path"].endswith("browser-patch.json")
     assert handoff["current_url"].endswith("page=2")
     assert handoff["challenge"]["kind"] == "http_403"
+    assert handoff["user_agent"] == "headed-test-user-agent"
+    assert handoff["viewport"] == {"width": 1280, "height": 720}
 
 
 
@@ -169,6 +177,7 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
     source = ImmoweltHeadedPropertySource()
     await source.restore_challenge_handoff(
         {
+            "state_dir": str(tmp_path),
             "storage_state_path": str(storage_state),
             "browser_patch_path": str(patch_path),
         }
@@ -207,6 +216,34 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
 
 
 @pytest.mark.asyncio
+async def test_headed_adapter_preserves_manual_handoff_user_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    storage_state = tmp_path / "storage-state.json"
+    storage_state.write_text('{"cookies":[],"origins":[]}\n')
+
+    source = ImmoweltHeadedPropertySource()
+    await source.restore_challenge_handoff(
+        {
+            "state_dir": str(tmp_path),
+            "storage_state_path": str(storage_state),
+            "user_agent": "manual-handoff-exact-ua",
+        }
+    )
+
+    fake = FakePlaywright()
+    monkeypatch.setattr(headed_module, "async_playwright", lambda: FakeStarter(fake))
+    await source._ensure_page()
+
+    assert fake.chromium.browser.context_kwargs == {
+        "locale": "de-DE",
+        "storage_state": str(storage_state),
+        "user_agent": "manual-handoff-exact-ua",
+    }
+
+
+@pytest.mark.asyncio
 async def test_headed_adapter_loads_exact_immowelt_detail_without_search_state_validation() -> None:
     source = ImmoweltHeadedPropertySource(request_delay_seconds=1.0)
     source._page = DetailPage()  # type: ignore[assignment]
@@ -225,3 +262,27 @@ async def test_headed_adapter_rejects_non_immowelt_detail_url() -> None:
 
     with pytest.raises(ValueError, match="Unsupported Immowelt detail URL"):
         await source.load_detail_html("https://example.com/expose/not-allowed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("foreign_key", ["storage_state_path", "browser_patch_path", "screenshot_path"])
+async def test_headed_adapter_rejects_foreign_handoff_paths(
+    tmp_path: Path,
+    foreign_key: str,
+) -> None:
+    state_dir = tmp_path / "handoff"
+    state_dir.mkdir()
+    storage_state = state_dir / "storage-state.json"
+    storage_state.write_text('{"cookies":[],"origins":[]}\n')
+    patch_path = state_dir / "browser-patch.json"
+    handoff = {
+        "state_dir": str(state_dir),
+        "storage_state_path": str(storage_state),
+        "browser_patch_path": str(patch_path),
+        "screenshot_path": str(state_dir / "challenge.png"),
+    }
+    handoff[foreign_key] = str(tmp_path / "foreign-artifact")
+
+    source = ImmoweltHeadedPropertySource()
+    with pytest.raises(RuntimeError, match="escaped state directory"):
+        await source.restore_challenge_handoff(handoff)

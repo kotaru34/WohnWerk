@@ -186,6 +186,12 @@
 
           <div class="source-actions">
             <div class="actions">
+              {% if row.interactive_challenge %}
+                <form method="post" action="/admin/sources/{{ row.id }}/challenge/approve">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit">Interaktive Prüfung öffnen ({{ row.interactive_challenge_type }})</button>
+                </form>
+              {% endif %}
               <form method="post" action="/admin/sources/{{ row.id }}/run">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" {% if not row.enabled or not row.runnable or row.state == 'läuft' %}disabled{% endif %}>Jetzt ausführen</button>

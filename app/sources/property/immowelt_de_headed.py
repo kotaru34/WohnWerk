@@ -127,7 +127,24 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if self._context is not None:
             await self._context.storage_state(path=str(storage_state_path))
             storage_state_path.chmod(0o600)
+        user_agent: str | None = None
+        viewport: dict[str, int] | None = None
         if self._page is not None:
+            try:
+                user_agent = str(await self._page.evaluate("navigator.userAgent"))
+            except PlaywrightError:
+                user_agent = None
+            try:
+                raw_viewport = await self._page.evaluate(
+                    "() => ({width: window.innerWidth, height: window.innerHeight})"
+                )
+                if isinstance(raw_viewport, dict):
+                    viewport = {
+                        "width": int(raw_viewport["width"]),
+                        "height": int(raw_viewport["height"]),
+                    }
+            except (KeyError, TypeError, ValueError, PlaywrightError):
+                viewport = None
             try:
                 await self._page.screenshot(path=str(screenshot_path), full_page=True)
                 screenshot_path.chmod(0o600)
@@ -141,23 +158,45 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             "browser_patch_path": str(browser_patch_path),
             "challenge": dict(challenge.challenge),
         }
+        if user_agent:
+            handoff["user_agent"] = user_agent
+        if viewport:
+            handoff["viewport"] = viewport
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
         return handoff
 
     async def restore_challenge_handoff(self, handoff_state: dict[str, Any]) -> None:
-        storage_state = handoff_state.get("storage_state_path")
-        path: Path | None = None
-        if storage_state:
-            path = Path(str(storage_state))
+        state_dir_raw = handoff_state.get("state_dir")
+        if not state_dir_raw:
+            raise RuntimeError("Challenge handoff state directory is missing")
+        state_dir = Path(str(state_dir_raw)).resolve()
+
+        def _confined_path(key: str) -> Path | None:
+            raw = handoff_state.get(key)
+            if not raw:
+                return None
+            candidate = Path(str(raw)).resolve()
+            try:
+                candidate.relative_to(state_dir)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Challenge handoff path escaped state directory: {key}"
+                ) from exc
+            return candidate
+
+        _confined_path("screenshot_path")
+        path = _confined_path("storage_state_path")
+        if path is not None:
             if not path.is_file():
                 raise RuntimeError(f"Challenge storage state is missing: {path}")
             self._pending_storage_state_path = str(path)
+            handoff_user_agent = str(handoff_state.get("user_agent") or "").strip()
+            if handoff_user_agent:
+                self._pending_user_agent = handoff_user_agent
 
-        browser_patch = handoff_state.get("browser_patch_path")
-        if browser_patch:
-            patch_path = Path(str(browser_patch))
-            if patch_path.is_file():
+        patch_path = _confined_path("browser_patch_path")
+        if patch_path is not None and patch_path.is_file():
                 if path is None:
                     raise RuntimeError("Browser patch cannot be applied without storage state")
                 try:

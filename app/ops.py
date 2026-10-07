@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import secrets
 import subprocess
 import sys
@@ -12,12 +13,21 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
+from app.crawling.immowelt_operator_handoff import (
+    INTERACTIVE_DATADOME_TYPES,
+    arm_operator_handoff,
+    challenge_state_for_run,
+    enqueue_operator_pointer,
+    operator_frame_path,
+    operator_run_dir,
+    read_operator_status,
+)
 from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
     CoverageStatus,
@@ -56,6 +66,7 @@ NOTICE_LABELS = {
     "run_deferred": "Der manuelle Lauf wurde vom Runtime-Gate zurückgestellt und nicht gestartet.",
     "run_failed": "Der manuelle Quellenlauf konnte nicht gestartet werden.",
     "run_pending": "Der manuelle Start läuft, aber eine neue Lauf-ID ist noch nicht sichtbar.",
+    "challenge_cancelled": "Interaktive Immowelt-Prüfung wurde abgebrochen; der Lauf bleibt pausiert.",
 }
 
 RUN_START_CONFIRM_TIMEOUT_SECONDS = 3.0
@@ -94,6 +105,8 @@ class SourceOpsRow:
     operational_note: str | None
     latest_activity_at: datetime | None = None
     latest_resume_at: datetime | None = None
+    interactive_challenge: bool = False
+    interactive_challenge_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +215,19 @@ def _run_activity_at(run: CrawlRun | None) -> datetime | None:
             if value is not None:
                 values.append(value)
     return max(values) if values else None
+
+
+def _interactive_challenge_type(run: CrawlRun | None) -> str | None:
+    if run is None or str(run.status) != "paused":
+        return None
+    active = dict(run.run_metadata or {}).get("active_challenge")
+    if not isinstance(active, dict):
+        return None
+    challenge = active.get("challenge")
+    if not isinstance(challenge, dict):
+        return None
+    value = str(challenge.get("datadome_challenge_type") or "").strip().casefold()
+    return value if value in INTERACTIVE_DATADOME_TYPES else None
 
 
 def source_ops_state(
@@ -570,6 +596,8 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
                 operational_note=operational_note,
                 latest_activity_at=_run_activity_at(latest),
                 latest_resume_at=_run_resume_at(latest),
+                interactive_challenge=_interactive_challenge_type(latest) is not None,
+                interactive_challenge_type=_interactive_challenge_type(latest),
             )
         )
 
@@ -624,6 +652,48 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
         non_point_job_locations=non_point_job_locations,
         non_point_labels=non_point_labels[:20],
     )
+
+
+def _manual_refresh_argv(source_name: str, request_id: str) -> list[str]:
+    base = [
+        sys.executable,
+        str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
+        "--lock-path",
+        str(REFRESH_LOCK_PATH),
+        "--source",
+        source_name,
+        "--run-request-id",
+        request_id,
+    ]
+    if source_name != "immowelt-de":
+        return base
+    return [
+        "/usr/bin/xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1920x1080x24",
+        *base,
+    ]
+
+
+def _manual_refresh_env(source_name: str) -> dict[str, str] | None:
+    if source_name != "immowelt-de":
+        return None
+    runtime_root = Path("/tmp/wohnwerk-admin-refresh")
+    paths = {
+        "HOME": runtime_root / "home",
+        "XDG_CONFIG_HOME": runtime_root / "config",
+        "XDG_CACHE_HOME": runtime_root / "cache",
+        "XDG_RUNTIME_DIR": runtime_root / "runtime",
+    }
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.chmod(0o700)
+
+    env = os.environ.copy()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = "/var/cache/wohnwerk-playwright"
+    env.update({key: str(value) for key, value in paths.items()})
+    return env
 
 
 def _health_redirect(notice: str, *, run_id: int | None = None) -> RedirectResponse:
@@ -703,21 +773,13 @@ def run_source_now(
     request_id = secrets.token_urlsafe(18)
     try:
         process = subprocess.Popen(
-            [
-                sys.executable,
-                str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
-                "--lock-path",
-                str(REFRESH_LOCK_PATH),
-                "--source",
-                source.name,
-                "--run-request-id",
-                request_id,
-            ],
+            _manual_refresh_argv(source.name, request_id),
             cwd=PROJECT_ROOT,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
             close_fds=True,
+            env=_manual_refresh_env(source.name),
         )
     except OSError as exc:
         raise HTTPException(
@@ -743,6 +805,189 @@ def run_source_now(
         if time.monotonic() >= deadline:
             return _health_redirect("run_pending")
         time.sleep(RUN_START_POLL_SECONDS)
+
+
+def _immowelt_run_context(
+    db: Session,
+    run_id: int,
+) -> tuple[CrawlRun, Source]:
+    run = db.get(CrawlRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Immowelt-Lauf nicht gefunden.")
+    source = db.get(Source, run.source_id)
+    if source is None or source.name != "immowelt-de":
+        raise HTTPException(status_code=404, detail="Interaktive Übergabe ist nur für Immowelt verfügbar.")
+    return run, source
+
+
+def _immowelt_challenge_context(
+    db: Session,
+    run_id: int,
+) -> tuple[CrawlRun, Source, dict, Path, Path]:
+    run, source = _immowelt_run_context(db, run_id)
+    if str(run.status) != "paused" or run.finished_at is not None:
+        raise HTTPException(status_code=409, detail="Immowelt-Lauf wartet nicht auf eine Challenge.")
+    active = dict(run.run_metadata or {}).get("active_challenge")
+    if not isinstance(active, dict):
+        raise HTTPException(status_code=409, detail="Der Lauf hat keine aktive Challenge.")
+    challenge_type = _interactive_challenge_type(run)
+    if challenge_type is None:
+        raise HTTPException(status_code=409, detail="Die aktive Challenge ist nicht interaktiv.")
+    try:
+        state_dir, run_dir = challenge_state_for_run(run.id, active)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return run, source, active, state_dir, run_dir
+
+
+@router.post("/sources/{source_id}/challenge/approve")
+def approve_source_challenge(
+    source_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+):
+    source = db.get(Source, source_id)
+    if source is None or source.name != "immowelt-de":
+        raise HTTPException(status_code=404, detail="Immowelt-Quelle nicht gefunden.")
+    run = db.scalar(
+        select(CrawlRun)
+        .where(
+            CrawlRun.source_id == source.id,
+            CrawlRun.status == "paused",
+            CrawlRun.finished_at.is_(None),
+        )
+        .order_by(CrawlRun.id.desc())
+        .limit(1)
+    )
+    if run is None:
+        raise HTTPException(status_code=409, detail="Kein pausierter Immowelt-Lauf vorhanden.")
+
+    active = dict(run.run_metadata or {}).get("active_challenge")
+    if not isinstance(active, dict):
+        raise HTTPException(status_code=409, detail="Der pausierte Lauf hat keine aktive Challenge.")
+    try:
+        arm_operator_handoff(run.id, active)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    metadata = dict(run.run_metadata or {})
+    metadata["operator_handoff_armed_at"] = datetime.now(UTC).isoformat()
+    run.run_metadata = metadata
+    db.commit()
+
+    request_id = secrets.token_urlsafe(18)
+    try:
+        subprocess.Popen(
+            _manual_refresh_argv(source.name, request_id),
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+            env=_manual_refresh_env(source.name),
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Interaktive Übergabe konnte nicht gestartet werden: {exc}",
+        ) from exc
+
+    return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
+
+
+@router.get("/challenges/{run_id}")
+def challenge_handoff_page(
+    run_id: int,
+    request: Request,
+    _: AdminDependency,
+    db: DbDependency,
+):
+    run, _source, _active, _state_dir, _run_dir = _immowelt_challenge_context(db, run_id)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_challenge_handoff.html",
+        context={
+            "run": run,
+            "csrf_token": _csrf_token(),
+        },
+    )
+
+
+@router.get("/challenges/{run_id}/status")
+def challenge_handoff_status(
+    run_id: int,
+    _: AdminDependency,
+    db: DbDependency,
+):
+    _run, _source = _immowelt_run_context(db, run_id)
+    run_dir = operator_run_dir(run_id)
+    return JSONResponse(read_operator_status(run_dir), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/challenges/{run_id}/frame")
+def challenge_handoff_frame(
+    run_id: int,
+    _: AdminDependency,
+    db: DbDependency,
+):
+    run, _source = _immowelt_run_context(db, run_id)
+    run_dir = operator_run_dir(run_id)
+    frame = operator_frame_path(run_dir)
+    if not frame.is_file():
+        active = dict(run.run_metadata or {}).get("active_challenge")
+        if isinstance(active, dict):
+            try:
+                state_dir, _ = challenge_state_for_run(run.id, active)
+            except ValueError:
+                state_dir = None
+            handoff = active.get("handoff_state")
+            screenshot = handoff.get("screenshot_path") if isinstance(handoff, dict) else None
+            if screenshot and state_dir is not None:
+                candidate = Path(str(screenshot)).resolve()
+                try:
+                    candidate.relative_to(state_dir)
+                except ValueError:
+                    candidate = None
+                if candidate is not None and candidate.is_file():
+                    frame = candidate
+    if not frame.is_file():
+        raise HTTPException(status_code=404, detail="Noch kein Challenge-Bild verfügbar.")
+    return FileResponse(
+        frame,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@router.post("/challenges/{run_id}/pointer")
+def challenge_handoff_pointer(
+    run_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+    phase: str = Form(),
+    x: float = Form(0.0),
+    y: float = Form(0.0),
+):
+    _run, _source, _active, _state_dir, run_dir = _immowelt_challenge_context(db, run_id)
+    try:
+        enqueue_operator_pointer(run_dir, phase=phase, x=x, y=y)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse({"ok": True})
+
+
+@router.post("/challenges/{run_id}/cancel")
+def challenge_handoff_cancel(
+    run_id: int,
+    _: AdminDependency,
+    __: CsrfDependency,
+    db: DbDependency,
+):
+    _run, _source, _active, _state_dir, run_dir = _immowelt_challenge_context(db, run_id)
+    enqueue_operator_pointer(run_dir, phase="cancel")
+    return RedirectResponse("/admin/health?hinweis=challenge_cancelled", status_code=303)
 
 
 @router.get("/health")
