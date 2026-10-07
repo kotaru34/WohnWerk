@@ -272,6 +272,21 @@ async def _prepare_paused_challenge_revalidation(
     return _begin_paused_challenge_revalidation(run, request)
 
 
+def _complete_paused_challenge_revalidation(
+    run: CrawlRun,
+    request: ChallengeRequest,
+) -> None:
+    """Atomically reflect a successful resume navigation in run state and metadata."""
+    run.status = RunStatus.RUNNING
+    run.coverage_status = CoverageStatus.UNKNOWN
+    _record_challenge_result(
+        run,
+        request,
+        action="resolved",
+        message="challenge absent on resume revalidation",
+    )
+
+
 async def _ingest_partial_fetch(
     session: Session,
     *,
@@ -557,11 +572,9 @@ async def run_property_source(
                 if reconciliation and coverage_complete and not batch.result_cap_hit:
                     current_shard.last_full_scan_at = now
                 if revalidated_request is not None:
-                    _record_challenge_result(
+                    _complete_paused_challenge_revalidation(
                         current_run,
                         revalidated_request,
-                        action="resolved",
-                        message="challenge absent on resume revalidation",
                     )
                     revalidated_request = None
                 session.commit()
