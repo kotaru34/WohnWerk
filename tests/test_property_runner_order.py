@@ -3,10 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from app.crawling.challenge import ChallengeRequest
 from app.crawling.property_runner import (
     _begin_paused_challenge_revalidation,
     _ordered_shards,
+    _prepare_paused_challenge_revalidation,
     _record_challenge_result,
     _set_active_challenge,
     _source_halt_reason,
@@ -172,3 +175,46 @@ def test_persistent_revalidation_replaces_checkpoint_and_stays_fail_closed() -> 
     assert run.run_metadata["active_challenge"] == replacement.to_payload()
     assert run.run_metadata["challenge_handoff_count"] == 2
     assert run.run_metadata["challenge_history"][-1]["action"] == "defer"
+
+
+@pytest.mark.asyncio
+async def test_paused_resume_restores_browser_state_before_revalidation() -> None:
+    restored: list[dict] = []
+
+    class Adapter:
+        async def restore_challenge_handoff(self, handoff_state: dict) -> None:
+            restored.append(dict(handoff_state))
+
+    request = ChallengeRequest(
+        source="immowelt-de",
+        run_id=77,
+        shard_id=9,
+        shard_key="sachsen:030000-099999",
+        shard_params={"region_key": "sachsen"},
+        mode="incremental",
+        reason="persisted DataDome challenge",
+        challenge={"kind": "http_403", "datadome_challenge_type": "fe"},
+        resume_cursor={"_resume_same_run": True, "resume_page": 2},
+        handoff_state={
+            "state_dir": "/tmp/persisted-handoff",
+            "storage_state_path": "/tmp/persisted-handoff/storage-state.json",
+            "user_agent": "persisted-exact-ua",
+            "viewport": {"width": 1280, "height": 720},
+        },
+        handoff_id="immowelt-de:run-77:shard-9:handoff-1",
+    )
+    run = SimpleNamespace(
+        run_metadata={"active_challenge": request.to_payload(), "challenge_handoff_count": 1},
+        status="paused",
+        coverage_status=CoverageStatus.DEGRADED,
+    )
+
+    cursor = await _prepare_paused_challenge_revalidation(
+        Adapter(),  # type: ignore[arg-type]
+        run,
+        request,
+    )
+
+    assert restored == [request.handoff_state]
+    assert cursor["resume_page"] == 2
+    assert run.run_metadata["challenge_history"][-1]["action"] == "revalidate"
