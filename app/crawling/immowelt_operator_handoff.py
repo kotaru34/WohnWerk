@@ -20,6 +20,7 @@ DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
 IMMOWELT_HOSTS = {"immowelt.de", "www.immowelt.de"}
 OPERATOR_SESSION_TTL = timedelta(minutes=15)
+DEFAULT_OPERATOR_ARM_GRACE_SECONDS = 120.0
 DEFAULT_OPERATOR_VIEWPORT = {"width": 1280, "height": 720}
 
 
@@ -307,10 +308,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         fallback: ChallengeHandler,
         *,
         timeout_seconds: float = 900.0,
+        arm_grace_seconds: float = DEFAULT_OPERATOR_ARM_GRACE_SECONDS,
         root: Path = DEFAULT_OPERATOR_ROOT,
     ) -> None:
         self.fallback = fallback
         self.timeout_seconds = max(30.0, float(timeout_seconds))
+        self.arm_grace_seconds = max(0.0, float(arm_grace_seconds))
         self.root = root
 
     async def handle(self, request: ChallengeRequest) -> ChallengeResult:
@@ -332,14 +335,45 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         except ValueError:
             return ChallengeResult(action="defer", message="invalid operator handoff state directory")
 
+        live_session = live_operator_session(state_dir)
         if not _approval_is_active(request.run_id, run_dir):
-            return await self.fallback.handle(request)
+            if live_session is None or self.arm_grace_seconds <= 0:
+                return await self.fallback.handle(request)
+
+            _atomic_json(
+                operator_status_path(run_dir),
+                {
+                    "version": 1,
+                    "state": "awaiting_approval",
+                    "run_id": request.run_id,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            approval_deadline = time.monotonic() + self.arm_grace_seconds
+            while time.monotonic() < approval_deadline:
+                if _approval_is_active(request.run_id, run_dir):
+                    live_session = live_operator_session(state_dir)
+                    if live_session is not None:
+                        break
+                    return await self.fallback.handle(request)
+                await asyncio.sleep(0.25)
+            else:
+                _atomic_json(
+                    operator_status_path(run_dir),
+                    {
+                        "version": 1,
+                        "state": "approval_timeout",
+                        "run_id": request.run_id,
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    },
+                )
+                return await self.fallback.handle(request)
 
         return await self._run_session(
             request,
             state_dir=state_dir,
             run_dir=run_dir,
-            live_session=live_operator_session(state_dir),
+            live_session=live_session,
         )
 
     async def _run_session(
