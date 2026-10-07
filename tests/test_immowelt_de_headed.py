@@ -216,6 +216,34 @@ async def test_headed_adapter_applies_datadome_patch_to_recreated_context(
 
 
 @pytest.mark.asyncio
+async def test_headed_adapter_preserves_manual_handoff_user_agent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    storage_state = tmp_path / "storage-state.json"
+    storage_state.write_text('{"cookies":[],"origins":[]}\n')
+
+    source = ImmoweltHeadedPropertySource()
+    await source.restore_challenge_handoff(
+        {
+            "state_dir": str(tmp_path),
+            "storage_state_path": str(storage_state),
+            "user_agent": "manual-handoff-exact-ua",
+        }
+    )
+
+    fake = FakePlaywright()
+    monkeypatch.setattr(headed_module, "async_playwright", lambda: FakeStarter(fake))
+    await source._ensure_page()
+
+    assert fake.chromium.browser.context_kwargs == {
+        "locale": "de-DE",
+        "storage_state": str(storage_state),
+        "user_agent": "manual-handoff-exact-ua",
+    }
+
+
+@pytest.mark.asyncio
 async def test_headed_adapter_loads_exact_immowelt_detail_without_search_state_validation() -> None:
     source = ImmoweltHeadedPropertySource(request_delay_seconds=1.0)
     source._page = DetailPage()  # type: ignore[assignment]
