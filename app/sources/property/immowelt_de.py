@@ -105,6 +105,7 @@ class ImmoweltPage:
     cards_total: int
     project_cards_skipped: int
     blank_cards_skipped: int
+    unparsed_cards_skipped: int
 
 
 def _datadome_bootstrap_metadata(html: str) -> dict[str, str]:
@@ -329,6 +330,7 @@ def parse_immowelt_search_page(
     identity_cards_seen = 0
     project_cards_skipped = 0
     blank_cards_skipped = 0
+    unparsed_cards_skipped = 0
     for card in cards:
         anchor = _node_by_test_id(card, COVERING_LINK_TEST_ID)
         if anchor is None:
@@ -336,6 +338,7 @@ def parse_immowelt_search_page(
                 blank_cards_skipped += 1
                 continue
             identity_cards_seen += 1
+            unparsed_cards_skipped += 1
             continue
 
         raw_href = anchor.attrs.get("href", "")
@@ -346,6 +349,7 @@ def parse_immowelt_search_page(
         identity_cards_seen += 1
         detail = _canonical_expose_url(raw_href)
         if detail is None:
+            unparsed_cards_skipped += 1
             continue
         url, listing_id = detail
         raw_title = anchor.attrs.get("title", "")
@@ -402,16 +406,18 @@ def parse_immowelt_search_page(
         cards_total=len(cards),
         project_cards_skipped=project_cards_skipped,
         blank_cards_skipped=blank_cards_skipped,
+        unparsed_cards_skipped=unparsed_cards_skipped,
     )
 
 
 def _validate_page(page: ImmoweltPage, *, page_number: int, expected_minimum: int) -> None:
     if page.source_reported_count and page.cards_total == 0:
         raise RuntimeError(f"Immowelt returned no cards on non-empty page {page_number}")
-    if page.cards_seen != page.cards_parsed:
+    if page.cards_seen != page.cards_parsed + page.unparsed_cards_skipped:
         raise RuntimeError(
-            f"Immowelt card parsing incomplete on page {page_number}: "
-            f"parsed {page.cards_parsed}/{page.cards_seen} identity-bearing cards"
+            f"Immowelt card accounting inconsistent on page {page_number}: "
+            f"parsed {page.cards_parsed}, unparsed {page.unparsed_cards_skipped}, "
+            f"identity-bearing {page.cards_seen}"
         )
     if expected_minimum and page.cards_total < expected_minimum:
         raise RuntimeError(
@@ -645,6 +651,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
         cards_total: int,
         project_cards_skipped: int,
         blank_cards_skipped: int,
+        unparsed_cards_skipped: int,
         max_page: int,
         source_reported_count: int | None,
         latest_reported_count: int | None,
@@ -663,6 +670,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             "discovery_cards_total": cards_total,
             "discovery_project_cards_skipped": project_cards_skipped,
             "discovery_blank_cards_skipped": blank_cards_skipped,
+            "discovery_unparsed_cards_skipped": unparsed_cards_skipped,
             "discovery_max_page": max_page,
             "discovery_initial_reported_count": source_reported_count,
             "discovery_latest_reported_count": latest_reported_count,
@@ -701,6 +709,9 @@ class ImmoweltGermanyPropertySource(PropertySource):
         )
         blank_cards_skipped = max(
             0, _integer_cursor(resume, "discovery_blank_cards_skipped", 0)
+        )
+        unparsed_cards_skipped = max(
+            0, _integer_cursor(resume, "discovery_unparsed_cards_skipped", 0)
         )
         max_page = max(1, _integer_cursor(resume, "discovery_max_page", 1))
         max_reported_count = max(0, _integer_cursor(resume, "discovery_max_reported_count", 0))
@@ -761,6 +772,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 cards_total += page.cards_total
                 project_cards_skipped += page.project_cards_skipped
                 blank_cards_skipped += page.blank_cards_skipped
+                unparsed_cards_skipped += page.unparsed_cards_skipped
 
                 if page_number >= target_pages:
                     break
@@ -777,6 +789,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 cards_total=cards_total,
                 project_cards_skipped=project_cards_skipped,
                 blank_cards_skipped=blank_cards_skipped,
+                unparsed_cards_skipped=unparsed_cards_skipped,
                 max_page=max_page,
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
@@ -815,6 +828,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 cards_total=cards_total,
                 project_cards_skipped=project_cards_skipped,
                 blank_cards_skipped=blank_cards_skipped,
+                unparsed_cards_skipped=unparsed_cards_skipped,
                 max_page=max_page,
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
@@ -843,6 +857,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 cards_total=cards_total,
                 project_cards_skipped=project_cards_skipped,
                 blank_cards_skipped=blank_cards_skipped,
+                unparsed_cards_skipped=unparsed_cards_skipped,
                 max_page=max_page,
                 source_reported_count=source_reported_count,
                 latest_reported_count=latest_reported_count,
@@ -871,6 +886,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
             and not result_cap_hit
             and project_cards_skipped == 0
             and blank_cards_skipped == 0
+            and unparsed_cards_skipped == 0
             and completed_pages == max_page
             and cards_seen == cards_parsed
             and count_plausible
@@ -885,6 +901,7 @@ class ImmoweltGermanyPropertySource(PropertySource):
                 "discovery_cards_total": cards_total,
                 "discovery_project_cards_skipped": project_cards_skipped,
                 "discovery_blank_cards_skipped": blank_cards_skipped,
+                "discovery_unparsed_cards_skipped": unparsed_cards_skipped,
                 "discovery_max_page": max_page,
                 "discovery_initial_reported_count": source_reported_count,
                 "discovery_latest_reported_count": latest_reported_count,
