@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Immowelt-Prüfung</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1380px; margin: 0 auto; padding: 22px; }
+    .top { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    .subtle { opacity:.72; }
+    .panel { margin-top:18px; border:1px solid color-mix(in srgb, CanvasText 18%, transparent); border-radius:12px; padding:14px; }
+    #frame-wrap { background:#111; border-radius:10px; overflow:hidden; touch-action:none; user-select:none; }
+    #challenge-frame { display:block; width:100%; height:auto; touch-action:none; cursor:crosshair; }
+    .status { margin-top:10px; font-family:ui-monospace, monospace; white-space:pre-wrap; }
+    .actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+    button,a.button { font:inherit; padding:8px 11px; border-radius:8px; border:1px solid color-mix(in srgb, CanvasText 25%, transparent); background:Canvas; color:CanvasText; text-decoration:none; cursor:pointer; }
+    .warn { border-left:4px solid #c28c2d; padding:10px 12px; background:color-mix(in srgb, #c28c2d 10%, Canvas); border-radius:8px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>Immowelt – interaktive Prüfung</h1>
+      <div class="subtle">Pausierter CrawlRun #{{ run.id }}</div>
+    </div>
+    <a class="button" href="/admin/health">Zurück zur Übersicht</a>
+  </div>
+
+  <div class="panel warn">
+    Diese Ansicht automatisiert nur Browser-Lebenszyklus, Screenshot-Übertragung und Resume.
+    Die eigentliche DataDome-Interaktion wird von dir manuell mit Maus oder Touch ausgeführt.
+  </div>
+
+  <div class="panel">
+    <div id="frame-wrap">
+      <img id="challenge-frame" src="/admin/challenges/{{ run.id }}/frame" alt="Live-Ansicht der Immowelt-Prüfung">
+    </div>
+    <div class="status" id="status">Status wird geladen …</div>
+    <div class="actions">
+      <form method="post" action="/admin/challenges/{{ run.id }}/cancel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Abbrechen</button>
+      </form>
+    </div>
+  </div>
+</main>
+<script>
+(() => {
+  const runId = {{ run.id }};
+  const csrf = {{ csrf_token|tojson }};
+  const frame = document.getElementById("challenge-frame");
+  const status = document.getElementById("status");
+  let dragging = false;
+  let lastMove = 0;
+
+  function coords(event) {
+    const rect = frame.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
+    };
+  }
+
+  async function sendPointer(phase, event) {
+    const pos = coords(event);
+    const body = new URLSearchParams({
+      csrf_token: csrf,
+      phase,
+      x: String(pos.x),
+      y: String(pos.y),
+    });
+    try {
+      await fetch(`/admin/challenges/${runId}/pointer`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body,
+      });
+    } catch (_) {}
+  }
+
+  frame.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    frame.setPointerCapture(event.pointerId);
+    sendPointer("down", event);
+    event.preventDefault();
+  });
+
+  frame.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const now = performance.now();
+    if (now - lastMove < 30) return;
+    lastMove = now;
+    sendPointer("move", event);
+    event.preventDefault();
+  });
+
+  frame.addEventListener("pointerup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    sendPointer("up", event);
+    event.preventDefault();
+  });
+
+  frame.addEventListener("pointercancel", () => { dragging = false; });
+
+  async function poll() {
+    frame.src = `/admin/challenges/${runId}/frame?t=${Date.now()}`;
+    try {
+      const response = await fetch(`/admin/challenges/${runId}/status?t=${Date.now()}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        const state = payload.state || "unknown";
+        const message = payload.message || "";
+        status.textContent = `state=${state}${message ? "\n" + message : ""}`;
+        if (state === "resolved") {
+          status.textContent += "\nPrüfung abgeschlossen. Der pausierte Lauf wird fortgesetzt …";
+          setTimeout(() => { window.location.href = "/admin/health"; }, 1800);
+          return;
+        }
+      }
+    } catch (_) {}
+    setTimeout(poll, 650);
+  }
+  poll();
+})();
+</script>
+</body>
+</html>
