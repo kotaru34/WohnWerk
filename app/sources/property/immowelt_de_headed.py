@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page, async_playwright
@@ -16,6 +17,7 @@ from app.sources.base import SourceChallenge, SourceFetchError
 from app.sources.property.immowelt_de import (
     ImmoweltGermanyPropertySource,
     _canonical_expose_url,
+    _validate_search_state,
 )
 
 
@@ -76,12 +78,21 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
                     f"Immowelt access challenge detected ({challenge['kind']})",
                     challenge=challenge,
                 )
-            host = __import__("urllib.parse").parse.urlparse(page.url).hostname or ""
+            host = urlparse(page.url).hostname or ""
             if host.casefold() in {"immowelt.de", "www.immowelt.de"}:
-                expected = __import__("urllib.parse").parse.urlparse(url)
-                actual = __import__("urllib.parse").parse.urlparse(page.url)
-                if expected.path == actual.path and expected.query == actual.query:
+                try:
+                    _validate_search_state(url, page.url)
+                except RuntimeError:
+                    pass
+                else:
                     if await page.locator("h1").count() > 0:
+                        live_state_dir = getattr(self, "_live_operator_state_dir", None)
+                        if live_state_dir is not None:
+                            unregister_live_operator_session(
+                                Path(live_state_dir),
+                                page=page,
+                            )
+                            self._live_operator_state_dir = None
                         return await page.content(), page.url
         return await super()._load_html(url)
 
@@ -198,6 +209,12 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
         if self._context is not None and self._page is not None:
+            previous_live_state_dir = getattr(self, "_live_operator_state_dir", None)
+            if previous_live_state_dir is not None and Path(previous_live_state_dir) != state_dir:
+                unregister_live_operator_session(
+                    Path(previous_live_state_dir),
+                    page=self._page,
+                )
             register_live_operator_session(
                 state_dir,
                 context=self._context,
