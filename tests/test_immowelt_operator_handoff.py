@@ -90,7 +90,10 @@ def test_arm_operator_handoff_is_explicit_and_run_scoped(tmp_path: Path) -> None
     assert approval["version"] == 1
     assert approval["run_id"] == 123
     assert approval["armed_at"] == "2026-10-07T03:00:00+00:00"
-    assert read_operator_status(run_dir)["state"] == "armed"
+    assert read_operator_status(
+        run_dir,
+        now=datetime(2026, 10, 7, 3, 1, tzinfo=UTC),
+    )["state"] == "armed"
 
 
 def test_pointer_events_store_only_operator_input(tmp_path: Path) -> None:
