@@ -866,6 +866,8 @@ def approve_source_challenge(
     active = dict(run.run_metadata or {}).get("active_challenge")
     if not isinstance(active, dict):
         raise HTTPException(status_code=409, detail="Der pausierte Lauf hat keine aktive Challenge.")
+    run_dir = operator_run_dir(run.id)
+    live_waiting = read_operator_status(run_dir).get("state") == "awaiting_approval"
     try:
         arm_operator_handoff(run.id, active)
     except (TypeError, ValueError) as exc:
@@ -875,6 +877,16 @@ def approve_source_challenge(
     metadata["operator_handoff_armed_at"] = datetime.now(UTC).isoformat()
     run.run_metadata = metadata
     db.commit()
+
+    if live_waiting:
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            state = str(read_operator_status(run_dir).get("state") or "")
+            if state == "active":
+                return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
+            if state in {"cancelled", "deferred", "timeout", "approval_timeout"}:
+                break
+            time.sleep(0.05)
 
     request_id = secrets.token_urlsafe(18)
     try:
