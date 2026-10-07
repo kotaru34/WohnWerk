@@ -17,6 +17,7 @@ from app.crawling.immowelt_operator_handoff import (
     enqueue_operator_pointer,
     operator_approval_path,
     operator_events_path,
+    prepare_fresh_operator_reverification,
     read_operator_status,
     register_live_operator_session,
     unregister_live_operator_session,
@@ -335,3 +336,59 @@ async def test_live_browser_waits_for_explicit_operator_approval(
     assert captured[0] is not None
     assert captured[0].context is context
     assert captured[0].page is page
+
+
+def test_fresh_reverification_strips_only_immowelt_datadome_cookie(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    storage = Path(str(request.handoff_state["storage_state_path"]))
+    storage.write_text(
+        json.dumps(
+            {
+                "cookies": [
+                    {
+                        "name": "datadome",
+                        "value": "stale-clearance",
+                        "domain": ".immowelt.de",
+                        "path": "/",
+                    },
+                    {
+                        "name": "datadome",
+                        "value": "unrelated",
+                        "domain": ".example.com",
+                        "path": "/",
+                    },
+                    {
+                        "name": "session",
+                        "value": "keep-me",
+                        "domain": ".immowelt.de",
+                        "path": "/",
+                    },
+                ],
+                "origins": [
+                    {
+                        "origin": "https://www.immowelt.de",
+                        "localStorage": [{"name": "keep", "value": "state"}],
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    removed = prepare_fresh_operator_reverification(
+        request.run_id,
+        _active_payload(request),
+        root=tmp_path,
+    )
+
+    state = json.loads(storage.read_text(encoding="utf-8"))
+    assert removed == 1
+    assert [(item["name"], item["domain"]) for item in state["cookies"]] == [
+        ("datadome", ".example.com"),
+        ("session", ".immowelt.de"),
+    ]
+    assert state["origins"][0]["localStorage"] == [{"name": "keep", "value": "state"}]
+    assert stat.S_IMODE(storage.stat().st_mode) == 0o600
