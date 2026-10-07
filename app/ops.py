@@ -835,7 +835,7 @@ def _immowelt_challenge_context(
         raise HTTPException(status_code=409, detail="Die aktive Challenge ist nicht interaktiv.")
     try:
         state_dir, run_dir = challenge_state_for_run(run.id, active)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return run, source, active, state_dir, run_dir
 
@@ -868,7 +868,7 @@ def approve_source_challenge(
         raise HTTPException(status_code=409, detail="Der pausierte Lauf hat keine aktive Challenge.")
     try:
         arm_operator_handoff(run.id, active)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     metadata = dict(run.run_metadata or {})
