@@ -55,6 +55,7 @@
   const status = document.getElementById("status");
   let dragging = false;
   let lastMove = 0;
+  let pointerQueue = Promise.resolve();
 
   function coords(event) {
     const rect = frame.getBoundingClientRect();
@@ -64,7 +65,7 @@
     };
   }
 
-  async function sendPointer(phase, event) {
+  function sendPointer(phase, event) {
     const pos = coords(event);
     const body = new URLSearchParams({
       csrf_token: csrf,
@@ -72,14 +73,14 @@
       x: String(pos.x),
       y: String(pos.y),
     });
-    try {
-      await fetch(`/admin/challenges/${runId}/pointer`, {
+    pointerQueue = pointerQueue
+      .then(() => fetch(`/admin/challenges/${runId}/pointer`, {
         method: "POST",
         credentials: "same-origin",
         headers: {"Content-Type": "application/x-www-form-urlencoded"},
         body,
-      });
-    } catch (_) {}
+      }))
+      .catch(() => {});
   }
 
   frame.addEventListener("pointerdown", (event) => {
@@ -108,7 +109,9 @@
   frame.addEventListener("pointercancel", () => { dragging = false; });
 
   async function poll() {
-    frame.src = `/admin/challenges/${runId}/frame?t=${Date.now()}`;
+    if (!dragging) {
+      frame.src = `/admin/challenges/${runId}/frame?t=${Date.now()}`;
+    }
     try {
       const response = await fetch(`/admin/challenges/${runId}/status?t=${Date.now()}`, {
         credentials: "same-origin",
