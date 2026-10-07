@@ -417,6 +417,10 @@ async def run_property_source(
             request = _challenge_request_from_payload(payload)
 
             if revalidate_paused:
+                # Restore the persisted browser/session boundary before the one bounded
+                # fresh navigation. This keeps UA/storage/viewport continuity across the
+                # process restart that necessarily occurs while a run is paused.
+                await adapter.restore_challenge_handoff(request.handoff_state)
                 # A persisted challenge can become stale while a run is paused. Every resume
                 # gets exactly one fresh navigation before the old handler is consulted.
                 # Keep the previous active_challenge until that navigation has actually
