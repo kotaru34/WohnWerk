@@ -167,6 +167,48 @@ def operator_approval_path(run_dir: Path) -> Path:
     return run_dir / "operator-approval.json"
 
 
+def prepare_fresh_operator_reverification(
+    run_id: int,
+    active_challenge: dict[str, Any],
+    *,
+    root: Path = DEFAULT_OPERATOR_ROOT,
+) -> int:
+    """Drop only stale Immowelt DataDome clearance before explicit human re-verification.
+
+    All other persisted browser state is preserved. This is used only when an operator
+    explicitly arms a paused interactive challenge and no live browser process is waiting.
+    """
+    if _challenge_type_from_payload(active_challenge) not in INTERACTIVE_DATADOME_TYPES:
+        raise ValueError("active challenge is not an interactive Immowelt DataDome verification")
+
+    state_dir, _run_dir = challenge_state_for_run(run_id, active_challenge, root=root)
+    storage_state_path = state_dir / "storage-state.json"
+    state = _read_json(storage_state_path)
+    if state is None:
+        raise ValueError("challenge storage state is missing or invalid")
+
+    raw_cookies = state.get("cookies")
+    if not isinstance(raw_cookies, list):
+        raise TypeError("challenge storage state cookies are invalid")
+
+    removed = 0
+    cookies: list[Any] = []
+    for item in raw_cookies:
+        if not isinstance(item, dict) or item.get("name") != "datadome":
+            cookies.append(item)
+            continue
+        domain = str(item.get("domain") or "").casefold().lstrip(".")
+        if domain in IMMOWELT_HOSTS or domain.endswith(".immowelt.de"):
+            removed += 1
+            continue
+        cookies.append(item)
+
+    if removed:
+        state["cookies"] = cookies
+        _atomic_json(storage_state_path, state)
+    return removed
+
+
 def arm_operator_handoff(
     run_id: int,
     active_challenge: dict[str, Any],

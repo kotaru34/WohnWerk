@@ -26,6 +26,7 @@ from app.crawling.immowelt_operator_handoff import (
     enqueue_operator_pointer,
     operator_frame_path,
     operator_run_dir,
+    prepare_fresh_operator_reverification,
     read_operator_status,
 )
 from app.jobs.location_resolution import is_non_point_location_scope
@@ -868,13 +869,17 @@ def approve_source_challenge(
         raise HTTPException(status_code=409, detail="Der pausierte Lauf hat keine aktive Challenge.")
     run_dir = operator_run_dir(run.id)
     live_waiting = read_operator_status(run_dir).get("state") == "awaiting_approval"
+    stale_datadome_removed = 0
     try:
+        if not live_waiting:
+            stale_datadome_removed = prepare_fresh_operator_reverification(run.id, active)
         arm_operator_handoff(run.id, active)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     metadata = dict(run.run_metadata or {})
     metadata["operator_handoff_armed_at"] = datetime.now(UTC).isoformat()
+    metadata["operator_reverification_stale_datadome_removed"] = stale_datadome_removed
     run.run_metadata = metadata
     db.commit()
 
