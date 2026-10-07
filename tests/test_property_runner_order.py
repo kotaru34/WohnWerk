@@ -11,6 +11,7 @@ from app.crawling.property_runner import (
     _complete_paused_challenge_revalidation,
     _ordered_shards,
     _prepare_paused_challenge_revalidation,
+    _persisted_same_run_cursor,
     _record_challenge_result,
     _set_active_challenge,
     _source_halt_reason,
@@ -75,6 +76,19 @@ def test_source_halt_reason_only_accepts_explicit_halt_signal() -> None:
     assert _source_halt_reason(halted) == "source gate"
     assert _source_halt_reason(RuntimeError("other")) is None
 
+
+
+def test_persisted_same_run_cursor_is_reused_only_when_explicitly_marked() -> None:
+    resumable = SimpleNamespace(
+        next_cursor={"_resume_same_run": True, "resume_page": 2, "discovery_completed_pages": 1}
+    )
+    ordinary = SimpleNamespace(next_cursor={"resume_page": 2})
+    empty = SimpleNamespace(next_cursor={})
+
+    assert _persisted_same_run_cursor(resumable) == resumable.next_cursor
+    assert _persisted_same_run_cursor(resumable) is not resumable.next_cursor
+    assert _persisted_same_run_cursor(ordinary) is None
+    assert _persisted_same_run_cursor(empty) is None
 
 
 def test_manual_resume_tags_existing_run_without_losing_metadata() -> None:
