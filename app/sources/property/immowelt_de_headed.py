@@ -127,7 +127,12 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
         if self._context is not None:
             await self._context.storage_state(path=str(storage_state_path))
             storage_state_path.chmod(0o600)
+        user_agent: str | None = None
         if self._page is not None:
+            try:
+                user_agent = str(await self._page.evaluate("navigator.userAgent"))
+            except PlaywrightError:
+                user_agent = None
             try:
                 await self._page.screenshot(path=str(screenshot_path), full_page=True)
                 screenshot_path.chmod(0o600)
@@ -141,6 +146,8 @@ class ImmoweltHeadedPropertySource(ImmoweltGermanyPropertySource):
             "browser_patch_path": str(browser_patch_path),
             "challenge": dict(challenge.challenge),
         }
+        if user_agent:
+            handoff["user_agent"] = user_agent
         if screenshot_path and str(screenshot_path) != ".":
             handoff["screenshot_path"] = str(screenshot_path)
         return handoff
