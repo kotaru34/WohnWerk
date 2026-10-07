@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import secrets
 import subprocess
 import sys
@@ -653,6 +654,48 @@ def collect_ops_snapshot(db: Session, *, now: datetime | None = None) -> OpsSnap
     )
 
 
+def _manual_refresh_argv(source_name: str, request_id: str) -> list[str]:
+    base = [
+        sys.executable,
+        str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
+        "--lock-path",
+        str(REFRESH_LOCK_PATH),
+        "--source",
+        source_name,
+        "--run-request-id",
+        request_id,
+    ]
+    if source_name != "immowelt-de":
+        return base
+    return [
+        "/usr/bin/xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1920x1080x24",
+        *base,
+    ]
+
+
+def _manual_refresh_env(source_name: str) -> dict[str, str] | None:
+    if source_name != "immowelt-de":
+        return None
+    runtime_root = Path("/tmp/wohnwerk-admin-refresh")
+    paths = {
+        "HOME": runtime_root / "home",
+        "XDG_CONFIG_HOME": runtime_root / "config",
+        "XDG_CACHE_HOME": runtime_root / "cache",
+        "XDG_RUNTIME_DIR": runtime_root / "runtime",
+    }
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.chmod(0o700)
+
+    env = os.environ.copy()
+    env["PLAYWRIGHT_BROWSERS_PATH"] = "/var/cache/wohnwerk-playwright"
+    env.update({key: str(value) for key, value in paths.items()})
+    return env
+
+
 def _health_redirect(notice: str, *, run_id: int | None = None) -> RedirectResponse:
     query: dict[str, str] = {"hinweis": notice}
     if run_id is not None:
@@ -730,21 +773,13 @@ def run_source_now(
     request_id = secrets.token_urlsafe(18)
     try:
         process = subprocess.Popen(
-            [
-                sys.executable,
-                str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
-                "--lock-path",
-                str(REFRESH_LOCK_PATH),
-                "--source",
-                source.name,
-                "--run-request-id",
-                request_id,
-            ],
+            _manual_refresh_argv(source.name, request_id),
             cwd=PROJECT_ROOT,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
             close_fds=True,
+            env=_manual_refresh_env(source.name),
         )
     except OSError as exc:
         raise HTTPException(
@@ -844,21 +879,13 @@ def approve_source_challenge(
     request_id = secrets.token_urlsafe(18)
     try:
         subprocess.Popen(
-            [
-                sys.executable,
-                str(PROJECT_ROOT / "scripts" / "refresh_sources.py"),
-                "--lock-path",
-                str(REFRESH_LOCK_PATH),
-                "--source",
-                source.name,
-                "--run-request-id",
-                request_id,
-            ],
+            _manual_refresh_argv(source.name, request_id),
             cwd=PROJECT_ROOT,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
             close_fds=True,
+            env=_manual_refresh_env(source.name),
         )
     except OSError as exc:
         raise HTTPException(
