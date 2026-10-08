@@ -394,3 +394,69 @@ def test_fresh_reverification_strips_only_immowelt_datadome_cookie(
     ]
     assert state["origins"][0]["localStorage"] == [{"name": "keep", "value": "state"}]
     assert stat.S_IMODE(storage.stat().st_mode) == 0o600
+
+
+@pytest.mark.asyncio
+async def test_live_handoff_reports_actual_pointer_phases_on_provider_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Local fake challenge only: never contact the upstream provider."""
+    request = _request(tmp_path)
+    run_dir = tmp_path / "run-123"
+    state_dir = Path(request.handoff_state["state_dir"])
+
+    class Mouse:
+        def __init__(self) -> None:
+            self.events: list[tuple] = []
+
+        async def move(self, x: float, y: float) -> None:
+            self.events.append(("move", x, y))
+
+        async def down(self, *, button: str) -> None:
+            self.events.append(("down", button))
+
+        async def up(self, *, button: str) -> None:
+            self.events.append(("up", button))
+
+    class Page:
+        def __init__(self) -> None:
+            self.mouse = Mouse()
+
+        async def screenshot(self, *, path: str, full_page: bool) -> None:
+            assert full_page is False
+            Path(path).write_bytes(b"offline-test")
+
+    async def deny(_page: object) -> bool:
+        return True
+
+    page = Page()
+    monkeypatch.setattr(operator_module, "_operator_page_has_access_restriction", deny)
+    enqueue_operator_pointer(run_dir, phase="down", x=0.1, y=0.2)
+    enqueue_operator_pointer(run_dir, phase="move", x=0.5, y=0.2)
+    enqueue_operator_pointer(run_dir, phase="up", x=0.8, y=0.2)
+
+    handler = ImmoweltOperatorChallengeHandler(_Fallback(), root=tmp_path)
+    result = await handler._run_session(
+        request,
+        state_dir=state_dir,
+        run_dir=run_dir,
+        live_session=SimpleNamespace(context=object(), page=page),
+    )
+
+    assert result.action == "defer"
+    status = read_operator_status(run_dir)
+    assert status["state"] == "blocked"
+    assert status["browser_session"] == "original_live"
+    assert status["pointer_events_seen"] == 3
+    assert status["pointer_down_events"] == 1
+    assert status["pointer_move_events"] == 1
+    assert status["pointer_up_events"] == 1
+    assert status["pointer_sequence_completed"] is True
+    assert page.mouse.events == [
+        ("move", 128.0, 144.0),
+        ("down", "left"),
+        ("move", 640.0, 144.0),
+        ("move", 1024.0, 144.0),
+        ("up", "left"),
+    ]
+    assert "requested_url" not in json.dumps(status)

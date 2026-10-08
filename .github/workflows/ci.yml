@@ -30,3 +30,23 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+  browser-input-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application and browser
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m playwright install --with-deps chromium
+
+      - name: Test actual human event bridge in local Chromium/Xvfb
+        run: xvfb-run -a env WOHNWERK_BROWSER_SMOKE=1 pytest -q tests/test_immowelt_browser_input_smoke.py
