@@ -342,3 +342,42 @@ def test_runner_persists_hybrid_enablement_across_scheduled_invocations(monkeypa
     assert module.get_or_create_source() == 444
     assert source.config["regional_expansion_enabled"] is True
     assert source.config["operator_custom"] == "preserve-me"
+
+
+@pytest.mark.asyncio
+async def test_activation_only_persists_hybrid_without_starting_any_crawl(monkeypatch) -> None:
+    path = Path(__file__).resolve().parents[1] / "scripts" / "run_kleinanzeigen_de.py"
+    spec = spec_from_file_location("kleinanzeigen_activate_only_test", path)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    calls: list[bool] = []
+
+    def fake_get_source(*, enable_regional_expansion: bool = False) -> int:
+        calls.append(enable_regional_expansion)
+        return 444
+
+    monkeypatch.setattr(
+        module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            frontier_pages=12,
+            hard_max_pages=40,
+            delay=3.0,
+            enable_regional_expansion=False,
+            activate_regional_expansion_only=True,
+        ),
+    )
+    monkeypatch.setattr(module, "get_or_create_source", fake_get_source)
+    monkeypatch.setattr(
+        module,
+        "run_property_source",
+        lambda *_args, **_kwargs: pytest.fail("activation must not crawl"),
+    )
+    monkeypatch.setattr(
+        module,
+        "SessionLocal",
+        lambda: pytest.fail("activation must not open a second DB session"),
+    )
+    assert await module.async_main() == 0
+    assert calls == [True]
