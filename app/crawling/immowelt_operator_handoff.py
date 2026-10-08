@@ -257,7 +257,11 @@ def read_operator_status(
         except (TypeError, ValueError):
             return {"state": "invalid"}
         if _approval_is_active(run_id, run_dir, now=now):
-            return {"state": "armed", "run_id": run_id}
+            return {
+                "state": "armed",
+                "run_id": run_id,
+                "expires_at": approval.get("expires_at"),
+            }
         return {"state": "expired", "run_id": run_id}
     return {"state": "idle"}
 
@@ -458,6 +462,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "version": 1,
                     "state": "awaiting_approval",
                     "run_id": request.run_id,
+                    "expires_at": (
+                        datetime.now(UTC) + timedelta(seconds=self.arm_grace_seconds)
+                    ).isoformat(),
                     "updated_at": datetime.now(UTC).isoformat(),
                 },
             )
@@ -521,6 +528,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         page = live_session.page if live_session is not None else None
         event_offset = 0
         started = time.monotonic()
+        session_expires_at = (
+            datetime.now(UTC) + timedelta(seconds=self.timeout_seconds)
+        ).isoformat()
         last_frame = 0.0
         last_block_probe = 0.0
         pointer_down = False
@@ -566,6 +576,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "state": "active",
                     "run_id": request.run_id,
                     "started_at": datetime.now(UTC).isoformat(),
+                    "expires_at": session_expires_at,
                     "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                     "viewport": dict(viewport),
                 },
@@ -684,6 +695,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "version": 1,
                         "state": "active",
                         "run_id": request.run_id,
+                        "expires_at": session_expires_at,
                         "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                         "pointer_events_seen": pointer_events_seen,
                         "pointer_processing_delay_max_ms": pointer_delay_max_ms,
