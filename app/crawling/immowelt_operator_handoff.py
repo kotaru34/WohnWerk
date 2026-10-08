@@ -18,6 +18,7 @@ from app.crawling.challenge import ChallengeHandler, ChallengeRequest, Challenge
 from app.crawling.immowelt_operator_ready import consume_operator_readiness
 from app.crawling.immowelt_access import immowelt_access_restricted
 from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
@@ -432,8 +433,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         # Pre-armed readiness is valid only for this explicitly initiated manual
         # run. The original Playwright Page/Context must still be alive here.
         # A scheduled refresh has no matching manual request ID and never waits.
-        if live_session is not None and consume_operator_readiness(
-            request.run_id, root=self.root
+        if (
+            live_session is not None
+            and not _approval_is_active(request.run_id, run_dir)
+            and consume_operator_readiness(request.run_id, root=self.root)
         ):
             arm_operator_handoff(
                 request.run_id,
@@ -441,7 +444,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 root=self.root,
             )
         if not _approval_is_active(request.run_id, run_dir):
-            if live_session is None or self.arm_grace_seconds <= 0:
+            if (
+                live_session is None
+                or self.arm_grace_seconds <= 0
+                or not os.environ.get(MANUAL_RUN_REQUEST_ENV)
+            ):
+                # No unattended timer/worker can wait on a human approval.
                 return await self.fallback.handle(request)
 
             _atomic_json(
