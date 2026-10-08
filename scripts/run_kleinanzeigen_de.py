@@ -32,6 +32,11 @@ def parse_args() -> argparse.Namespace:
             "nationwide shard (24 pages total per scan); explicit operator action"
         ),
     )
+    parser.add_argument(
+        "--activate-regional-expansion-only",
+        action="store_true",
+        help="Persistently enable hybrid discovery; do not run a crawl immediately",
+    )
     return parser.parse_args()
 
 
@@ -88,8 +93,15 @@ async def async_main() -> int:
         raise SystemExit("--frontier-pages and --hard-max-pages must be positive")
 
     source_id = get_or_create_source(
-        enable_regional_expansion=args.enable_regional_expansion
+        enable_regional_expansion=(
+            args.enable_regional_expansion or args.activate_regional_expansion_only
+        )
     )
+    if args.activate_regional_expansion_only:
+        # Persist the feature flag only. The normal refresh timer will pick up the
+        # added shards on the next scheduled run. This path makes NO HTTP request.
+        print(f"Regional expansion activated for source #{source_id}; no crawl started")
+        return 0
     with SessionLocal() as session:
         source = session.get(Source, source_id)
         if source is None:
