@@ -8,6 +8,7 @@ from app.crawling.immowelt_access import immowelt_access_restricted
 from app.crawling.immowelt_operator_handoff import (
     ImmoweltOperatorChallengeHandler,
     _operator_page_has_access_restriction,
+    _has_verified_search_results,
     operator_run_dir,
     read_operator_status,
 )
@@ -127,3 +128,47 @@ async def test_operator_stops_on_terminal_access_block_without_forged_clearance(
     assert result.action == "defer"
     assert "provider access restricted" in (result.message or "")
     assert read_operator_status(operator_run_dir(123, root=root))["state"] == "blocked"
+
+
+class _HeadingLocator:
+    def __init__(self, heading: str) -> None:
+        self.heading = heading
+
+    @property
+    def first(self):
+        return self
+
+    async def inner_text(self, *, timeout: int) -> str:
+        assert timeout == 1000
+        return self.heading
+
+
+class _SearchPage:
+    def __init__(self, url: str, heading: str) -> None:
+        self.url = url
+        self.heading = heading
+
+    def locator(self, selector: str) -> _HeadingLocator:
+        assert selector == "h1"
+        return _HeadingLocator(self.heading)
+
+
+@pytest.mark.asyncio
+async def test_operator_requires_real_search_state_not_generic_h1() -> None:
+    from app.sources.property.immowelt_de import ImmoweltGermanyPropertySource
+
+    source = ImmoweltGermanyPropertySource()
+    url = source._page_url("sachsen", "030000-099999", 1)
+
+    assert await _has_verified_search_results(
+        _SearchPage(url, "42 Häuser zum Kauf in Sachsen"), url
+    )
+    assert not await _has_verified_search_results(
+        _SearchPage(url, BLOCK_TEXT), url
+    )
+    assert not await _has_verified_search_results(
+        _SearchPage("https://www.immowelt.de/", "42 Häuser zum Kauf in Sachsen"), url
+    )
+    assert not await _has_verified_search_results(
+        _SearchPage(url.replace("priceMin=30000", "priceMin=100000"), "42 Häuser zum Kauf"), url
+    )
