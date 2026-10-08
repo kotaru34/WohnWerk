@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from sqlalchemy import select
 
 from app.crawling.property_runner import run_property_source
@@ -14,7 +13,6 @@ from app.sources.property.public_portals_de import (
     ImmobilienDeGermanyPropertySource,
     OhneMaklerGermanyPropertySource,
 )
-
 
 PORTALS = {
     "ohne-makler-de": (
