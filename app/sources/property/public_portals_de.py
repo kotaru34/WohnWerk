@@ -129,7 +129,7 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
         if not 7 <= len(title) <= 500:
             continue
         city = re.split(
-            r"\\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\\b",
+            r"\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\b",
             _clean_text(postcode_match.group(2)), maxsplit=1, flags=re.I,
         )[0].strip(" ,-")
         if len(city) > 100:
