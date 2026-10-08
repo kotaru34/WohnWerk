@@ -137,7 +137,7 @@
             : "";
         const pointerStats = Number.isFinite(payload.pointer_events_seen)
           ? "\nManuelle Pointer-Ereignisse: " + payload.pointer_events_seen
-            + ", maximale Verzögerung: " + (payload.pointer_delivery_delay_max_ms ?? 0) + " ms"
+            + ", maximale Server-Verarbeitungszeit: " + (payload.pointer_processing_delay_max_ms ?? 0) + " ms"
           : "";
         status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${pointerStats}${message ? "\n" + message : ""}`;
         if (state === "blocked") {
