@@ -884,14 +884,11 @@ def approve_source_challenge(
     db.commit()
 
     if live_waiting:
-        deadline = time.monotonic() + 1.5
-        while time.monotonic() < deadline:
-            state = str(read_operator_status(run_dir).get("state") or "")
-            if state == "active":
-                return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
-            if state in {"cancelled", "deferred", "timeout", "approval_timeout"}:
-                break
-            time.sleep(0.05)
+        # The original crawler is still holding its challenged BrowserContext/Page.
+        # Its operator handler observes the approval asynchronously. Spawning another
+        # refresh because activation takes >1.5s would race the live human handoff,
+        # potentially replacing the very session the operator needs to complete.
+        return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
 
     request_id = secrets.token_urlsafe(18)
     try:
