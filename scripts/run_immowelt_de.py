@@ -8,12 +8,14 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.crawling.coverage import RUN_STATUS_PAUSED
+from app.crawling.immowelt_operator_ready import requires_manual_immowelt_operator
 from app.crawling.immowelt_solver_bridge import configured_immowelt_challenge_handler
 from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
 from app.models import CrawlMode, CrawlRun, Source, SourceCategory
 from app.property_heating_enrichment import enrich_active_property_heating_with_fetcher
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 from app.sources.property.immowelt_de import BASE_URL
 from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
@@ -161,6 +163,9 @@ async def async_main() -> int:
     )
 
     paused = _latest_paused_run(source_id)
+    if requires_manual_immowelt_operator(paused) and not os.environ.get(MANUAL_RUN_REQUEST_ENV):
+        print(f"paused_immowelt_run={paused.id} awaiting_explicit_human_operator")
+        return 0
     reconciliation = args.reconcile
     resume_run_id: int | None = None
     if paused is not None:

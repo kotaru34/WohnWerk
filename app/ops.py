@@ -29,6 +29,12 @@ from app.crawling.immowelt_operator_handoff import (
     prepare_fresh_operator_reverification,
     read_operator_status,
 )
+from app.crawling.immowelt_operator_ready import (
+    arm_operator_readiness,
+    bind_operator_readiness,
+    clear_operator_readiness,
+    read_operator_readiness,
+)
 from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
     CoverageStatus,
@@ -68,6 +74,8 @@ NOTICE_LABELS = {
     "run_failed": "Der manuelle Quellenlauf konnte nicht gestartet werden.",
     "run_pending": "Der manuelle Start läuft, aber eine neue Lauf-ID ist noch nicht sichtbar.",
     "challenge_cancelled": "Interaktive Immowelt-Prüfung wurde abgebrochen; der Lauf bleibt pausiert.",
+    "operator_ready": "Immowelt-Begleitung ist 15 Minuten bereit. Jetzt manuellen Lauf starten.",
+    "operator_ready_cleared": "Immowelt-Begleitung wurde deaktiviert.",
 }
 
 RUN_START_CONFIRM_TIMEOUT_SECONDS = 3.0
@@ -772,6 +780,10 @@ def run_source_now(
     )
 
     request_id = secrets.token_urlsafe(18)
+    if source.name == "immowelt-de":
+        # The readiness ticket belongs to one explicit manual request.
+        # Scheduled refreshes never receive this request ID.
+        bind_operator_readiness(request_id)
     try:
         process = subprocess.Popen(
             _manual_refresh_argv(source.name, request_id),
@@ -868,7 +880,12 @@ def approve_source_challenge(
     if not isinstance(active, dict):
         raise HTTPException(status_code=409, detail="Der pausierte Lauf hat keine aktive Challenge.")
     run_dir = operator_run_dir(run.id)
-    live_waiting = read_operator_status(run_dir).get("state") == "awaiting_approval"
+    operator_state = read_operator_status(run_dir).get("state")
+    if operator_state in {"armed", "active"}:
+        # A pre-armed original live handoff is already in progress. Never
+        # clear its screenshot/events or spawn a second browser worker.
+        return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
+    live_waiting = operator_state == "awaiting_approval"
     stale_datadome_removed = 0
     try:
         if not live_waiting:
@@ -908,6 +925,42 @@ def approve_source_challenge(
         ) from exc
 
     return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
+
+
+@router.post("/health/immowelt-ready/arm")
+def arm_immowelt_operator_ready(_: AdminDependency, __: CsrfDependency):
+    try:
+        arm_operator_readiness()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _health_redirect("operator_ready")
+
+
+@router.post("/health/immowelt-ready/clear")
+def clear_immowelt_operator_ready(_: AdminDependency, __: CsrfDependency):
+    try:
+        clear_operator_readiness()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _health_redirect("operator_ready_cleared")
+
+
+@router.get("/health/immowelt-ready/status")
+def immowelt_operator_ready_status(_: AdminDependency, db: DbDependency):
+    status_payload = read_operator_readiness()
+    run_id = status_payload.get("run_id")
+    if isinstance(run_id, int):
+        run = db.get(CrawlRun, run_id)
+        if run is not None and _interactive_challenge_type(run) is not None:
+            handoff = read_operator_status(operator_run_dir(run_id))
+            if handoff.get("state") in {"armed", "active", "awaiting_approval"}:
+                status_payload["handoff_state"] = handoff["state"]
+                status_payload["live_run_id"] = run_id
+                status_payload["browser_session"] = handoff.get("browser_session")
+                # Countdown follows the live browser's actual deadline.
+                if handoff.get("expires_at"):
+                    status_payload["expires_at"] = handoff["expires_at"]
+    return JSONResponse(status_payload, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/health/immowelt-runs")
@@ -1095,6 +1148,7 @@ def admin_health_page(
         name="admin_health.html",
         context={
             "snapshot": collect_ops_snapshot(db),
+            "operator_readiness": read_operator_readiness(),
             "csrf_token": _csrf_token(),
             "notice": notice,
         },

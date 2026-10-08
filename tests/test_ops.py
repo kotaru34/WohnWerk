@@ -727,6 +727,53 @@ def test_challenge_approve_attaches_to_waiting_live_process_even_if_activation_i
         app.dependency_overrides.clear()
 
 
+def test_challenge_approve_does_not_overwrite_prearmed_live_session(monkeypatch) -> None:
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+    active = {
+        "challenge": {"datadome_challenge_type": "fe"},
+        "handoff_state": {"state_dir": "/tmp/unchanged"},
+    }
+    run = SimpleNamespace(
+        id=5946, source_id=10, status="paused", finished_at=None,
+        run_metadata={"active_challenge": active},
+    )
+
+    class Db(_SourceControlDb):
+        def scalar(self, _statement):
+            return run
+
+    db = Db(source)
+    monkeypatch.setattr("app.ops.operator_run_dir", lambda _run_id: Path("/tmp/run-5946"))
+    monkeypatch.setattr(
+        "app.ops.read_operator_status", lambda _root: {"state": "active"}
+    )
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Never overwrite an existing live browser")
+
+    monkeypatch.setattr("app.ops.subprocess.Popen", forbidden)
+    monkeypatch.setattr("app.ops.arm_operator_handoff", forbidden)
+    monkeypatch.setattr("app.ops.prepare_fresh_operator_reverification", forbidden)
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/admin/sources/10/challenge/approve",
+                follow_redirects=False,
+            )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/admin/challenges/5946"
+        assert db.commits == 0
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_challenge_approve_refreshes_stale_datadome_before_resume(monkeypatch) -> None:
     source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
     active = {

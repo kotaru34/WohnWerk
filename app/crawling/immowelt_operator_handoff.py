@@ -16,6 +16,8 @@ from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
 from app.crawling.immowelt_access import immowelt_access_restricted
+from app.crawling.immowelt_operator_ready import consume_operator_readiness
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
@@ -255,7 +257,11 @@ def read_operator_status(
         except (TypeError, ValueError):
             return {"state": "invalid"}
         if _approval_is_active(run_id, run_dir, now=now):
-            return {"state": "armed", "run_id": run_id}
+            return {
+                "state": "armed",
+                "run_id": run_id,
+                "expires_at": approval.get("expires_at"),
+            }
         return {"state": "expired", "run_id": run_id}
     return {"state": "idle"}
 
@@ -428,8 +434,26 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
             return ChallengeResult(action="defer", message="invalid operator handoff state directory")
 
         live_session = live_operator_session(state_dir)
+        # Pre-armed readiness is valid only for this explicitly initiated manual
+        # run. The original Playwright Page/Context must still be alive here.
+        # A scheduled refresh has no matching manual request ID and never waits.
+        if (
+            live_session is not None
+            and not _approval_is_active(request.run_id, run_dir)
+            and consume_operator_readiness(request.run_id, root=self.root)
+        ):
+            arm_operator_handoff(
+                request.run_id,
+                {"challenge": request.challenge, "handoff_state": request.handoff_state},
+                root=self.root,
+            )
         if not _approval_is_active(request.run_id, run_dir):
-            if live_session is None or self.arm_grace_seconds <= 0:
+            if (
+                live_session is None
+                or self.arm_grace_seconds <= 0
+                or not os.environ.get(MANUAL_RUN_REQUEST_ENV)
+            ):
+                # No unattended timer/worker can wait on a human approval.
                 return await self.fallback.handle(request)
 
             _atomic_json(
@@ -438,6 +462,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "version": 1,
                     "state": "awaiting_approval",
                     "run_id": request.run_id,
+                    "expires_at": (
+                        datetime.now(UTC) + timedelta(seconds=self.arm_grace_seconds)
+                    ).isoformat(),
                     "updated_at": datetime.now(UTC).isoformat(),
                 },
             )
@@ -501,6 +528,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         page = live_session.page if live_session is not None else None
         event_offset = 0
         started = time.monotonic()
+        session_expires_at = (
+            datetime.now(UTC) + timedelta(seconds=self.timeout_seconds)
+        ).isoformat()
         last_frame = 0.0
         last_block_probe = 0.0
         pointer_down = False
@@ -546,6 +576,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "state": "active",
                     "run_id": request.run_id,
                     "started_at": datetime.now(UTC).isoformat(),
+                    "expires_at": session_expires_at,
                     "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                     "viewport": dict(viewport),
                 },
@@ -664,11 +695,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "version": 1,
                         "state": "active",
                         "run_id": request.run_id,
+                        "expires_at": session_expires_at,
                         "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                         "pointer_events_seen": pointer_events_seen,
                         "pointer_processing_delay_max_ms": pointer_delay_max_ms,
                         "updated_at": datetime.now(UTC).isoformat(),
-                        "page_url": page.url,
                         "challenge_present": challenge_present,
                         "clearance_present": clearance_present,
                         "content_present": content_present,

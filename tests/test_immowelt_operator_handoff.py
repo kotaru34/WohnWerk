@@ -296,6 +296,8 @@ async def test_live_browser_waits_for_explicit_operator_approval(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    # The legacy 120s grace now only applies to an explicitly manual run.
+    monkeypatch.setenv("WOHNWERK_MANUAL_RUN_REQUEST_ID", "human-manual-run")
     fallback = _Fallback()
     handler = ImmoweltOperatorChallengeHandler(
         fallback,
