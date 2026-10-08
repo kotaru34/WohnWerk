@@ -127,7 +127,11 @@ async def test_operator_stops_on_terminal_access_block_without_forged_clearance(
     )
     assert result.action == "defer"
     assert "provider access restricted" in (result.message or "")
-    assert read_operator_status(operator_run_dir(123, root=root))["state"] == "blocked"
+    status = read_operator_status(operator_run_dir(123, root=root))
+    assert status["state"] == "blocked"
+    assert status["browser_session"] == "original_live"
+    assert status["pointer_events_seen"] == 0
+    assert status["pointer_processing_delay_max_ms"] == 0
 
 
 class _HeadingLocator:
