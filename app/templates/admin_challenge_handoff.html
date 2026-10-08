@@ -152,8 +152,16 @@
             ? "Neuer Browser aus gespeicherten Daten; ursprüngliche Challenge-Seite nicht mehr aktiv"
             : "";
         const pointerStats = Number.isFinite(payload.pointer_events_seen)
-          ? "\nManuelle Pointer-Ereignisse: " + payload.pointer_events_seen
-            + ", maximale Server-Verarbeitungszeit: " + (payload.pointer_processing_delay_max_ms ?? 0) + " ms"
+          ? "\nVom Browser-Worker gelesene Eingaben: " + payload.pointer_events_seen
+            + ", längste Wartezeit in der Server-Queue: "
+            + (payload.pointer_processing_delay_max_ms ?? 0) + " ms"
+          : "";
+        const strokeStats = Number.isInteger(payload.pointer_down_events)
+          ? "\nVerarbeitete Zeigerfolge: down=" + payload.pointer_down_events
+            + ", move=" + (payload.pointer_move_events ?? 0)
+            + ", up=" + (payload.pointer_up_events ?? 0)
+            + "; vollständig abgeschlossen: "
+            + (payload.pointer_sequence_completed ? "ja" : "nein")
           : "";
         const pointerError = pointerTransportFailed
           ? "\nPointer-Übertragung fehlgeschlagen. Bitte Seite neu öffnen; die bisherige Prüfung ist nicht bestätigt."
@@ -163,7 +171,7 @@
           ? "\nVerbleibende Sitzungszeit: " +
             Math.max(0, Math.ceil((expires - Date.now()) / 1000)) + " Sekunden"
           : "";
-        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${remaining}${pointerStats}${message ? "\n" + message : ""}${pointerError}`;
+        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${remaining}${pointerStats}${strokeStats}${message ? "\n" + message : ""}${pointerError}`;
         if (state === "blocked") {
           status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
           return;
