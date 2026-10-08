@@ -14,6 +14,7 @@ from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
 from app.models import CrawlMode, CrawlRun, Source, SourceCategory
 from app.property_heating_enrichment import enrich_active_property_heating_with_fetcher
+from app.refresh import MANUAL_RUN_REQUEST_ENV
 from app.sources.property.immowelt_de import BASE_URL
 from app.sources.property.immowelt_de_headed import ImmoweltHeadedPropertySource
 
@@ -138,6 +139,19 @@ def _latest_paused_run(source_id: int) -> CrawlRun | None:
         )
 
 
+def _requires_manual_operator(paused: CrawlRun | None) -> bool:
+    """Do not repeatedly revalidate an unresolved interactive gate on a timer."""
+    if paused is None or paused.status != RUN_STATUS_PAUSED:
+        return False
+    active = (paused.run_metadata or {}).get("active_challenge")
+    if not isinstance(active, dict):
+        return False
+    challenge = active.get("challenge")
+    if not isinstance(challenge, dict):
+        return False
+    return str(challenge.get("datadome_challenge_type") or "").casefold() in {"fe", "bv"}
+
+
 def _challenge_handler(args: argparse.Namespace):
     return configured_immowelt_challenge_handler(
         external_command=args.challenge_handler,
@@ -161,6 +175,9 @@ async def async_main() -> int:
     )
 
     paused = _latest_paused_run(source_id)
+    if _requires_manual_operator(paused) and not os.environ.get(MANUAL_RUN_REQUEST_ENV):
+        print(f"paused_immowelt_run={paused.id} awaiting_explicit_human_operator")
+        return 0
     reconciliation = args.reconcile
     resume_run_id: int | None = None
     if paused is not None:
