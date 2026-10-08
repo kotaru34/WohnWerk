@@ -700,7 +700,6 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "pointer_events_seen": pointer_events_seen,
                         "pointer_processing_delay_max_ms": pointer_delay_max_ms,
                         "updated_at": datetime.now(UTC).isoformat(),
-                        "page_url": page.url,
                         "challenge_present": challenge_present,
                         "clearance_present": clearance_present,
                         "content_present": content_present,
