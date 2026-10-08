@@ -15,6 +15,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
+from app.crawling.immowelt_access import immowelt_access_restricted
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
@@ -321,6 +322,24 @@ async def _has_immowelt_datadome_cookie(context: Any) -> bool:
     return False
 
 
+
+async def _operator_page_has_access_restriction(page: Any) -> bool:
+    """Check visible provider text, including a cross-origin challenge iframe.
+
+    A successful slider gesture is not evidence of authorization. DataDome can
+    instead render an explicit access-block page in the same browser session.
+    No challenge tokens, cookie values or request identifiers are recorded.
+    """
+    for target in [page, *page.frames]:
+        try:
+            body_text = await target.locator("body").inner_text(timeout=1000)
+        except (PlaywrightError, AttributeError):
+            continue
+        if immowelt_access_restricted(body_text):
+            return True
+    return False
+
+
 def _finish_operator_state(run_dir: Path, *, state: str, message: str) -> None:
     _atomic_json(
         operator_status_path(run_dir),
@@ -548,6 +567,21 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         except FileNotFoundError:
                             pass
                     last_frame = now
+
+                if await _operator_page_has_access_restriction(page):
+                    _finish_operator_state(
+                        run_dir,
+                        state="blocked",
+                        message=(
+                            "Immowelt hat diesen Browser-/Netzwerkzugriff eingeschränkt. "
+                            "Bitte die im Screenshot angezeigte ID dem Immowelt-Support "
+                            "melden; der CrawlRun bleibt sicher pausiert."
+                        ),
+                    )
+                    return ChallengeResult(
+                        action="defer",
+                        message="Immowelt provider access restricted after human verification",
+                    )
 
                 frame_urls = [frame.url for frame in page.frames]
                 challenge_present = any(
