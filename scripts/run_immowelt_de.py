@@ -8,8 +8,8 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.crawling.coverage import RUN_STATUS_PAUSED
-from app.crawling.immowelt_solver_bridge import configured_immowelt_challenge_handler
 from app.crawling.immowelt_operator_ready import requires_manual_immowelt_operator
+from app.crawling.immowelt_solver_bridge import configured_immowelt_challenge_handler
 from app.crawling.property_runner import run_property_source
 from app.crawling.shards import shard_order_matches_specs
 from app.database import SessionLocal
