@@ -1,7 +1,7 @@
 """Manual-only activation of a conservative public German portal frontier."""
+
 from __future__ import annotations
 
-import asyncio
 
 from sqlalchemy import select
 
