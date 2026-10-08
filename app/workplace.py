@@ -10,6 +10,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, cast,
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
+from app.country_scope import selected_country
 from app.database import Base
 from app.jobs.location_resolution import AUSTRIAN_POSTAL_SOURCE
 from app.models import PostalCode, Property
@@ -342,19 +343,36 @@ def load_workplace_distances(
     return output
 
 
+def routing_graph_supports(country: str | None, configured_countries: str) -> bool:
+    """A routing graph must cover *both* countries of a workplace journey."""
+    return bool(country) and country.strip().upper() in {
+        part.strip().upper() for part in configured_countries.split(",") if part.strip()
+    }
+
+
 def load_workplace_distances_for_ui(
     session: Session,
     profile_id: int,
     property_ids: set[int],
 ) -> dict[int, WorkplaceDistance]:
     settings = get_settings()
-    if not settings.routing_enabled:
+    workplace = load_candidate_workplace(session, profile_id)
+    property_country = selected_country() or settings.country_code
+    # A single-country road graph must never masquerade as a cross-border route.
+    # Keep the air distance until the service actually loads a DE+AT graph.
+    if (
+        not settings.routing_enabled
+        or workplace is None
+        or not routing_graph_supports(workplace.country_code, settings.routing_graph_countries)
+        or not routing_graph_supports(property_country, settings.routing_graph_countries)
+    ):
         return load_workplace_distances(session, profile_id, property_ids)
 
     with OSRMClient(
         settings.routing_base_url,
         timeout_seconds=settings.routing_timeout_seconds,
         max_table_coordinates=settings.routing_max_table_coordinates,
+        max_snap_distance_metres=settings.routing_max_snap_distance_metres,
     ) as client:
         return load_workplace_distances(
             session,
