@@ -25,6 +25,7 @@ from app.crawling.immowelt_operator_ready import (
     clear_operator_readiness,
     consume_operator_readiness,
     read_operator_readiness,
+    requires_manual_immowelt_operator,
     ready_path,
 )
 from app.database import get_db
@@ -165,8 +166,6 @@ async def test_scheduled_run_never_claims_manually_bound_ticket(
 
 
 def test_scheduled_immowelt_skips_paused_interactive_gate() -> None:
-    from scripts.run_immowelt_de import _requires_manual_operator
-
     paused = SimpleNamespace(
         id=5946,
         status="paused",
@@ -174,17 +173,17 @@ def test_scheduled_immowelt_skips_paused_interactive_gate() -> None:
             "active_challenge": {"challenge": {"datadome_challenge_type": "fe"}}
         },
     )
-    assert _requires_manual_operator(paused)
+    assert requires_manual_immowelt_operator(paused)
     paused.run_metadata = {
         "active_challenge": {"challenge": {"datadome_challenge_type": "bv"}}
     }
-    assert _requires_manual_operator(paused)
+    assert requires_manual_immowelt_operator(paused)
     paused.run_metadata = {
         "active_challenge": {"challenge": {"datadome_challenge_type": "none"}}
     }
-    assert not _requires_manual_operator(paused)
+    assert not requires_manual_immowelt_operator(paused)
     paused.status = "success"
-    assert not _requires_manual_operator(paused)
+    assert not requires_manual_immowelt_operator(paused)
 
 
 def test_admin_operator_readiness_requires_admin_and_csrf(
