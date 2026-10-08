@@ -38,6 +38,11 @@
     <div id="frame-wrap">
       <img id="challenge-frame" src="/admin/challenges/{{ run.id }}/frame" alt="Live-Ansicht der Immowelt-Prüfung">
     </div>
+    <p class="subtle">
+      „state=active“ bedeutet nur, dass die Fernbedienung bereit ist — nicht,
+      dass DataDome die Prüfung akzeptiert hat. Eine Sperrseite nach dem Slider
+      ist eine Ablehnung durch Immowelt, kein erfolgreich gelöstes CAPTCHA.
+    </p>
     <div class="status" id="status">Status wird geladen …</div>
     <div class="actions">
       <form method="post" action="/admin/challenges/{{ run.id }}/cancel">
@@ -126,6 +131,10 @@
         interactive = state === "active";
         frame.style.cursor = interactive ? "crosshair" : "wait";
         status.textContent = `state=${state}${message ? "\n" + message : ""}`;
+        if (state === "blocked") {
+          status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
+          return;
+        }
         if (state === "resolved") {
           status.textContent += "\nPrüfung abgeschlossen. Der pausierte Lauf wird fortgesetzt …";
           setTimeout(() => { window.location.href = "/admin/health"; }, 1800);
