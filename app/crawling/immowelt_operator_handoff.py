@@ -333,7 +333,7 @@ async def _operator_page_has_access_restriction(page: Any) -> bool:
     """
     for target in [page, *page.frames]:
         try:
-            body_text = await target.locator("body").inner_text(timeout=1000)
+            body_text = await target.locator("body").inner_text(timeout=200)
         except (PlaywrightError, AttributeError):
             continue
         if immowelt_access_restricted(body_text):
@@ -490,6 +490,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         event_offset = 0
         started = time.monotonic()
         last_frame = 0.0
+        last_block_probe = 0.0
+        pointer_down = False
+        pointer_events_seen = 0
+        pointer_delay_max_ms = 0
         try:
             viewport = _operator_viewport(request.handoff_state)
             if owns_browser:
@@ -568,14 +572,27 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             continue
                         x = min(max(x, 0.0), float(viewport["width"] - 1))
                         y = min(max(y, 0.0), float(viewport["height"] - 1))
+                        pointer_events_seen += 1
+                        try:
+                            sent_at = datetime.fromisoformat(str(event.get("at")))
+                            if sent_at.tzinfo is not None:
+                                delay = max(
+                                    0,
+                                    int((datetime.now(UTC) - sent_at.astimezone(UTC)).total_seconds() * 1000),
+                                )
+                                pointer_delay_max_ms = max(pointer_delay_max_ms, delay)
+                        except ValueError:
+                            pass
                         await page.mouse.move(x, y)
                         if phase == "down":
                             await page.mouse.down(button="left")
+                            pointer_down = True
                         elif phase == "up":
                             await page.mouse.up(button="left")
+                            pointer_down = False
 
                 now = time.monotonic()
-                if now - last_frame >= 0.45:
+                if not pointer_down and now - last_frame >= 0.45:
                     tmp_frame = frame_path.with_suffix(".tmp.png")
                     try:
                         await page.screenshot(path=str(tmp_frame), full_page=False)
@@ -588,7 +605,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             pass
                     last_frame = now
 
-                if await _operator_page_has_access_restriction(page):
+                if not pointer_down and now - last_block_probe >= 1.0:
+                    last_block_probe = now
+                    access_restricted = await _operator_page_has_access_restriction(page)
+                else:
+                    access_restricted = False
+                if access_restricted:
                     _finish_operator_state(
                         run_dir,
                         state="blocked",
@@ -626,6 +648,8 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "state": "active",
                         "run_id": request.run_id,
                         "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                        "pointer_events_seen": pointer_events_seen,
+                        "pointer_delivery_delay_max_ms": pointer_delay_max_ms,
                         "updated_at": datetime.now(UTC).isoformat(),
                         "page_url": page.url,
                         "challenge_present": challenge_present,
