@@ -526,6 +526,99 @@ def test_admin_run_now_reports_global_refresh_lock_conflict(monkeypatch) -> None
         app.dependency_overrides.clear()
 
 
+
+def test_immowelt_busy_worker_releases_only_its_bound_ticket(monkeypatch, tmp_path: Path) -> None:
+    from app.crawling.immowelt_operator_ready import (
+        arm_operator_readiness,
+        bind_operator_readiness,
+        read_operator_readiness,
+        release_operator_readiness,
+    )
+
+    root = tmp_path / "immowelt"
+    arm_operator_readiness(root)
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+    db = _SourceControlDb(source)
+
+    def override_db():
+        yield db
+
+    class BusyProcess:
+        def poll(self):
+            return 75
+
+    monkeypatch.setattr(
+        "app.ops.source_run_plan",
+        lambda name: SimpleNamespace(source_name=name),
+    )
+    monkeypatch.setattr("app.ops.subprocess.Popen", lambda *_a, **_kw: BusyProcess())
+    monkeypatch.setattr("app.ops._manual_run_id", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        "app.ops.bind_operator_readiness", lambda rid: bind_operator_readiness(rid, root)
+    )
+    monkeypatch.setattr(
+        "app.ops.release_operator_readiness",
+        lambda rid: release_operator_readiness(rid, root),
+    )
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post("/admin/sources/10/run", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"].endswith("hinweis=refresh_busy")
+        assert read_operator_readiness(root)["state"] == "ready"
+        assert bind_operator_readiness("second-manual-attempt", root)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_immowelt_popen_error_restores_ready_ticket(monkeypatch, tmp_path: Path) -> None:
+    from app.crawling.immowelt_operator_ready import (
+        arm_operator_readiness,
+        bind_operator_readiness,
+        read_operator_readiness,
+        release_operator_readiness,
+    )
+
+    root = tmp_path / "immowelt"
+    arm_operator_readiness(root)
+    source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
+    db = _SourceControlDb(source)
+
+    def override_db():
+        yield db
+
+    def cannot_spawn(*_a, **_kw):
+        raise OSError("mock worker launch error")
+
+    monkeypatch.setattr(
+        "app.ops.source_run_plan",
+        lambda name: SimpleNamespace(source_name=name),
+    )
+    monkeypatch.setattr("app.ops.subprocess.Popen", cannot_spawn)
+    monkeypatch.setattr(
+        "app.ops.bind_operator_readiness", lambda rid: bind_operator_readiness(rid, root)
+    )
+    monkeypatch.setattr(
+        "app.ops.release_operator_readiness",
+        lambda rid: release_operator_readiness(rid, root),
+    )
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    app.dependency_overrides[require_csrf] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post("/admin/sources/10/run", follow_redirects=False)
+        assert response.status_code == 503
+        assert read_operator_readiness(root)["state"] == "ready"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_admin_health_run_started_notice_includes_run_id(monkeypatch) -> None:
     snapshot = OpsSnapshot(
         active_properties=0,
