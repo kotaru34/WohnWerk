@@ -148,7 +148,7 @@ async def test_scheduled_run_never_claims_manually_bound_ticket(
 
     fallback = Fallback()
     handler = ImmoweltOperatorChallengeHandler(
-        fallback, root=root, arm_grace_seconds=0
+        fallback, root=root, arm_grace_seconds=30
     )
     context = object()
     page = SimpleNamespace(is_closed=lambda: False)
