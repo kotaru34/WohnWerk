@@ -21,17 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the bounded newest-first Kleinanzeigen German house frontier."
     )
-    parser.add_argument(
-        "--region-pilot",
-        action="store_true",
-        help="Opt in to four verified public state offer frontiers; manual validation only",
-    )
-    parser.add_argument(
-        "--frontier-pages",
-        type=int,
-        default=None,
-        help="Pages per shard (national default 12; regional pilot default 3)",
-    )
+    parser.add_argument("--frontier-pages", type=int, default=12)
     parser.add_argument("--delay", type=float, default=3.0)
     parser.add_argument("--hard-max-pages", type=int, default=40)
     return parser.parse_args()
@@ -84,20 +74,14 @@ def get_or_create_source() -> int:
 
 async def async_main() -> int:
     args = parse_args()
-    pages = args.frontier_pages
-    if pages is None:
-        pages = 3 if args.region_pilot else 12
-    if pages <= 0 or args.hard_max_pages <= 0:
+    if args.frontier_pages <= 0 or args.hard_max_pages <= 0:
         raise SystemExit("--frontier-pages and --hard-max-pages must be positive")
-    if args.region_pilot and pages > 3:
-        raise SystemExit("Regional pilot is capped at 3 pages per state (12 total)")
 
     source_id = get_or_create_source()
     adapter = KleinanzeigenGermanyPropertySource(
         request_delay_seconds=max(2.0, args.delay),
-        frontier_pages=pages,
+        frontier_pages=args.frontier_pages,
         hard_max_pages=args.hard_max_pages,
-        regional_pilot=args.region_pilot,
     )
     with SessionLocal() as session:
         source = session.get(Source, source_id)
