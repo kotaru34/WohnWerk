@@ -30,6 +30,7 @@ SEARCH_ROOT = f"{BASE_URL}/s-haus-kaufen/anzeige:angebote/c208"
 PAGE_SIZE = 25
 DEFAULT_FRONTIER_PAGES = 12
 DEFAULT_HARD_MAX_PAGES = 40
+REGIONAL_FRONTIER_PAGES = 3
 
 # Public regional offer routes checked against Kleinanzeigen pages on 2026-10-09.
 # Explicit pilot only: no change to production scheduled national frontier.
@@ -262,33 +263,40 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         hard_max_pages: int = DEFAULT_HARD_MAX_PAGES,
         timeout_seconds: float = 30.0,
         regional_pilot: bool = False,
+        regional_expansion: bool = False,
     ) -> None:
+        if regional_pilot and regional_expansion:
+            raise ValueError("Regional pilot and expansion modes are mutually exclusive")
         self.request_delay_seconds = max(2.0, request_delay_seconds)
         self.frontier_pages = max(1, frontier_pages)
         self.hard_max_pages = max(self.frontier_pages, hard_max_pages)
         self.timeout_seconds = timeout_seconds
         self.regional_pilot = regional_pilot
+        self.regional_expansion = regional_expansion
         self._requests_made = 0
 
     def default_shards(self) -> list[SourceShardSpec]:
-        if self.regional_pilot:
-            return [
-                SourceShardSpec(
-                    key=f"de-region-{region}",
-                    params={"country_code": "DE", "region_key": region},
-                    result_cap=self.hard_max_pages * PAGE_SIZE,
-                    priority=50,
-                )
-                for region, _code, _label in REGIONAL_PILOT
-            ]
-        return [
+        national = SourceShardSpec(
+            key="de-newest-frontier",
+            params={"country_code": "DE"},
+            result_cap=self.hard_max_pages * PAGE_SIZE,
+            priority=50,
+        )
+        regional = [
             SourceShardSpec(
-                key="de-newest-frontier",
-                params={"country_code": "DE"},
+                key=f"de-region-{region}",
+                params={"country_code": "DE", "region_key": region},
                 result_cap=self.hard_max_pages * PAGE_SIZE,
                 priority=50,
             )
+            for region, _code, _label in REGIONAL_PILOT
         ]
+        if self.regional_pilot:
+            return regional
+        if self.regional_expansion:
+            # Keep the original source shard enabled and its persisted cursor intact.
+            return [national, *regional]
+        return [national]
 
     @staticmethod
     def _page_url(page: int, *, region_key: str | None = None) -> str:
@@ -346,11 +354,13 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
     ) -> SourceBatch[RawProperty]:
         del cursor, reconciliation
         region_key = shard.params.get("region_key")
-        if self.regional_pilot:
+        if region_key is not None:
+            if not (self.regional_pilot or self.regional_expansion):
+                raise ValueError("Regional shard requires enabled regional mode")
             if region_key not in REGIONAL_PILOT_BY_KEY:
-                raise ValueError("Unrecognized configured regional pilot shard")
-        elif region_key is not None:
-            raise ValueError("Regional shard requires regional pilot mode")
+                raise ValueError("Unrecognized configured regional shard")
+        elif self.regional_pilot:
+            raise ValueError("Regional-only pilot cannot fetch the national shard")
         items_by_id: dict[str, RawProperty] = {}
         pages_fetched = 0
         cards_seen = 0
@@ -371,7 +381,9 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                 timeout=self.timeout_seconds,
                 follow_redirects=True,
             ) as client:
-                target_pages = self.frontier_pages
+                target_pages = (
+                    REGIONAL_FRONTIER_PAGES if region_key is not None else self.frontier_pages
+                )
                 for page_number in range(1, target_pages + 1):
                     response = await self._get(
                         client, self._page_url(page_number, region_key=region_key)
