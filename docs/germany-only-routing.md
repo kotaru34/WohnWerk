@@ -39,10 +39,39 @@ separately labeled straight-line km; it never substitutes them for road km.
    plus intentionally unrouteable rows. If validation fails, do not enable
    the flag.
 
-There is no database migration. Existing workplace storage is based on the
-**80997 postal centroid**, not confirmed house-level coordinates; it must
-continue to be labeled approximate until a separate street-level geocoding
-step is verified. Never claim door-to-door precision from postal centroids.
+There is no database migration. Older workplace records currently retain the
+**80997 postal centroid** until address geocoding is explicitly opted in and
+a full, manually entered street address is re-saved. A PLZ centroid is
+always displayed as approximate; it is never claimed to be door-to-door.
+
+## Operator-controlled street-address geocoding (not enabled on the server)
+
+Setting `WOHNWERK_WORKPLACE_GEOCODING_ENABLED=true` permits a **manual
+workplace settings save** to send the *workplace address* to the configured
+geocoder, defaulting to the public OSM Nominatim service. This can disclose
+the address and IP to a third party; review privacy expectations first. No
+property listings, jobs, bulk lookups, or page-load refreshes invoke it.
+The request supplies a distinct application User-Agent, requests at most
+five candidates in one search, is throttled on a per-process basis, and
+stores verified or unverified outcomes to avoid repeat queries on unchanged
+text. Do not configure multiple independent public-API workers without
+a **shared** rate limit. The public service allows at most 1 request/second,
+requires attribution and identifiable User-Agent, and can change its
+availability; see https://operations.osmfoundation.org/policies/nominatim/.
+
+Only a returned matching `DE` country, 5-digit PLZ, road and **house number**
+within 15 km of the known PLZ centroid is accepted as street-level evidence.
+Multiple far-apart candidates are rejected. A failed or incomplete match
+keeps PLZ-level coordinates labeled **approximate**. Existing identical
+street addresses saved before opt-in are checked once after opt-in and then
+cached. Correcting or changing the saved address initiates a new attempt.
+Road **distance** still independently requires the Germany OSRM cutover
+and its explicit graph-coverage setting; enabling the geocoder alone does
+not silently enable routing.
+
+When street coordinates are accepted, the UI displays OpenStreetMap
+attribution; these coordinates are not evidence that every property
+has a precise location.
 
 ## Additional German property providers
 
