@@ -45,7 +45,7 @@ class _Body:
         self.value = value
 
     async def inner_text(self, *, timeout: int) -> str:
-        assert timeout == 1000
+        assert timeout == 200
         return self.value
 
 
