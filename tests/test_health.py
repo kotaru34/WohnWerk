@@ -16,4 +16,4 @@ def test_health() -> None:
     assert payload["service"] == "wohnwerk"
     assert payload["version"] == __version__
     assert payload["job_concept_extractor"] == EXTRACTOR_VERSION
-    assert payload["country"] == "AT"
+    assert payload["country"] == "DE"
