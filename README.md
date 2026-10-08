@@ -1,52 +1,45 @@
 # WohnWerk
 
-Self-hosted Austrian/German property acquisition and recommendation system with the proven Austrian job workflow.
+Private self-hosted **Germany-only** house-discovery and suitability system.
 
-The stable Austria-only release is frozen on `release/v1-austria`. Development on
-`feature/germany` preserves the same matching, lifecycle and fail-closed coverage logic while
-adding a `DE / AT` country scope.
+## Scope
 
-Fresh development contexts should read `HANDOFF.md` first and then `docs/germany_mvp.md` before
-making changes. `HANDOFF.md` is the authoritative operational checkpoint; `docs/germany_mvp.md`
-records the Germany product/UI/acquisition contract and legal/operational guardrails.
+- Current country: Germany (`DE`), purchase price target **€30,000–200,000**.
+- Profile-managed German postcode exclusions, hospital and internet checks, heating
+  preferences, favourites and visibility states.
+- User-configured workplace address (currently Ambossstraße 4, 80997 München) and
+  house-to-work distances. The stored workplace point currently uses the **postal
+  centroid**, not a verified door-level coordinate.
+- Germany job acquisition remains paused.
 
-## Market sources
+## German property discovery
 
-- AT properties: `immmo.at`, `sreal.at`, plus configured OpenImmo feeds.
-- DE properties: `immoscout24-de`, `immowelt-de`, plus configured OpenImmo feeds.
-- DE jobs: currently paused; dormant adapters are not part of the automatic scheduler.
-- Existing Austrian job and employer-ATS sources remain unchanged.
+Current production-validated scheduled German sources include `kleinanzeigen-de`,
+`engel-voelkers-de`, `iad-de`, and `falc-de`. The Immowelt path is provider-
+restricted and must fail closed; ImmoScout24, VON POLL and RE/MAX are manual
+diagnostics only pending valid public access.
 
-The German portal adapters retain only the source-backed data needed by WohnWerk and link back to
-the original listing. Current Germany house acquisition/product target is EUR 30,000..200,000.
-Immowelt requests ordinary `Buy` listings only; explicit auction evidence is retained but locally
-rejected instead of being silently discarded. Local Germany suitability can additionally reject
-profile-managed PLZ values/masks (for example `01067` or `0xxxx`) while keeping those houses
-inspectable in an explicit rejected view with reason tags. A profile-scoped workplace can be
-configured independently of job acquisition; cards/details show defensible air distance and,
-when the configured router has coverage, road distance/time without making commute a hard reject.
-Incremental scans request the newest
-pages; disappearance is accepted only after every applicable shard completes a full authoritative
-scan below its safety cap.
+The open regional Kleinanzeigen change is under PR #60; it is not assumed deployed.
+Two additional account-free direct portal adapters are staged under PR #61:
+`ohne-makler-de` and `immobilien-de`. They are **manual diagnostics**, not
+production-scheduled or live-validated sources.
 
-## German data bootstrap
+Source identities and URLs are preserved. A bounded public search frontier never
+proves that a missing ad has been removed. No guessed prices, house coordinates,
+source area semantics, or source liveness.
 
-```bash
-alembic upgrade head
-python scripts/import_german_postal_codes.py
-playwright install chromium
-python scripts/run_immowelt_de.py
-```
+## Safe commute routing
 
-ImmoScout24 DE remains paused on the current production environment. Immowelt uses ordinary browser
-rendering and persists a resumable checkpoint when it encounters a challenge. The external challenge
-handler is operator-owned; WohnWerk owns only the integration boundary and does not modify the
-handler implementation.
+Only use OSRM kilometres/minutes after the actual server loads a Germany road graph.
+The checked-in service expects `/var/lib/osrm/germany-latest.osrm`. Road routing
+requires explicit `WOHNWERK_ROUTING_GRAPH_COUNTRIES=DE` **after** validating the
+actual OSRM dataset and waypoint snapping. Unreliable routes are withheld, leaving
+a separately labelled straight-line metric. See
+[`docs/germany-only-routing.md`](docs/germany-only-routing.md).
 
-See also:
+## Setup and rollout
 
-- `docs/germany_mvp.md` — Germany MVP goal, DE/AT UX, retention/access rules and rollout gate;
-- `docs/acquisition.md` — sharding, incremental and reconciliation authority;
-- `docs/sources.md` — source-specific acquisition policy and planning;
-- `docs/requirements.md` — broader product requirements; older parts remain Austria-first where a
-  Germany-specific rule has not yet been folded in.
+See `docs/germany_mvp.md`, `docs/acquisition.md`, and `docs/sources.md`
+for implementation/retention policies. Each release requires an exact-head
+successful CI gate and a separately authorized production deployment. A GitHub
+pull request does not imply an active source or deployed server change.
