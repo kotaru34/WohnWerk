@@ -17,6 +17,10 @@ from app.models import PostalCode, Property
 from app.postal_codes_de import GEONAMES_SOURCE
 from app.property_location_filter import PropertyFilterCenter, resolve_property_filter_center
 from app.routing import OSRMClient, RoutingError, RoutingPoint
+from app.workplace_geocoding import (
+    geocode_german_workplace,
+    parse_german_street_address,
+)
 
 _SUPPORTED_COUNTRIES = {"AT", "DE"}
 _POSTAL_PATTERNS = {
@@ -157,6 +161,29 @@ def resolve_candidate_workplace(
         city = text
         method = "locality_centroid"
 
+    # A PLZ centroid is not an address coordinate. Exact address lookup is
+    # manually opt-in, single-request and never applied to scraped listings.
+    settings = get_settings()
+    if country == "DE" and settings.workplace_geocoding_enabled and postal_code:
+        street = parse_german_street_address(text)
+        if street is not None and street.postal_code == postal_code:
+            precise_center = geocode_german_workplace(
+                street,
+                postal_centroid=center,
+                base_url=settings.workplace_geocoding_base_url,
+                user_agent=settings.workplace_geocoding_user_agent,
+                timeout_seconds=settings.workplace_geocoding_timeout_seconds,
+                max_centroid_distance_km=settings.workplace_geocoding_max_postal_centroid_km,
+            )
+            if precise_center is not None:
+                center = precise_center
+                source = "OpenStreetMap/Nominatim"
+                method = "verified_street_address"
+            else:
+                # Cache a failed attempt: do not repeatedly query a public
+                # geocoder for an unchanged address on unrelated settings saves.
+                method = "street_address_unverified"
+
     return WorkplaceResolution(
         country_code=country,
         input_text=text,
@@ -195,10 +222,28 @@ def save_candidate_workplace(
                 session.commit()
         return None
 
+    # Settings forms can be saved many times without changing the workplace.
+    # Reuse cached address evidence; allow one legacy PLZ-centroid upgrade when
+    # an operator subsequently enables the address-geocoding integration.
+    normalized_country = normalize_workplace_country(country_code)
+    normalized_text = " ".join(text.split())
+    if (
+        row is not None
+        and row.country_code == normalized_country
+        and row.input_text == normalized_text
+        and not (
+            normalized_country == "DE"
+            and get_settings().workplace_geocoding_enabled
+            and row.resolution_method == "explicit_postal_centroid"
+            and parse_german_street_address(normalized_text) is not None
+        )
+    ):
+        return row
+
     resolution = resolve_candidate_workplace(
         session,
-        country_code=country_code,
-        input_text=text,
+        country_code=normalized_country,
+        input_text=normalized_text,
     )
     if row is None:
         row = CandidateWorkplace(
