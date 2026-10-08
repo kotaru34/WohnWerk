@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
 from html.parser import HTMLParser
+from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 _IMMOWELT_HOSTS = frozenset({"immowelt.de", "www.immowelt.de"})
@@ -112,3 +113,18 @@ def extract_alert_listings(message_bytes: bytes) -> list[ImmoweltAlertListing]:
             if old is None or (old.title is None and title):
                 listings[listing_id] = ImmoweltAlertListing(listing_id, url, title)
     return list(listings.values())
+
+
+def extract_alert_files(paths: list[Path]) -> list[ImmoweltAlertListing]:
+    """Read bounded local exports and deduplicate across saved-search messages."""
+    found: dict[str, ImmoweltAlertListing] = {}
+    for path in paths:
+        if path.suffix.lower() != ".eml":
+            raise ValueError(f"Expected .eml file: {path.name}")
+        if not path.is_file() or path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError(f"Input must be a local EML of at most 8 MiB: {path.name}")
+        for listing in extract_alert_listings(path.read_bytes()):
+            previous = found.get(listing.source_listing_id)
+            if previous is None or (previous.title is None and listing.title):
+                found[listing.source_listing_id] = listing
+    return list(found.values())
