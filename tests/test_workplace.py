@@ -17,7 +17,8 @@ def test_extract_explicit_postal_code_from_full_input() -> None:
         )
         == "01067"
     )
-    assert workplace.extract_explicit_postal_code("AT", "5020 Salzburg") == "5020"
+    with pytest.raises(ValueError, match="muss DE sein"):
+        workplace.extract_explicit_postal_code("AT", "5020 Salzburg")
 
 
 def test_multiple_postal_codes_are_rejected() -> None:
