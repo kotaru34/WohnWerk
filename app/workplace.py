@@ -344,7 +344,7 @@ def load_workplace_distances(
 
 
 def routing_graph_supports(country: str | None, configured_countries: str) -> bool:
-    """A routing graph must cover *both* countries of a workplace journey."""
+    """Allow routing only for countries explicitly verified in the loaded graph."""
     return bool(country) and country.strip().upper() in {
         part.strip().upper() for part in configured_countries.split(",") if part.strip()
     }
@@ -358,8 +358,8 @@ def load_workplace_distances_for_ui(
     settings = get_settings()
     workplace = load_candidate_workplace(session, profile_id)
     property_country = selected_country() or settings.country_code
-    # A single-country road graph must never masquerade as a cross-border route.
-    # Keep the air distance until the service actually loads a DE+AT graph.
+    # This installation searches German houses and commutes to a German workplace.
+    # Unknown/mismatched router coverage must never yield a fabricated road distance.
     if (
         not settings.routing_enabled
         or workplace is None
