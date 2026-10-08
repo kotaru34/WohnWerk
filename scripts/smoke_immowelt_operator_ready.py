@@ -16,7 +16,6 @@ from playwright.async_api import async_playwright
 from app.crawling.challenge import ChallengeRequest, ChallengeResult
 from app.crawling.immowelt_operator_handoff import (
     ImmoweltOperatorChallengeHandler,
-    operator_run_dir,
     read_operator_status,
     register_live_operator_session,
     unregister_live_operator_session,
