@@ -50,7 +50,7 @@ def parse_german_street_address(value: str) -> StreetAddress | None:
 def _comparable(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).casefold()
     value = value.replace("ß", "ss").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
-    value = re.sub(r"\bstr(?:asse|aße|\.)?\b", "strasse", value)
+    value = re.sub(r"str\\.?$", "strasse", value)
     value = re.sub(r"[^a-z0-9]", "", value)
     return value
 
