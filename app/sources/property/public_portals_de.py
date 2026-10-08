@@ -37,7 +37,7 @@ class Portal:
 
 OHNE_MAKLER = Portal(
     "ohne-makler-de", "https://www.ohne-makler.net",
-    "/immobilien/haus-immobilien/", "/immobilie/",
+    "/immobilien/haus-kaufen/", "/immobilie/",
 )
 IMMOBILIEN_DE = Portal(
     "immobilien-de", "https://www.immobilien.de", "/kaufen/haus/", "/expose/",
@@ -174,13 +174,20 @@ class PublicGermanHouseSource(PropertySource):
     def name(self) -> str:
         return self.portal.name
 
+    def frontier_paths(self) -> dict[str, str]:
+        """Only operator-audited, explicitly enumerated public search pages."""
+        return {"de-public-frontier": self.portal.search_path}
+
     def default_shards(self) -> list[SourceShardSpec]:
-        return [SourceShardSpec(
-            key="de-public-frontier",
-            params={"country_code": "DE"},
-            result_cap=50,
-            priority=100,
-        )]
+        return [
+            SourceShardSpec(
+                key=key,
+                params={"country_code": "DE"},
+                result_cap=50,
+                priority=100 + order * 10,
+            )
+            for order, key in enumerate(self.frontier_paths())
+        ]
 
     async def fetch_shard(
         self,
@@ -190,10 +197,11 @@ class PublicGermanHouseSource(PropertySource):
         reconciliation: bool = False,
     ) -> SourceBatch[RawProperty]:
         del cursor
-        if reconciliation or shard.key != "de-public-frontier":
-            raise SourceFetchError("Public portal supports bounded discovery only")
+        path = self.frontier_paths().get(shard.key)
+        if reconciliation or path is None:
+            raise SourceFetchError("Public portal supports whitelisted bounded discovery only")
         await asyncio.sleep(self.delay_seconds * random.uniform(0.85, 1.2))
-        url = self.portal.base_url + self.portal.search_path
+        url = self.portal.base_url + path
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout_seconds,
@@ -218,7 +226,11 @@ class PublicGermanHouseSource(PropertySource):
                     source_reported_count=None,
                     coverage_complete=False,
                     pages_fetched=1,
-                    next_cursor={"country_code": "DE", "frontier_cards_seen": seen},
+                    next_cursor={
+                        "country_code": "DE",
+                        "frontier_cards_seen": seen,
+                        "frontier_key": shard.key,
+                    },
                 )
         except (httpx.HTTPError, RuntimeError) as exc:
             raise SourceFetchError(
@@ -233,3 +245,15 @@ class OhneMaklerGermanyPropertySource(PublicGermanHouseSource):
 
 class ImmobilienDeGermanyPropertySource(PublicGermanHouseSource):
     portal = IMMOBILIEN_DE
+
+    def frontier_paths(self) -> dict[str, str]:
+        # These are public, independently confirmed buy-house landing pages.
+        # Multiple regional first pages avoid relying exclusively on the
+        # national site's expensive, popularity-ranked first page.
+        return {
+            "de-public-frontier": self.portal.search_path,
+            "de-neubrandenburg": "/kaufen/haus/neubrandenburg/",
+            "de-gangelt": "/kaufen/haus/gangelt/",
+            "de-homburg": "/kaufen/haus/homburg/",
+            "de-hagenow": "/kaufen/haus/hagenow/",
+        }
