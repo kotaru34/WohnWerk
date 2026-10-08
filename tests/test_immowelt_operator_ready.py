@@ -164,6 +164,29 @@ async def test_scheduled_run_never_claims_manually_bound_ticket(
     assert read_operator_status(operator_run_dir(123, root=root))["state"] == "idle"
 
 
+def test_scheduled_immowelt_skips_paused_interactive_gate() -> None:
+    from scripts.run_immowelt_de import _requires_manual_operator
+
+    paused = SimpleNamespace(
+        id=5946,
+        status="paused",
+        run_metadata={
+            "active_challenge": {"challenge": {"datadome_challenge_type": "fe"}}
+        },
+    )
+    assert _requires_manual_operator(paused)
+    paused.run_metadata = {
+        "active_challenge": {"challenge": {"datadome_challenge_type": "bv"}}
+    }
+    assert _requires_manual_operator(paused)
+    paused.run_metadata = {
+        "active_challenge": {"challenge": {"datadome_challenge_type": "none"}}
+    }
+    assert not _requires_manual_operator(paused)
+    paused.status = "success"
+    assert not _requires_manual_operator(paused)
+
+
 def test_admin_operator_readiness_requires_admin_and_csrf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
