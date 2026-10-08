@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, HTTPException, Query, Request, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -29,6 +29,7 @@ from app.crawling.immowelt_operator_handoff import (
     prepare_fresh_operator_reverification,
     read_operator_status,
 )
+from app.crawling.immowelt_mail_alerts import extract_alert_listings
 from app.crawling.immowelt_operator_ready import (
     arm_operator_readiness,
     bind_operator_readiness,
@@ -1135,6 +1136,58 @@ def challenge_handoff_cancel(
     _run, _source, _active, _state_dir, run_dir = _immowelt_challenge_context(db, run_id)
     enqueue_operator_pointer(run_dir, phase="cancel")
     return RedirectResponse("/admin/health?hinweis=challenge_cancelled", status_code=303)
+
+
+@router.get("/immowelt-alerts")
+def immowelt_saved_search_alerts_page(
+    request: Request,
+    _: AdminDependency,
+):
+    """Preview official user-exported saved-search messages without provider HTTP."""
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_immowelt_mail_alerts.html",
+        context={"csrf_token": _csrf_token(), "offers": None, "error": None},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/immowelt-alerts")
+def immowelt_saved_search_alerts_preview(
+    request: Request,
+    _: AdminDependency,
+    __: CsrfDependency,
+    emails: list[UploadFile] = File(...),
+):
+    """Parse a bounded number of owned .eml messages; do not persist raw mail."""
+    listings: dict[str, object] = {}
+    problem = None
+    if not 1 <= len(emails) <= 10:
+        problem = "Bitte 1 bis 10 EML-Dateien hochladen."
+    else:
+        for upload in emails:
+            if not (upload.filename or "").lower().endswith(".eml"):
+                problem = "Nur exportierte .eml-Dateien sind erlaubt."
+                break
+            # Enforce bounds while reading; never persist mail or query Immowelt.
+            raw = upload.file.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                problem = "Eine EML-Datei ist größer als 2 MiB."
+                break
+            for item in extract_alert_listings(raw):
+                current = listings.get(item.source_listing_id)
+                if current is None or (current.title is None and item.title):
+                    listings[item.source_listing_id] = item
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_immowelt_mail_alerts.html",
+        context={
+            "csrf_token": _csrf_token(),
+            "offers": list(listings.values()) if problem is None else None,
+            "error": problem,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/health")
