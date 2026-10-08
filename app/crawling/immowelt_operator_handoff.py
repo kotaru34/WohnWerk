@@ -15,6 +15,7 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
+from app.crawling.immowelt_operator_ready import consume_operator_readiness
 from app.crawling.immowelt_access import immowelt_access_restricted
 from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
 
@@ -428,6 +429,17 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
             return ChallengeResult(action="defer", message="invalid operator handoff state directory")
 
         live_session = live_operator_session(state_dir)
+        # Pre-armed readiness is valid only for this explicitly initiated manual
+        # run. The original Playwright Page/Context must still be alive here.
+        # A scheduled refresh has no matching manual request ID and never waits.
+        if live_session is not None and consume_operator_readiness(
+            request.run_id, root=self.root
+        ):
+            arm_operator_handoff(
+                request.run_id,
+                {"challenge": request.challenge, "handoff_state": request.handoff_state},
+                root=self.root,
+            )
         if not _approval_is_active(request.run_id, run_dir):
             if live_session is None or self.arm_grace_seconds <= 0:
                 return await self.fallback.handle(request)
