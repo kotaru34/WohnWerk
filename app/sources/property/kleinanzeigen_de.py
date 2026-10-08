@@ -31,6 +31,19 @@ PAGE_SIZE = 25
 DEFAULT_FRONTIER_PAGES = 12
 DEFAULT_HARD_MAX_PAGES = 40
 
+# Public regional offer routes checked against Kleinanzeigen pages on 2026-10-09.
+# Explicit pilot only: no change to production scheduled national frontier.
+# More regions/price filters require separately validated public routes.
+REGIONAL_PILOT: tuple[tuple[str, str, str], ...] = (
+    ("sachsen", "3799", "Sachsen"),
+    ("thueringen", "3548", "Thüringen"),
+    ("brandenburg", "7711", "Brandenburg"),
+    ("nordrhein-westfalen", "928", "Nordrhein-Westfalen"),
+)
+REGIONAL_PILOT_BY_KEY = {
+    key: (code, label) for key, code, label in REGIONAL_PILOT
+}
+
 _AD_PATH_RE = re.compile(
     r"^/s-anzeige/[^/?#]+/(?P<listing_id>\d+)-208-\d+/?$",
     re.IGNORECASE,
@@ -248,14 +261,26 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         frontier_pages: int = DEFAULT_FRONTIER_PAGES,
         hard_max_pages: int = DEFAULT_HARD_MAX_PAGES,
         timeout_seconds: float = 30.0,
+        regional_pilot: bool = False,
     ) -> None:
         self.request_delay_seconds = max(2.0, request_delay_seconds)
         self.frontier_pages = max(1, frontier_pages)
         self.hard_max_pages = max(self.frontier_pages, hard_max_pages)
         self.timeout_seconds = timeout_seconds
+        self.regional_pilot = regional_pilot
         self._requests_made = 0
 
     def default_shards(self) -> list[SourceShardSpec]:
+        if self.regional_pilot:
+            return [
+                SourceShardSpec(
+                    key=f"de-region-{region}",
+                    params={"country_code": "DE", "region_key": region},
+                    result_cap=self.hard_max_pages * PAGE_SIZE,
+                    priority=50,
+                )
+                for region, _code, _label in REGIONAL_PILOT
+            ]
         return [
             SourceShardSpec(
                 key="de-newest-frontier",
@@ -266,7 +291,13 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         ]
 
     @staticmethod
-    def _page_url(page: int) -> str:
+    def _page_url(page: int, *, region_key: str | None = None) -> str:
+        if region_key is not None:
+            code, _label = REGIONAL_PILOT_BY_KEY[region_key]
+            root = f"{BASE_URL}/s-haus-kaufen/{region_key}/anzeige:angebote"
+            if page <= 1:
+                return f"{root}/c208l{code}"
+            return f"{root}/seite:{page}/c208l{code}"
         if page <= 1:
             return SEARCH_ROOT
         return f"{BASE_URL}/s-haus-kaufen/seite:{page}/anzeige:angebote/c208"
@@ -313,7 +344,13 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         cursor: dict[str, Any] | None = None,
         reconciliation: bool = False,
     ) -> SourceBatch[RawProperty]:
-        del shard, cursor, reconciliation
+        del cursor, reconciliation
+        region_key = shard.params.get("region_key")
+        if self.regional_pilot:
+            if region_key not in REGIONAL_PILOT_BY_KEY:
+                raise ValueError("Unrecognized configured regional pilot shard")
+        elif region_key is not None:
+            raise ValueError("Regional shard requires regional pilot mode")
         items_by_id: dict[str, RawProperty] = {}
         pages_fetched = 0
         cards_seen = 0
@@ -336,7 +373,23 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
             ) as client:
                 target_pages = self.frontier_pages
                 for page_number in range(1, target_pages + 1):
-                    response = await self._get(client, self._page_url(page_number))
+                    response = await self._get(
+                        client, self._page_url(page_number, region_key=region_key)
+                    )
+                    if region_key is not None:
+                        code, label = REGIONAL_PILOT_BY_KEY[region_key]
+                        # Fail closed if a stale or invalid region is silently redirected
+                        # to the nationwide frontier. A 200 response is insufficient.
+                        path = response.url.path
+                        if (
+                            f"/{region_key}/" not in path
+                            or not path.endswith(f"/c208l{code}")
+                            or f"Häuser zum Kauf in {label}" not in response.text
+                        ):
+                            raise SourceFetchError(
+                                "Kleinanzeigen regional search scope was lost",
+                                halt_source=True,
+                            )
                     page = parse_kleinanzeigen_search_page(
                         response.text,
                         page_url=str(response.url),
@@ -367,6 +420,7 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                     "frontier_out_of_budget_cards": out_of_budget_cards,
                     "frontier_source_max_page": source_max_page,
                     "country_code": "DE",
+                    **({"region_key": region_key} if region_key else {}),
                 }
                 raise
             raise SourceFetchError(
@@ -381,6 +435,7 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                     "frontier_out_of_budget_cards": out_of_budget_cards,
                     "frontier_source_max_page": source_max_page,
                     "country_code": "DE",
+                    **({"region_key": region_key} if region_key else {}),
                 },
             ) from exc
 
@@ -396,6 +451,7 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                 "frontier_out_of_budget_cards": out_of_budget_cards,
                 "frontier_source_max_page": source_max_page,
                 "country_code": "DE",
+                **({"region_key": region_key} if region_key else {}),
             },
             source_reported_count=source_reported_count,
             coverage_complete=False,
