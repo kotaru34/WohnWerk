@@ -14,6 +14,8 @@ def test_osrm_table_returns_distance_and_duration() -> None:
             200,
             json={
                 "code": "Ok",
+                "sources": [{"distance": 15.0}],
+                "destinations": [{"distance": 20.0}, {"distance": 30.0}],
                 "distances": [[1234.0, None]],
                 "durations": [[120.0, None]],
             },
@@ -49,6 +51,8 @@ def test_osrm_table_chunks_to_server_coordinate_limit() -> None:
             200,
             json={
                 "code": "Ok",
+                "sources": [{"distance": 10.0}],
+                "destinations": [{"distance": 10.0}] * destination_count,
                 "distances": [[1000.0] * destination_count],
                 "durations": [[60.0] * destination_count],
             },
@@ -94,3 +98,53 @@ def test_routing_point_validates_coordinate_range() -> None:
 
     with pytest.raises(ValueError):
         RoutingPoint(longitude=16.37, latitude=91.0)
+
+
+def test_osrm_rejects_far_snapped_source() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 120_000.0}],
+            "destinations": [{"distance": 10.0}],
+            "distances": [[1000.0]],
+            "durations": [[60.0]],
+        })
+    ))
+    router = OSRMClient("http://router.test", client=client)
+    with pytest.raises(RoutingError, match="outside its loaded road network"):
+        router.table(
+            RoutingPoint(longitude=11.46, latitude=48.18),
+            [RoutingPoint(longitude=11.50, latitude=48.20)],
+        )
+
+
+def test_osrm_far_snapped_destination_is_unreachable() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 10.0}],
+            "destinations": [{"distance": 80_000.0}],
+            "distances": [[1000.0]],
+            "durations": [[60.0]],
+        })
+    ))
+    estimate = OSRMClient("http://router.test", client=client).table(
+        RoutingPoint(longitude=11.46, latitude=48.18),
+        [RoutingPoint(longitude=11.50, latitude=48.20)],
+    )[0]
+    assert estimate.reachable is False
+
+
+def test_osrm_missing_snap_evidence_fails_closed() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "distances": [[1000.0]],
+            "durations": [[60.0]],
+        })
+    ))
+    with pytest.raises(RoutingError, match="invalid sources"):
+        OSRMClient("http://router.test", client=client).table(
+            RoutingPoint(longitude=11.46, latitude=48.18),
+            [RoutingPoint(longitude=11.50, latitude=48.20)],
+        )
