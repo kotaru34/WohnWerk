@@ -3,8 +3,11 @@ from decimal import Decimal
 import httpx
 import pytest
 
+from app.sources.base import SourceFetchError
+
 from app.sources.property.kleinanzeigen_de import (
     KleinanzeigenGermanyPropertySource,
+    REGIONAL_PILOT,
     parse_kleinanzeigen_search_page,
 )
 
@@ -115,3 +118,119 @@ async def test_frontier_never_claims_reconciliation_authority(monkeypatch) -> No
     assert batch.result_cap_hit is True
     assert batch.pages_fetched == 1
     assert len(batch.items) == 1
+
+
+def test_regional_pilot_has_four_validated_public_state_frontiers() -> None:
+    national = KleinanzeigenGermanyPropertySource(frontier_pages=12)
+    assert [s.key for s in national.default_shards()] == ["de-newest-frontier"]
+
+    pilot = KleinanzeigenGermanyPropertySource(frontier_pages=3, regional_pilot=True)
+    shards = pilot.default_shards()
+    assert len(shards) == 4
+    assert {s.params["region_key"] for s in shards} == {
+        "sachsen", "thueringen", "brandenburg", "nordrhein-westfalen"
+    }
+    assert all(s.params["country_code"] == "DE" for s in shards)
+    assert sum([3] * len(shards)) == 12  # same number of pages as national baseline
+    assert len(REGIONAL_PILOT) == len(shards)
+
+    assert pilot._page_url(1, region_key="sachsen") == (
+        "https://www.kleinanzeigen.de/s-haus-kaufen/"
+        "sachsen/anzeige:angebote/c208l3799"
+    )
+    assert pilot._page_url(2, region_key="sachsen") == (
+        "https://www.kleinanzeigen.de/s-haus-kaufen/"
+        "sachsen/anzeige:angebote/seite:2/c208l3799"
+    )
+
+
+def test_parser_supports_actual_state_result_counts() -> None:
+    html = _page_html().replace(
+        "Häuser zum Kauf 1 - 25 von 200.707 Ergebnissen in Deutschland",
+        "Häuser zum Kauf in Sachsen 1 - 25 von 9.865 Ergebnissen in Sachsen",
+    )
+    parsed = parse_kleinanzeigen_search_page(
+        html,
+        page_url="https://www.kleinanzeigen.de/s-haus-kaufen/"
+        "sachsen/anzeige:angebote/c208l3799",
+    )
+    assert parsed.source_reported_count == 9865
+    assert parsed.cards_seen == 2
+    assert len(parsed.items) == 1
+
+
+@pytest.mark.asyncio
+async def test_regional_pilot_uses_independent_shard_pages_and_keeps_degraded(
+    monkeypatch,
+) -> None:
+    requested = []
+    class Probe(KleinanzeigenGermanyPropertySource):
+        async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+            del client
+            requested.append(url)
+            region = next(key for key, _code, _label in REGIONAL_PILOT if f"/{key}/" in url)
+            label = next(label for key, _code, label in REGIONAL_PILOT if key == region)
+            return httpx.Response(
+                200,
+                text=_page_html().replace(
+                    "Häuser zum Kauf 1 - 25 von 200.707 Ergebnissen in Deutschland",
+                    f"Häuser zum Kauf in {label} 1 - 25 von 100 Ergebnissen in {label}",
+                ),
+                request=httpx.Request("GET", url),
+            )
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        "app.sources.property.kleinanzeigen_de.httpx.AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    pilot = Probe(frontier_pages=3, regional_pilot=True)
+    batches = [
+        await pilot.fetch_shard(shard, reconciliation=True)
+        for shard in pilot.default_shards()
+    ]
+    assert len(requested) == 12
+    assert all(not batch.coverage_complete and batch.result_cap_hit for batch in batches)
+    assert all(batch.pages_fetched == 3 and len(batch.items) == 1 for batch in batches)
+    assert all("region_key" in batch.next_cursor for batch in batches)
+    assert len({b.next_cursor["region_key"] for b in batches}) == 4
+
+
+@pytest.mark.asyncio
+async def test_region_pilot_fails_closed_when_scope_redirects_to_nationwide(
+    monkeypatch,
+) -> None:
+    class Misrouted(KleinanzeigenGermanyPropertySource):
+        async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+            del client, url
+            return httpx.Response(
+                200,
+                text=_page_html(),
+                request=httpx.Request(
+                    "GET", "https://www.kleinanzeigen.de/s-haus-kaufen/"
+                    "anzeige:angebote/c208"
+                ),
+            )
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        "app.sources.property.kleinanzeigen_de.httpx.AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+    pilot = Misrouted(frontier_pages=3, regional_pilot=True)
+    with pytest.raises(SourceFetchError, match="scope was lost") as err:
+        await pilot.fetch_shard(pilot.default_shards()[0])
+    assert err.value.halt_source is True
+    assert err.value.pages_fetched == 0
+    assert err.value.items_seen == 0
