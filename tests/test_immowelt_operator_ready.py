@@ -25,8 +25,8 @@ from app.crawling.immowelt_operator_ready import (
     clear_operator_readiness,
     consume_operator_readiness,
     read_operator_readiness,
-    requires_manual_immowelt_operator,
     ready_path,
+    requires_manual_immowelt_operator,
 )
 from app.database import get_db
 from app.main import app
