@@ -20,7 +20,7 @@ settings = get_settings()
 
 app = FastAPI(
     title="WohnWerk",
-    description="Austria + Germany home and job matching service",
+    description="Germany-only property discovery and suitability service",
     version=__version__,
 )
 app.add_middleware(PropertyPageLivenessMiddleware)
