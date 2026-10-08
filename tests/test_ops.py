@@ -581,7 +581,7 @@ def test_admin_health_run_resumed_notice_includes_run_id(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None:
+def test_challenge_approve_attaches_to_waiting_live_process_even_if_activation_is_slow(monkeypatch) -> None:
     source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
     run = SimpleNamespace(
         id=5854,
@@ -608,7 +608,9 @@ def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None
         yield db
 
     def fake_arm(_run_id, _active):
-        state["value"] = "active"
+        # The original crawler may not publish state=active immediately.
+        # Approval must never spawn a second browser/refresh during that wait.
+        assert state["value"] == "awaiting_approval"
         return Path("/tmp/run-5854")
 
     monkeypatch.setattr("app.ops.operator_run_dir", lambda _run_id: Path("/tmp/run-5854"))
