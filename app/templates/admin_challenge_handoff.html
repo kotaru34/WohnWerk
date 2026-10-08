@@ -62,6 +62,7 @@
   let interactive = false;
   let lastMove = 0;
   let pointerQueue = Promise.resolve();
+  let pointerTransportFailed = false;
 
   function coords(event) {
     const rect = frame.getBoundingClientRect();
@@ -80,13 +81,20 @@
       y: String(pos.y),
     });
     pointerQueue = pointerQueue
-      .then(() => fetch(`/admin/challenges/${runId}/pointer`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {"Content-Type": "application/x-www-form-urlencoded"},
-        body,
-      }))
-      .catch(() => {});
+      .then(async () => {
+        const response = await fetch(`/admin/challenges/${runId}/pointer`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body,
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+      })
+      .catch(() => {
+        pointerTransportFailed = true;
+        dragging = false;
+        interactive = false;
+      });
   }
 
   frame.addEventListener("pointerdown", (event) => {
@@ -113,7 +121,15 @@
     event.preventDefault();
   });
 
-  frame.addEventListener("pointercancel", () => { dragging = false; });
+  function releaseCancelledPointer(event) {
+    if (!dragging) return;
+    dragging = false;
+    // A real pointer cancellation must release a held browser mouse button.
+    // No movement or challenge-solving trajectory is generated.
+    sendPointer("up", event);
+  }
+  frame.addEventListener("pointercancel", releaseCancelledPointer);
+  frame.addEventListener("lostpointercapture", releaseCancelledPointer);
 
   async function poll() {
     if (!dragging) {
@@ -128,7 +144,7 @@
         const payload = await response.json();
         const state = payload.state || "unknown";
         const message = payload.message || "";
-        interactive = state === "active";
+        interactive = state === "active" && !pointerTransportFailed;
         frame.style.cursor = interactive ? "crosshair" : "wait";
         const sessionMode = payload.browser_session === "original_live"
           ? "Originaler Browser und ursprüngliche Challenge-Seite"
@@ -139,7 +155,10 @@
           ? "\nManuelle Pointer-Ereignisse: " + payload.pointer_events_seen
             + ", maximale Server-Verarbeitungszeit: " + (payload.pointer_processing_delay_max_ms ?? 0) + " ms"
           : "";
-        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${pointerStats}${message ? "\n" + message : ""}`;
+        const pointerError = pointerTransportFailed
+          ? "\nPointer-Übertragung fehlgeschlagen. Bitte Seite neu öffnen; die bisherige Prüfung ist nicht bestätigt."
+          : "";
+        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${pointerStats}${message ? "\n" + message : ""}${pointerError}`;
         if (state === "blocked") {
           status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
           return;
