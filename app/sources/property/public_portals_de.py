@@ -13,12 +13,18 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from app.sources.base import PropertySource, RawProperty, SourceBatch, SourceFetchError, SourceShardSpec
+from app.sources.base import (
+    PropertySource,
+    RawProperty,
+    SourceBatch,
+    SourceFetchError,
+    SourceShardSpec,
+)
 from app.sources.property.germany import (
     GERMANY_PROPERTY_MAX_PRICE_EUR,
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
-from app.sources.property.immmo import _DOMParser, _Node, _clean_text, _decimal
+from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,10 +45,10 @@ IMMOBILIEN_DE = Portal(
 
 _PRICE = re.compile(r"(?<!\w)([\d.]+(?:,\d{1,2})?)\s*€")
 _POSTAL = re.compile(r"(?<!\d)(\d{5})\s+([A-ZÄÖÜa-zäöüß][^\d€]{1,75})")
-_AREA = re.compile(r"(?<!\d)(\d{1,4}(?:[.,]\d{1,2})?)\s*m(?:²|2)\b", re.I)
+_AREA = re.compile(r"(?<!\d)(\d{1,4}(?:[.,]\d{1,2})?)\s*m(?:²|2)\b", re.IGNORECASE)
 _BLOCKED = re.compile(
     r"(?:captcha|security verification|zugriff (?:vorübergehend )?eingeschränkt)",
-    re.I,
+    re.IGNORECASE,
 )
 
 
@@ -130,7 +136,7 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
             continue
         city = re.split(
             r"\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\b",
-            _clean_text(postcode_match.group(2)), maxsplit=1, flags=re.I,
+            _clean_text(postcode_match.group(2)), maxsplit=1, flags=re.IGNORECASE,
         )[0].strip(" ,-")
         if len(city) > 100:
             continue
