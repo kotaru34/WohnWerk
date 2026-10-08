@@ -15,23 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.crawling.immowelt_mail_alerts import ImmoweltAlertListing, extract_alert_listings
-
-_MAX_EMAIL_BYTES = 8 * 1024 * 1024
-
-
-def extract_files(paths: list[Path]) -> list[ImmoweltAlertListing]:
-    found: dict[str, ImmoweltAlertListing] = {}
-    for path in paths:
-        if path.suffix.lower() != ".eml":
-            raise ValueError(f"Expected .eml file: {path.name}")
-        if not path.is_file() or path.stat().st_size > _MAX_EMAIL_BYTES:
-            raise ValueError(f"Input must be a local EML of at most 8 MiB: {path.name}")
-        for listing in extract_alert_listings(path.read_bytes()):
-            previous = found.get(listing.source_listing_id)
-            if previous is None or (previous.title is None and listing.title):
-                found[listing.source_listing_id] = listing
-    return list(found.values())
+from app.crawling.immowelt_mail_alerts import extract_alert_files
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        records = extract_files(args.emails)
+        records = extract_alert_files(args.emails)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
 
