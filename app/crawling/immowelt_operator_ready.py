@@ -114,7 +114,7 @@ def bind_operator_readiness(
     request_id: str, root: Path = DEFAULT_READY_ROOT
 ) -> bool:
     """Bind a pre-arm to one explicit manual start, never a scheduled refresh."""
-    if not request_id:
+    if not request_id or not ready_path(root).is_file():
         return False
     with _ready_lock(root):
         if read_operator_readiness(root)["state"] != "ready":
