@@ -28,11 +28,11 @@ def test_ohne_makler_full_clickable_card_extracts_public_facts() -> None:
     item = items[0]
     assert item.source_listing_id == "503161"
     assert item.title == "Ein älteres Einfamilienhaus im Grünen"
-    assert item.price_eur == Decimal("120000")
+    assert item.price_eur == Decimal(120000)
     assert item.postal_code == "17213"
     assert item.city == "Fünfseen"
-    assert item.living_area_m2 == Decimal("145")
-    assert item.plot_area_m2 == Decimal("800")
+    assert item.living_area_m2 == Decimal(145)
+    assert item.plot_area_m2 == Decimal(800)
     assert item.raw_payload["frontier_only"] is True
 
 
@@ -52,8 +52,8 @@ def test_immobilien_de_link_and_separate_card_metadata() -> None:
     assert len(items) == 1
     assert items[0].title == "Das bezahlbare Einfamilienhaus am Wald"
     assert items[0].city == "Kamenz"
-    assert items[0].price_eur == Decimal("189000")
-    assert items[0].living_area_m2 == Decimal("130")
+    assert items[0].price_eur == Decimal(189000)
+    assert items[0].living_area_m2 == Decimal(130)
 
 
 def test_price_policy_discards_expensive_or_rental_cards() -> None:
