@@ -6,8 +6,8 @@ import pytest
 from app.sources.base import SourceFetchError
 
 from app.sources.property.kleinanzeigen_de import (
-    KleinanzeigenGermanyPropertySource,
     REGIONAL_PILOT,
+    KleinanzeigenGermanyPropertySource,
     parse_kleinanzeigen_search_page,
 )
 
