@@ -530,6 +530,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "state": "active",
                     "run_id": request.run_id,
                     "started_at": datetime.now(UTC).isoformat(),
+                    "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                     "viewport": dict(viewport),
                 },
             )
@@ -624,6 +625,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "version": 1,
                         "state": "active",
                         "run_id": request.run_id,
+                        "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                         "updated_at": datetime.now(UTC).isoformat(),
                         "page_url": page.url,
                         "challenge_present": challenge_present,
