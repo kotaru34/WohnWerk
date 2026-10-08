@@ -384,6 +384,10 @@ def _finish_operator_state(
                 "browser_session": diagnostics["browser_session"],
                 "pointer_events_seen": diagnostics["pointer_events_seen"],
                 "pointer_processing_delay_max_ms": diagnostics["pointer_processing_delay_max_ms"],
+                "pointer_down_events": diagnostics.get("pointer_down_events", 0),
+                "pointer_move_events": diagnostics.get("pointer_move_events", 0),
+                "pointer_up_events": diagnostics.get("pointer_up_events", 0),
+                "pointer_sequence_completed": diagnostics.get("pointer_sequence_completed", False),
             }
         )
     _atomic_json(operator_status_path(run_dir), payload)
@@ -536,6 +540,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         pointer_down = False
         pointer_events_seen = 0
         pointer_delay_max_ms = 0
+        pointer_down_events = 0
+        pointer_move_events = 0
+        pointer_up_events = 0
+        pointer_sequence_completed = False
         try:
             viewport = _operator_viewport(request.handoff_state)
             if owns_browser:
@@ -630,9 +638,14 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         if phase == "down":
                             await page.mouse.down(button="left")
                             pointer_down = True
+                            pointer_down_events += 1
                         elif phase == "up":
                             await page.mouse.up(button="left")
+                            pointer_sequence_completed |= pointer_down
                             pointer_down = False
+                            pointer_up_events += 1
+                        else:
+                            pointer_move_events += 1
 
                 now = time.monotonic()
                 if not pointer_down and now - last_frame >= 0.45:
@@ -666,6 +679,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                     "pointer_events_seen": pointer_events_seen,
                     "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                    "pointer_down_events": pointer_down_events,
+                    "pointer_move_events": pointer_move_events,
+                    "pointer_up_events": pointer_up_events,
+                    "pointer_sequence_completed": pointer_sequence_completed,
                 },
                     )
                     return ChallengeResult(
@@ -699,6 +716,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                         "pointer_events_seen": pointer_events_seen,
                         "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        "pointer_down_events": pointer_down_events,
+                        "pointer_move_events": pointer_move_events,
+                        "pointer_up_events": pointer_up_events,
+                        "pointer_sequence_completed": pointer_sequence_completed,
                         "updated_at": datetime.now(UTC).isoformat(),
                         "challenge_present": challenge_present,
                         "clearance_present": clearance_present,
@@ -722,6 +743,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                             "pointer_events_seen": pointer_events_seen,
                             "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                            "pointer_down_events": pointer_down_events,
+                            "pointer_move_events": pointer_move_events,
+                            "pointer_up_events": pointer_up_events,
+                            "pointer_sequence_completed": pointer_sequence_completed,
                         },
                     )
                     return ChallengeResult(
@@ -739,6 +764,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                             "pointer_events_seen": pointer_events_seen,
                             "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                            "pointer_down_events": pointer_down_events,
+                            "pointer_move_events": pointer_move_events,
+                            "pointer_up_events": pointer_up_events,
+                            "pointer_sequence_completed": pointer_sequence_completed,
                         },
             )
             return ChallengeResult(
