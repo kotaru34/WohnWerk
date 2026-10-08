@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
+from contextlib import contextmanager
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,6 +18,20 @@ OPERATOR_READY_TTL = timedelta(minutes=15)
 
 def ready_path(root: Path = DEFAULT_READY_ROOT) -> Path:
     return root / "operator-ready.json"
+
+
+@contextmanager
+def _ready_lock(root: Path) -> Iterator[None]:
+    # The web and refresh worker are separate processes; locking a persistent
+    # file closes the bind/consume/cancel race without locking the data inode.
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(root / "operator-ready.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _read(root: Path) -> dict[str, Any] | None:
@@ -69,39 +86,46 @@ def _write(root: Path, data: dict[str, Any]) -> None:
 def arm_operator_readiness(
     root: Path = DEFAULT_READY_ROOT, *, now: datetime | None = None
 ) -> dict[str, Any]:
-    status = read_operator_readiness(root, now=now)
-    if status["state"] in {"bound", "consumed"}:
-        raise ValueError("Operator readiness is already attached to a manual run")
-    current = (now or datetime.now(UTC)).astimezone(UTC)
-    _write(root, {
-        "version": 1,
-        "state": "ready",
-        "armed_at": current.isoformat(),
-        "expires_at": (current + OPERATOR_READY_TTL).isoformat(),
-    })
-    return read_operator_readiness(root, now=current)
+    with _ready_lock(root):
+        status = read_operator_readiness(root, now=now)
+        if status["state"] in {"bound", "consumed"}:
+            raise ValueError("Operator readiness is already attached to a manual run")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        _write(root, {
+            "version": 1,
+            "state": "ready",
+            "armed_at": current.isoformat(),
+            "expires_at": (current + OPERATOR_READY_TTL).isoformat(),
+        })
+        return read_operator_readiness(root, now=current)
 
 
 def clear_operator_readiness(root: Path = DEFAULT_READY_ROOT) -> None:
-    try:
-        ready_path(root).unlink()
-    except FileNotFoundError:
-        pass
+    with _ready_lock(root):
+        if read_operator_readiness(root)["state"] == "consumed":
+            raise ValueError("Active operator handoff must be cancelled from its own page")
+        try:
+            ready_path(root).unlink()
+        except FileNotFoundError:
+            pass
 
 
 def bind_operator_readiness(
     request_id: str, root: Path = DEFAULT_READY_ROOT
 ) -> bool:
     """Bind a pre-arm to one explicit manual start, never a scheduled refresh."""
-    if not request_id or read_operator_readiness(root)["state"] != "ready":
+    if not request_id:
         return False
-    data = _read(root)
-    if data is None:
-        return False
-    data["state"] = "bound"
-    data["manual_request_id"] = request_id
-    _write(root, data)
-    return True
+    with _ready_lock(root):
+        if read_operator_readiness(root)["state"] != "ready":
+            return False
+        data = _read(root)
+        if data is None:
+            return False
+        data["state"] = "bound"
+        data["manual_request_id"] = request_id
+        _write(root, data)
+        return True
 
 
 def consume_operator_readiness(
@@ -114,16 +138,21 @@ def consume_operator_readiness(
     identity = request_id if request_id is not None else os.environ.get(
         MANUAL_RUN_REQUEST_ENV, ""
     )
-    data = _read(root)
-    if (
-        not identity
-        or read_operator_readiness(root)["state"] != "bound"
-        or not data
-        or data.get("manual_request_id") != identity
-    ):
+    if not identity:
         return False
-    data["state"] = "consumed"
-    data["run_id"] = int(run_id)
-    data.pop("manual_request_id", None)
-    _write(root, data)
-    return True
+    with _ready_lock(root):
+        data = _read(root)
+        if (
+            read_operator_readiness(root)["state"] != "bound"
+            or not data
+            or data.get("manual_request_id") != identity
+        ):
+            return False
+        data["state"] = "consumed"
+        data["run_id"] = int(run_id)
+        # The operator receives the full interactive session TTL on challenge
+        # detection, even if pre-readiness was close to expiring.
+        data["expires_at"] = (datetime.now(UTC) + OPERATOR_READY_TTL).isoformat()
+        data.pop("manual_request_id", None)
+        _write(root, data)
+        return True
