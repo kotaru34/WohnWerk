@@ -1,4 +1,5 @@
 """Manual diagnostic discovery at immobilien.de; not scheduled."""
+
 import asyncio
 
 from run_public_portal_de import run_portal
