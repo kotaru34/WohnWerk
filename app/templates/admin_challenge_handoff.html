@@ -135,7 +135,11 @@
           : payload.browser_session === "restored_from_storage"
             ? "Neuer Browser aus gespeicherten Daten; ursprüngliche Challenge-Seite nicht mehr aktiv"
             : "";
-        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${message ? "\n" + message : ""}`;
+        const pointerStats = Number.isFinite(payload.pointer_events_seen)
+          ? "\nManuelle Pointer-Ereignisse: " + payload.pointer_events_seen
+            + ", maximale Verzögerung: " + (payload.pointer_delivery_delay_max_ms ?? 0) + " ms"
+          : "";
+        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${pointerStats}${message ? "\n" + message : ""}`;
         if (state === "blocked") {
           status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
           return;
