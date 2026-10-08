@@ -19,12 +19,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
-from app.crawling.immowelt_operator_ready import (
-    arm_operator_readiness,
-    bind_operator_readiness,
-    clear_operator_readiness,
-    read_operator_readiness,
-)
 from app.crawling.immowelt_operator_handoff import (
     INTERACTIVE_DATADOME_TYPES,
     arm_operator_handoff,
@@ -34,6 +28,12 @@ from app.crawling.immowelt_operator_handoff import (
     operator_run_dir,
     prepare_fresh_operator_reverification,
     read_operator_status,
+)
+from app.crawling.immowelt_operator_ready import (
+    arm_operator_readiness,
+    bind_operator_readiness,
+    clear_operator_readiness,
+    read_operator_readiness,
 )
 from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
