@@ -631,15 +631,15 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             "Bitte die im Screenshot angezeigte ID dem Immowelt-Support "
                             "melden; der CrawlRun bleibt sicher pausiert."
                         ),
+                        diagnostics={
+                    "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                    "pointer_events_seen": pointer_events_seen,
+                    "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                },
                     )
                     return ChallengeResult(
                         action="defer",
                         message="Immowelt provider access restricted after human verification",
-                        diagnostics={
-                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
-                            "pointer_events_seen": pointer_events_seen,
-                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
-                        },
                     )
 
                 frame_urls = [frame.url for frame in page.frames]
