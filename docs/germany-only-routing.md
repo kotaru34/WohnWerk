@@ -30,10 +30,14 @@ separately labeled straight-line km; it never substitutes them for road km.
 3. Ensure the new files are readable by the `osrm` user. Before replacing the
    active service, verify disk/RAM budgets and retain a rollback copy of the
    old service/unit/data. Stop and replace via the approved deployment process.
-4. Start the Germany OSRM service and check actual `/table/v1/driving` queries
-   with Munich and several geographically separated German properties. Inspect
-   waypoint `distance` snap values and compare kilometres against an independent
-   road-route reference, not merely the OSRM `code=Ok` response.
+4. Start the Germany OSRM service and execute the **read-only** probe
+   `python -m scripts.check_osrm_germany --base-url http://127.0.0.1:5000`.
+   It checks five long intercity routes between München, Berlin, Hamburg,
+   Köln and Dresden, verifying snap distances and intentionally permissive
+   road-distance bands. Then independently check actual `/table/v1/driving`
+   queries with German properties from the database, inspect waypoint snap
+   distances and compare kilometres against an independent road-route
+   reference. A passing script alone is **not** authority to enable routing.
 5. **Only then** set `WOHNWERK_ROUTING_GRAPH_COUNTRIES=DE` in the application
    environment and restart the web service; verify German km and road minutes
    plus intentionally unrouteable rows. If validation fails, do not enable
