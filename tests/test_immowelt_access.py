@@ -7,8 +7,8 @@ import pytest
 from app.crawling.immowelt_access import immowelt_access_restricted
 from app.crawling.immowelt_operator_handoff import (
     ImmoweltOperatorChallengeHandler,
-    _operator_page_has_access_restriction,
     _has_verified_search_results,
+    _operator_page_has_access_restriction,
     operator_run_dir,
     read_operator_status,
 )
