@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WohnWerk – Immowelt-Suchauftrag EML</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: Canvas; color: CanvasText; }
+    main { max-width: 1050px; margin: 0 auto; padding: 24px; }
+    .top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    .muted { color: GrayText; }
+    .panel { margin-top:20px; border:1px solid color-mix(in srgb, CanvasText 22%, transparent);
+      border-radius:12px; padding:20px; }
+    .alert { border-left:4px solid #c28c2d; padding:12px; }
+    .buttons { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    button, a.button { font:inherit; padding:10px 14px; border:1px solid GrayText;
+      border-radius:8px; background:Canvas; color:CanvasText; cursor:pointer; text-decoration:none; }
+    li { margin-bottom:14px; overflow-wrap:anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Immowelt – Suchauftrag-E-Mails</h1>
+    <a class="button" href="/admin/health">Zurück zur Übersicht</a>
+  </div>
+  <div class="panel">
+    <p>Importiere EML-Dateien aus <strong>deinem eigenen Immowelt-Suchauftrag</strong>.
+      Es werden nur direkte Immowelt-Exposé-Links erkannt; WohnWerk besucht
+      weder die Anzeigen noch eine CAPTCHA-Seite.</p>
+    <p class="muted">Keine automatische Datenanreicherung, keine Preis- oder
+      Verfügbarkeitsprüfung, keine Speicherung von E-Mail-Inhalten.
+      Weitergeleitete Tracking-Links werden aus Sicherheitsgründen nicht aufgelöst.</p>
+    <form action="/admin/immowelt-alerts" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <p><label for="emails">1–10 EML-Dateien (jeweils maximal 2 MiB)</label></p>
+      <p><input id="emails" type="file" name="emails" accept=".eml,message/rfc822" multiple required></p>
+      <div class="buttons"><button type="submit">Angebotslinks lokal auslesen</button></div>
+    </form>
+  </div>
+  {% if error %}
+    <div class="panel alert" role="alert">{{ error }}</div>
+  {% endif %}
+  {% if offers is not none %}
+    <div class="panel">
+      <h2>{{ offers|length }} direkte Exposé-Links</h2>
+      {% if offers %}
+        <ol>
+          {% for offer in offers %}
+            <li>
+              <a href="{{ offer.url }}" target="_blank" rel="noopener noreferrer">
+                {{ offer.title or offer.source_listing_id }}
+              </a>
+              <span class="muted">({{ offer.source_listing_id }})</span>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p>Keine direkten Exposé-Links gefunden. Die E-Mail kann ausschließlich
+        Tracking-Links enthalten; diese werden nicht geöffnet.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+</main>
+</body>
+</html>
