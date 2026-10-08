@@ -167,7 +167,7 @@ async def test_scheduled_run_never_claims_manually_bound_ticket(
 def test_admin_operator_readiness_requires_admin_and_csrf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import app.ops as ops
+    from app import ops
 
     root = tmp_path / "immowelt"
     monkeypatch.setattr(ops, "arm_operator_readiness", lambda: arm_operator_readiness(root))
