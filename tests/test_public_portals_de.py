@@ -86,8 +86,26 @@ def test_portal_url_validation_rejects_wrong_hosts_and_paths(href: str) -> None:
 
 
 def test_both_sources_use_bounded_non_authoritative_shards() -> None:
-    for adapter in (OhneMaklerGermanyPropertySource(), ImmobilienDeGermanyPropertySource()):
+    ohne_makler = OhneMaklerGermanyPropertySource()
+    immobilien_de = ImmobilienDeGermanyPropertySource()
+    assert OHNE_MAKLER.search_path == "/immobilien/haus-kaufen/"
+    assert [shard.key for shard in ohne_makler.default_shards()] == [
+        "de-public-frontier"
+    ]
+    assert [shard.key for shard in immobilien_de.default_shards()] == [
+        "de-public-frontier",
+        "de-neubrandenburg",
+        "de-gangelt",
+        "de-homburg",
+        "de-hagenow",
+    ]
+    for adapter in (ohne_makler, immobilien_de):
         shards = adapter.default_shards()
-        assert len(shards) == 1
-        assert shards[0].key == "de-public-frontier"
-        assert shards[0].params["country_code"] == "DE"
+        assert len(shards) == len(adapter.frontier_paths())
+        assert len({shard.key for shard in shards}) == len(shards)
+        assert all(shard.params == {"country_code": "DE"} for shard in shards)
+        assert all(shard.result_cap == 50 for shard in shards)
+        assert all(
+            path.startswith("/") and "?" not in path
+            for path in adapter.frontier_paths().values()
+        )
