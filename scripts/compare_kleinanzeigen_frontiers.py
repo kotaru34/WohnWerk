@@ -15,11 +15,8 @@ import argparse
 import asyncio
 import json
 
-from app.sources.base import SourceBatch
-from app.sources.property.kleinanzeigen_de import (
-    KleinanzeigenGermanyPropertySource,
-)
-from app.sources.base import RawProperty
+from app.sources.base import RawProperty, SourceBatch
+from app.sources.property.kleinanzeigen_de import KleinanzeigenGermanyPropertySource
 
 
 def summarize_batches(
