@@ -93,8 +93,9 @@ async def test_operator_stops_on_terminal_access_block_without_forged_clearance(
     )
 
     class Page:
-        url = request.challenge["requested_url"]
-        frames = [_Frame(BLOCK_TEXT)]
+        def __init__(self) -> None:
+            self.url = request.challenge["requested_url"]
+            self.frames = [_Frame(BLOCK_TEXT)]
 
         def locator(self, selector):
             return _Frame("42 Häuser zum Kauf").locator(selector)
