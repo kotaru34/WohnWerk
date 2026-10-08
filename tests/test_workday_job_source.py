@@ -122,10 +122,5 @@ def test_workday_search_shard_is_never_reconciliation_authority() -> None:
     assert batch.next_cursor["search_text"] == "Austria"
 
 
-def test_workday_scheduler_plan_has_no_reconciliation_authority() -> None:
-    plan = next(
-        row for row in SOURCE_REFRESH_PLANS if row.source_name == "workday-public-cxs"
-    )
-
-    assert plan.script == "scripts/run_workday_jobs.py"
-    assert plan.supports_reconciliation is False
+def test_legacy_workday_job_source_is_not_scheduled_for_germany() -> None:
+    assert all(row.source_name != "workday-public-cxs" for row in SOURCE_REFRESH_PLANS)
