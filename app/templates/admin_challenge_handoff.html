@@ -130,7 +130,12 @@
         const message = payload.message || "";
         interactive = state === "active";
         frame.style.cursor = interactive ? "crosshair" : "wait";
-        status.textContent = `state=${state}${message ? "\n" + message : ""}`;
+        const sessionMode = payload.browser_session === "original_live"
+          ? "Originaler Browser und ursprüngliche Challenge-Seite"
+          : payload.browser_session === "restored_from_storage"
+            ? "Neuer Browser aus gespeicherten Daten; ursprüngliche Challenge-Seite nicht mehr aktiv"
+            : "";
+        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${message ? "\n" + message : ""}`;
         if (state === "blocked") {
           status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
           return;
