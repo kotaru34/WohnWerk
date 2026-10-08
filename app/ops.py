@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -19,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.admin import AdminDependency, CsrfDependency, DbDependency, _csrf_token
+from app.crawling.immowelt_mail_alerts import extract_alert_listings
 from app.crawling.immowelt_operator_handoff import (
     INTERACTIVE_DATADOME_TYPES,
     arm_operator_handoff,
@@ -29,7 +31,6 @@ from app.crawling.immowelt_operator_handoff import (
     prepare_fresh_operator_reverification,
     read_operator_status,
 )
-from app.crawling.immowelt_mail_alerts import extract_alert_listings
 from app.crawling.immowelt_operator_ready import (
     arm_operator_readiness,
     bind_operator_readiness,
@@ -1157,7 +1158,7 @@ def immowelt_saved_search_alerts_preview(
     request: Request,
     _: AdminDependency,
     __: CsrfDependency,
-    emails: list[UploadFile] = File(...),
+    emails: Annotated[list[UploadFile], File()],
 ):
     """Parse a bounded number of owned .eml messages; do not persist raw mail."""
     listings: dict[str, object] = {}
