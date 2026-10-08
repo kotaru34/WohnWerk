@@ -938,7 +938,10 @@ def arm_immowelt_operator_ready(_: AdminDependency, __: CsrfDependency):
 
 @router.post("/health/immowelt-ready/clear")
 def clear_immowelt_operator_ready(_: AdminDependency, __: CsrfDependency):
-    clear_operator_readiness()
+    try:
+        clear_operator_readiness()
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _health_redirect("operator_ready_cleared")
 
 
