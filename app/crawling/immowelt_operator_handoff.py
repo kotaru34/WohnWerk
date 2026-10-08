@@ -16,6 +16,7 @@ from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
 from app.crawling.immowelt_access import immowelt_access_restricted
+from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
@@ -340,6 +341,24 @@ async def _operator_page_has_access_restriction(page: Any) -> bool:
     return False
 
 
+
+async def _has_verified_search_results(page: Any, requested_url: str) -> bool:
+    """Require the expected search state and source-count heading, not just any h1.
+
+    DataDome can set a nonempty cookie for a denial page, and a generic
+    restriction/error page may also contain an h1. Neither grants clearance.
+    """
+    try:
+        _validate_search_state(requested_url, page.url)
+    except RuntimeError:
+        return False
+    try:
+        heading = await page.locator("h1").first.inner_text(timeout=1000)
+    except (PlaywrightError, AttributeError):
+        return False
+    return _TOTAL_RE.search(heading) is not None
+
+
 def _finish_operator_state(run_dir: Path, *, state: str, message: str) -> None:
     _atomic_json(
         operator_status_path(run_dir),
@@ -592,7 +611,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 page_host = (urlparse(page.url).hostname or "").casefold()
 
                 clearance_present = await _has_immowelt_datadome_cookie(context)
-                content_present = await page.locator("h1").count() > 0
+                content_present = (
+                    not challenge_present
+                    and page_host in IMMOWELT_HOSTS
+                    and clearance_present
+                    and await _has_verified_search_results(page, requested_url)
+                )
 
                 _atomic_json(
                     operator_status_path(run_dir),
