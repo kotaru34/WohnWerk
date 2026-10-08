@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from math import isfinite
+from math import asin, cos, isfinite, radians, sin, sqrt
 from typing import Self
 
 import httpx
@@ -129,9 +129,8 @@ class OSRMClient:
         if len(distances) != len(destinations) or len(durations) != len(destinations):
             raise RoutingError("OSRM table response size does not match destinations")
 
-        # OSRM snaps coordinates to its loaded road graph. On an Austria-only
-        # extract, a German point can snap hundreds of km away and still yield
-        # an apparently valid table distance. Never expose such results.
+        # OSRM may snap coordinates to distant roads outside the loaded network.
+        # Such routes can look valid while missing hundreds of kilometres.
         source_snaps = _snap_distances(payload.get("sources"), 1, "sources")
         destination_snaps = _snap_distances(
             payload.get("destinations"), len(destinations), "destinations"
@@ -140,8 +139,8 @@ class OSRMClient:
             raise RoutingError("OSRM source is outside its loaded road network")
 
         result: list[RouteEstimate] = []
-        for distance, duration, snap in zip(
-            distances, durations, destination_snaps, strict=True
+        for destination, distance, duration, snap in zip(
+            destinations, distances, durations, destination_snaps, strict=True
         ):
             if distance is None or duration is None or snap > self.max_snap_distance_metres:
                 result.append(RouteEstimate(distance_km=None, duration_minutes=None))
@@ -151,6 +150,12 @@ class OSRMClient:
                 for value in (distance, duration)
             ):
                 raise RoutingError("OSRM returned invalid route metrics")
+            # A genuine drivable route cannot be shorter than the great-circle
+            # lower bound, except for the limited waypoint snap displacement.
+            direct = _great_circle_metres(source, destination)
+            if float(distance) + source_snaps[0] + snap + 250.0 < direct:
+                result.append(RouteEstimate(distance_km=None, duration_minutes=None))
+                continue
             result.append(RouteEstimate(
                 distance_km=float(distance) / 1000.0,
                 duration_minutes=float(duration) / 60.0,
@@ -178,3 +183,12 @@ def _snap_distances(waypoints: object, count: int, label: str) -> list[float]:
             raise RoutingError(f"OSRM table response has invalid {label} snap distance")
         result.append(float(distance))
     return result
+
+
+def _great_circle_metres(left: RoutingPoint, right: RoutingPoint) -> float:
+    lat1 = radians(left.latitude)
+    lat2 = radians(right.latitude)
+    dlat = lat2 - lat1
+    dlon = radians(right.longitude - left.longitude)
+    value = sin(dlat / 2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0) ** 2
+    return 12_742_000.0 * asin(sqrt(min(1.0, value)))
