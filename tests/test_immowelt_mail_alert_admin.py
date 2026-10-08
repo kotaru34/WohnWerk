@@ -24,7 +24,7 @@ def sample_mail() -> bytes:
 
 
 def test_admin_only_offline_email_preview_hides_mail_headers_and_external_urls(monkeypatch) -> None:
-    monkeypatch.setattr('app.ops._csrf_token', lambda: 'test-csrf')
+    monkeypatch.setattr("app.ops._csrf_token", lambda: "test-csrf")
     app.dependency_overrides[require_admin] = lambda: None
     app.dependency_overrides[require_csrf] = lambda: None
     try:
@@ -49,6 +49,7 @@ def test_admin_only_offline_email_preview_hides_mail_headers_and_external_urls(m
 
 
 def test_email_preview_rejects_large_or_non_eml_uploads(monkeypatch) -> None:
+    monkeypatch.setattr("app.ops._csrf_token", lambda: "test-csrf")
     app.dependency_overrides[require_admin] = lambda: None
     app.dependency_overrides[require_csrf] = lambda: None
     try:
