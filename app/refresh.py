@@ -33,19 +33,17 @@ MANUAL_RUN_DEFERRED_EXIT_CODE = 76
 MANUAL_RUN_REQUEST_ENV = "WOHNWERK_MANUAL_RUN_REQUEST_ID"
 
 
-# Only sources validated in production belong here. Discovery/frontier sources deliberately
+# Only Germany property sources validated in production belong here. Discovery/frontier sources deliberately
 # have no reconciliation authority: disappearing from a first-page/search frontier is not
 # evidence that an advert has closed. Disabled candidate sources may be registered ahead of
 # enablement so an operator can activate a production-validated tenant without another
 # scheduler code change; disabled Source rows are ignored by due_source_runs().
 SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
-    SourceRefreshPlan("immmo.at", "scripts/run_immmo.py", True),
-    SourceRefreshPlan("sreal.at", "scripts/run_sreal.py", True),
     # ImmoScout24 DE remains explicitly paused/fail-closed after the public frontend
     # required a human challenge. Do not schedule it until its transport is revalidated.
     # Immowelt DE is currently a bounded discovery source. It remains incremental-only and
     # its temporary browser/access failures are source-isolated so they cannot fail the
-    # global production refresh service or interrupt Austria acquisition.
+    # other German property acquisition runs.
     SourceRefreshPlan(
         "immowelt-de",
         "scripts/run_immowelt_de.py",
@@ -82,33 +80,6 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
         False,
         failure_isolated=True,
     ),
-    SourceRefreshPlan("lever-public-postings", "scripts/run_lever_jobs.py", True),
-    SourceRefreshPlan(
-        "greenhouse-public-job-board",
-        "scripts/run_greenhouse_jobs.py",
-        True,
-    ),
-    SourceRefreshPlan("personio-public-xml", "scripts/run_personio_jobs.py", True),
-    SourceRefreshPlan(
-        "smartrecruiters-public-postings",
-        "scripts/run_smartrecruiters_jobs.py",
-        True,
-    ),
-    SourceRefreshPlan(
-        "successfactors-public-career-site",
-        "scripts/run_successfactors_jobs.py",
-        True,
-    ),
-    SourceRefreshPlan("tgw-direct-careers", "scripts/run_tgw_jobs.py", True),
-    SourceRefreshPlan("palfinger-direct-careers", "scripts/run_palfinger_jobs.py", True),
-    SourceRefreshPlan("workday-public-cxs", "scripts/run_workday_jobs.py", False),
-    SourceRefreshPlan("karriere.at", "scripts/run_karriere_at_jobs.py", False),
-    SourceRefreshPlan("jobs.at", "scripts/run_jobs_at_jobs.py", False),
-    SourceRefreshPlan("stepstone.at", "scripts/run_stepstone_at_jobs.py", False),
-    SourceRefreshPlan("willhaben-jobs", "scripts/run_willhaben_jobs.py", False),
-    # Germany job acquisition is intentionally paused by operator decision. Keep the
-    # adapters/scripts dormant for a possible later restart, but do not register DE job
-    # sources in the automatic refresh scheduler.
 )
 
 # These adapters stay out of automatic scheduling but remain available to an authenticated
