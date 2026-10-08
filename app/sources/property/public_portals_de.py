@@ -120,9 +120,11 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
             continue
 
         title = _clean_text(anchor.text())
-        if len(title) < 7 or _PRICE.fullmatch(title):
-            # Some search cards use one big clickable element. Take the visible
-            # segment after the price and before the confirmed postal code.
+        # In some portals, the entire search card is one hyperlink.
+        # Separate its title from the explicitly parsed price and location.
+        if _PRICE.search(title) and _POSTAL.search(title):
+            title = _clean_text(title[_PRICE.search(title).end():_POSTAL.search(title).start()])
+        if len(title) < 7:
             title = _clean_text(text[price_match.end():postcode_match.start()])
         if not 7 <= len(title) <= 500:
             continue
