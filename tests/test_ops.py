@@ -581,7 +581,91 @@ def test_admin_health_run_resumed_notice_includes_run_id(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None:
+def test_historical_immowelt_diagnostics_compare_exact_run_ids_and_redact_metadata() -> None:
+    from app.models import CrawlRun, Source
+
+    runs = {
+        5945: SimpleNamespace(
+            id=5945,
+            source_id=10,
+            status="success",
+            coverage_status="degraded",
+            mode="incremental",
+            started_at=datetime(2026, 10, 8, 1, 0, tzinfo=UTC),
+            finished_at=datetime(2026, 10, 8, 2, 0, tzinfo=UTC),
+            pages_fetched=80,
+            items_seen=3210,
+            items_new=300,
+            items_updated=2910,
+            items_disappeared=0,
+            run_metadata={
+                "challenge_history": [{"at": "2026-10-08T01:05:00Z", "action": "revalidate", "message": "secret"}],
+                "last_activity_at": "2026-10-08T01:59:00Z",
+                "datadome_cookie": "never expose",
+            },
+        ),
+        5946: SimpleNamespace(
+            id=5946,
+            source_id=10,
+            status="paused",
+            coverage_status="degraded",
+            mode="incremental",
+            started_at=datetime(2026, 10, 8, 3, 0, tzinfo=UTC),
+            finished_at=None,
+            pages_fetched=0,
+            items_seen=0,
+            items_new=0,
+            items_updated=0,
+            items_disappeared=0,
+            run_metadata={
+                "active_challenge": {
+                    "challenge": {
+                        "datadome_challenge_type": "fe",
+                        "datadome_cookie": "secret",
+                    }
+                },
+                "challenge_handoff_count": 1,
+                "manual_run_request_id": "secret",
+            },
+        ),
+    }
+
+    class Db:
+        def get(self, model, ident):
+            if model is CrawlRun:
+                return runs.get(ident)
+            if model is Source:
+                return SimpleNamespace(id=10, name="immowelt-de")
+            raise AssertionError(model)
+
+        def execute(self, _query):
+            return SimpleNamespace(all=lambda: [("success", 40), ("failed", 8)])
+
+    def override_db():
+        yield Db()
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[require_admin] = lambda: None
+    try:
+        with TestClient(app) as client:
+            result = client.get("/admin/health/immowelt-runs?ids=5945,5946")
+            invalid = client.get("/admin/health/immowelt-runs?ids=5945,5945")
+        assert result.status_code == 200
+        body = result.json()
+        assert [value["id"] for value in body["runs"]] == [5945, 5946]
+        assert body["runs"][0]["items_seen"] == 3210
+        assert body["runs"][1]["active_challenge_type"] == "fe"
+        assert body["runs"][0]["recent_challenge_actions"] == [
+            {"action": "revalidate", "at": "2026-10-08T01:05:00Z"}
+        ]
+        assert "secret" not in result.text
+        assert invalid.status_code == 400
+        assert result.headers["cache-control"] == "no-store"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_challenge_approve_attaches_to_waiting_live_process_even_if_activation_is_slow(monkeypatch) -> None:
     source = SimpleNamespace(id=10, name="immowelt-de", enabled=True)
     run = SimpleNamespace(
         id=5854,
@@ -608,7 +692,9 @@ def test_challenge_approve_attaches_to_waiting_live_process(monkeypatch) -> None
         yield db
 
     def fake_arm(_run_id, _active):
-        state["value"] = "active"
+        # The original crawler may not publish state=active immediately.
+        # Approval must never spawn a second browser/refresh during that wait.
+        assert state["value"] == "awaiting_approval"
         return Path("/tmp/run-5854")
 
     monkeypatch.setattr("app.ops.operator_run_dir", lambda _run_id: Path("/tmp/run-5854"))

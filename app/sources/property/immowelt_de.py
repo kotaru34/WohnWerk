@@ -21,6 +21,7 @@ from playwright.async_api import (
 )
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
+from app.crawling.immowelt_access import immowelt_access_restricted
 from app.sources.base import (
     PropertySource,
     RawProperty,
@@ -139,6 +140,17 @@ def detect_immowelt_challenge(
     frame_urls: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any] | None:
     """Recognize explicit source gates without treating ordinary portal JS as a challenge."""
+    # A provider block is not a successful CAPTCHA result, even if a new
+    # datadome cookie was set or an embedded CAPTCHA disappeared.
+    if immowelt_access_restricted(html):
+        return {
+            "kind": "provider_access_restricted",
+            "http_status": status,
+            "requested_url": requested_url,
+            "final_url": final_url,
+            "markers": ["immowelt_access_restricted"],
+        }
+
     datadome_metadata = _datadome_bootstrap_metadata(html)
     suspicious_url: str | None = None
     for candidate in (final_url, *frame_urls):

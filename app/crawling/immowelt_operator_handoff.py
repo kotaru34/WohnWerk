@@ -15,6 +15,8 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
+from app.crawling.immowelt_access import immowelt_access_restricted
+from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
@@ -321,16 +323,64 @@ async def _has_immowelt_datadome_cookie(context: Any) -> bool:
     return False
 
 
-def _finish_operator_state(run_dir: Path, *, state: str, message: str) -> None:
-    _atomic_json(
-        operator_status_path(run_dir),
-        {
-            "version": 1,
-            "state": state,
-            "message": message,
-            "updated_at": datetime.now(UTC).isoformat(),
-        },
-    )
+
+async def _operator_page_has_access_restriction(page: Any) -> bool:
+    """Check visible provider text, including a cross-origin challenge iframe.
+
+    A successful slider gesture is not evidence of authorization. DataDome can
+    instead render an explicit access-block page in the same browser session.
+    No challenge tokens, cookie values or request identifiers are recorded.
+    """
+    for target in [page, *page.frames]:
+        try:
+            body_text = await target.locator("body").inner_text(timeout=200)
+        except (PlaywrightError, AttributeError):
+            continue
+        if immowelt_access_restricted(body_text):
+            return True
+    return False
+
+
+
+async def _has_verified_search_results(page: Any, requested_url: str) -> bool:
+    """Require the expected search state and source-count heading, not just any h1.
+
+    DataDome can set a nonempty cookie for a denial page, and a generic
+    restriction/error page may also contain an h1. Neither grants clearance.
+    """
+    try:
+        _validate_search_state(requested_url, page.url)
+    except RuntimeError:
+        return False
+    try:
+        heading = await page.locator("h1").first.inner_text(timeout=1000)
+    except (PlaywrightError, AttributeError):
+        return False
+    return _TOTAL_RE.search(heading) is not None
+
+
+def _finish_operator_state(
+    run_dir: Path,
+    *,
+    state: str,
+    message: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "version": 1,
+        "state": state,
+        "message": message,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    if diagnostics is not None:
+        payload.update(
+            {
+                "browser_session": diagnostics["browser_session"],
+                "pointer_events_seen": diagnostics["pointer_events_seen"],
+                "pointer_processing_delay_max_ms": diagnostics["pointer_processing_delay_max_ms"],
+            }
+        )
+    _atomic_json(operator_status_path(run_dir), payload)
     try:
         operator_approval_path(run_dir).unlink()
     except FileNotFoundError:
@@ -452,6 +502,10 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
         event_offset = 0
         started = time.monotonic()
         last_frame = 0.0
+        last_block_probe = 0.0
+        pointer_down = False
+        pointer_events_seen = 0
+        pointer_delay_max_ms = 0
         try:
             viewport = _operator_viewport(request.handoff_state)
             if owns_browser:
@@ -492,6 +546,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     "state": "active",
                     "run_id": request.run_id,
                     "started_at": datetime.now(UTC).isoformat(),
+                    "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                     "viewport": dict(viewport),
                 },
             )
@@ -529,14 +584,27 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             continue
                         x = min(max(x, 0.0), float(viewport["width"] - 1))
                         y = min(max(y, 0.0), float(viewport["height"] - 1))
+                        pointer_events_seen += 1
+                        try:
+                            sent_at = datetime.fromisoformat(str(event.get("at")))
+                            if sent_at.tzinfo is not None:
+                                delay = max(
+                                    0,
+                                    int((datetime.now(UTC) - sent_at.astimezone(UTC)).total_seconds() * 1000),
+                                )
+                                pointer_delay_max_ms = max(pointer_delay_max_ms, delay)
+                        except ValueError:
+                            pass
                         await page.mouse.move(x, y)
                         if phase == "down":
                             await page.mouse.down(button="left")
+                            pointer_down = True
                         elif phase == "up":
                             await page.mouse.up(button="left")
+                            pointer_down = False
 
                 now = time.monotonic()
-                if now - last_frame >= 0.45:
+                if not pointer_down and now - last_frame >= 0.45:
                     tmp_frame = frame_path.with_suffix(".tmp.png")
                     try:
                         await page.screenshot(path=str(tmp_frame), full_page=False)
@@ -549,6 +617,31 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                             pass
                     last_frame = now
 
+                if not pointer_down and now - last_block_probe >= 1.0:
+                    last_block_probe = now
+                    access_restricted = await _operator_page_has_access_restriction(page)
+                else:
+                    access_restricted = False
+                if access_restricted:
+                    _finish_operator_state(
+                        run_dir,
+                        state="blocked",
+                        message=(
+                            "Immowelt hat diesen Browser-/Netzwerkzugriff eingeschränkt. "
+                            "Bitte die im Screenshot angezeigte ID dem Immowelt-Support "
+                            "melden; der CrawlRun bleibt sicher pausiert."
+                        ),
+                        diagnostics={
+                    "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                    "pointer_events_seen": pointer_events_seen,
+                    "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                },
+                    )
+                    return ChallengeResult(
+                        action="defer",
+                        message="Immowelt provider access restricted after human verification",
+                    )
+
                 frame_urls = [frame.url for frame in page.frames]
                 challenge_present = any(
                     "captcha-delivery.com/captcha/" in url
@@ -558,7 +651,12 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 page_host = (urlparse(page.url).hostname or "").casefold()
 
                 clearance_present = await _has_immowelt_datadome_cookie(context)
-                content_present = await page.locator("h1").count() > 0
+                content_present = (
+                    not challenge_present
+                    and page_host in IMMOWELT_HOSTS
+                    and clearance_present
+                    and await _has_verified_search_results(page, requested_url)
+                )
 
                 _atomic_json(
                     operator_status_path(run_dir),
@@ -566,6 +664,9 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "version": 1,
                         "state": "active",
                         "run_id": request.run_id,
+                        "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                        "pointer_events_seen": pointer_events_seen,
+                        "pointer_processing_delay_max_ms": pointer_delay_max_ms,
                         "updated_at": datetime.now(UTC).isoformat(),
                         "page_url": page.url,
                         "challenge_present": challenge_present,
@@ -586,6 +687,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         run_dir,
                         state="resolved",
                         message="operator completed interactive DataDome verification",
+                        diagnostics={
+                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                            "pointer_events_seen": pointer_events_seen,
+                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        },
                     )
                     return ChallengeResult(
                         action="resolved",
@@ -598,6 +704,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 run_dir,
                 state="timeout",
                 message="operator handoff timed out without completed verification",
+                diagnostics={
+                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                            "pointer_events_seen": pointer_events_seen,
+                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        },
             )
             return ChallengeResult(
                 action="defer",
