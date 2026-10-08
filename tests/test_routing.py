@@ -27,7 +27,7 @@ def test_osrm_table_returns_distance_and_duration() -> None:
     result = router.table(
         RoutingPoint(longitude=16.37, latitude=48.21),
         [
-            RoutingPoint(longitude=16.40, latitude=48.22),
+            RoutingPoint(longitude=16.38, latitude=48.21),
             RoutingPoint(longitude=16.50, latitude=48.30),
         ],
     )
@@ -68,7 +68,7 @@ def test_osrm_table_chunks_to_server_coordinate_limit() -> None:
     result = router.table(
         RoutingPoint(longitude=16.37, latitude=48.21),
         [
-            RoutingPoint(longitude=16.40 + index * 0.01, latitude=48.22)
+            RoutingPoint(longitude=16.37 + index * 0.0001, latitude=48.21)
             for index in range(5)
         ],
     )
@@ -148,3 +148,20 @@ def test_osrm_missing_snap_evidence_fails_closed() -> None:
             RoutingPoint(longitude=11.46, latitude=48.18),
             [RoutingPoint(longitude=11.50, latitude=48.20)],
         )
+
+
+def test_osrm_impossible_short_route_is_not_displayed() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 5.0}],
+            "destinations": [{"distance": 5.0}],
+            "distances": [[20000.0]],
+            "durations": [[1800.0]],
+        })
+    ))
+    result = OSRMClient("http://router.test", client=client).table(
+        RoutingPoint(longitude=11.5, latitude=48.1),
+        [RoutingPoint(longitude=13.7, latitude=51.0)],
+    )
+    assert result[0].reachable is False
