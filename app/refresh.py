@@ -86,6 +86,18 @@ SOURCE_REFRESH_PLANS: tuple[SourceRefreshPlan, ...] = (
 # operator for an explicit diagnostic/manual run. They fail closed when their public frontend
 # presents a human-verification boundary; the admin UI surfaces that reason from the run.
 MANUAL_SOURCE_RUN_PLANS: tuple[SourceRefreshPlan, ...] = (
+    # These two independent public frontiers are diagnostics only until real
+    # provider fetches confirm stable card parsing. Never auto-schedule them.
+    SourceRefreshPlan(
+        "ohne-makler-de", "scripts/run_ohne_makler_de.py", False,
+        failure_isolated=True,
+        operational_note="Neue Quelle: vor Automatik erst öffentlichen Kartenparser validieren.",
+    ),
+    SourceRefreshPlan(
+        "immobilien-de", "scripts/run_immobilien_de.py", False,
+        failure_isolated=True,
+        operational_note="Neue Quelle: vor Automatik erst öffentlichen Kartenparser validieren.",
+    ),
     SourceRefreshPlan(
         "remax-de",
         "scripts/run_remax_de.py",
