@@ -26,6 +26,7 @@ from app.crawling.immowelt_operator_ready import (
     consume_operator_readiness,
     read_operator_readiness,
     ready_path,
+    release_operator_readiness,
     requires_manual_immowelt_operator,
 )
 from app.database import get_db
@@ -223,3 +224,22 @@ def test_admin_operator_readiness_requires_admin_and_csrf(
             }
     finally:
         app.dependency_overrides.clear()
+
+
+def test_release_only_matching_unconsumed_manual_ticket(tmp_path: Path) -> None:
+    root = tmp_path / "immowelt"
+    assert not release_operator_readiness("", root)
+    assert not release_operator_readiness("missing", root)
+    arm_operator_readiness(root)
+    assert bind_operator_readiness("busy-worker", root)
+    assert not release_operator_readiness("unrelated-worker", root)
+    assert read_operator_readiness(root)["state"] == "bound"
+
+    assert release_operator_readiness("busy-worker", root)
+    assert read_operator_readiness(root)["state"] == "ready"
+    assert "manual_request_id" not in ready_path(root).read_text(encoding="utf-8")
+    assert bind_operator_readiness("retry-worker", root)
+    assert consume_operator_readiness(5946, root, request_id="retry-worker")
+    assert not release_operator_readiness("retry-worker", root)
+    assert read_operator_readiness(root)["state"] == "consumed"
+    assert read_operator_readiness(root)["run_id"] == 5946

@@ -141,6 +141,32 @@ def bind_operator_readiness(
         return True
 
 
+
+def release_operator_readiness(
+    request_id: str, root: Path = DEFAULT_READY_ROOT
+) -> bool:
+    """Undo only our own bound ticket when a manual worker never started.
+
+    A different request, a consumed ticket or a human-operated live challenge
+    cannot be modified by a stale/busy manual worker.
+    """
+    if not request_id:
+        return False
+    with _ready_lock(root):
+        data = _read(root)
+        if (
+            not data
+            or data.get("version") != 1
+            or data.get("state") != "bound"
+            or data.get("manual_request_id") != request_id
+        ):
+            return False
+        data.pop("manual_request_id", None)
+        data["state"] = "ready"
+        _write(root, data)
+        return True
+
+
 def consume_operator_readiness(
     run_id: int,
     root: Path = DEFAULT_READY_ROOT,

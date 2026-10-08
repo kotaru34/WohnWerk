@@ -34,6 +34,7 @@ from app.crawling.immowelt_operator_ready import (
     bind_operator_readiness,
     clear_operator_readiness,
     read_operator_readiness,
+    release_operator_readiness,
 )
 from app.jobs.location_resolution import is_non_point_location_scope
 from app.models import (
@@ -795,6 +796,8 @@ def run_source_now(
             env=_manual_refresh_env(source.name),
         )
     except OSError as exc:
+        if source.name == "immowelt-de":
+            release_operator_readiness(request_id)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Quellenlauf konnte nicht gestartet werden: {exc}",
@@ -809,6 +812,10 @@ def run_source_now(
 
         returncode = process.poll()
         if returncode is not None:
+            # The worker exited without creating or resuming a CrawlRun.
+            # Release only our own still-bound ticket, not a consumed live session.
+            if source.name == "immowelt-de":
+                release_operator_readiness(request_id)
             if returncode == MANUAL_RUN_BUSY_EXIT_CODE:
                 return _health_redirect("refresh_busy")
             if returncode == MANUAL_RUN_DEFERRED_EXIT_CODE:
