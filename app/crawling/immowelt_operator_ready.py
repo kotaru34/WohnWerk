@@ -15,6 +15,19 @@ from app.refresh import MANUAL_RUN_REQUEST_ENV
 DEFAULT_READY_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 OPERATOR_READY_TTL = timedelta(minutes=15)
 
+def requires_manual_immowelt_operator(paused: Any) -> bool:
+    """Avoid scheduled revalidation of a paused interactive CAPTCHA."""
+    if paused is None or str(paused.status) != "paused":
+        return False
+    active = (paused.run_metadata or {}).get("active_challenge")
+    if not isinstance(active, dict):
+        return False
+    challenge = active.get("challenge")
+    if not isinstance(challenge, dict):
+        return False
+    return str(challenge.get("datadome_challenge_type") or "").casefold() in {"fe", "bv"}
+
+
 
 def ready_path(root: Path = DEFAULT_READY_ROOT) -> Path:
     return root / "operator-ready.json"
