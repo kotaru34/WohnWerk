@@ -158,7 +158,12 @@
         const pointerError = pointerTransportFailed
           ? "\nPointer-Übertragung fehlgeschlagen. Bitte Seite neu öffnen; die bisherige Prüfung ist nicht bestätigt."
           : "";
-        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${pointerStats}${message ? "\n" + message : ""}${pointerError}`;
+        const expires = Date.parse(payload.expires_at || "");
+        const remaining = Number.isFinite(expires)
+          ? "\nVerbleibende Sitzungszeit: " +
+            Math.max(0, Math.ceil((expires - Date.now()) / 1000)) + " Sekunden"
+          : "";
+        status.textContent = `state=${state}${sessionMode ? "\n" + sessionMode : ""}${remaining}${pointerStats}${message ? "\n" + message : ""}${pointerError}`;
         if (state === "blocked") {
           status.textContent += "\nImmowelt hat den Zugriff eingeschränkt. Bitte die im Bild angezeigte ID an den Support weitergeben.";
           return;
