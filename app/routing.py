@@ -120,6 +120,8 @@ class OSRMClient:
         except (httpx.HTTPError, ValueError) as exc:
             raise RoutingError(f"OSRM table request failed: {exc}") from exc
 
+        if not isinstance(payload, dict):
+            raise RoutingError("OSRM table response must be a JSON object")
         if payload.get("code") != "Ok":
             message = payload.get("message") or payload.get("code") or "unknown OSRM error"
             raise RoutingError(f"OSRM table request failed: {message}")
@@ -146,7 +148,7 @@ class OSRMClient:
                 result.append(RouteEstimate(distance_km=None, duration_minutes=None))
                 continue
             if not all(
-                isinstance(value, (float, int)) and isfinite(value) and value >= 0
+                type(value) in (float, int) and isfinite(value) and value >= 0
                 for value in (distance, duration)
             ):
                 raise RoutingError("OSRM returned invalid route metrics")
@@ -179,7 +181,7 @@ def _snap_distances(waypoints: object, count: int, label: str) -> list[float]:
         if not isinstance(waypoint, dict):
             raise RoutingError(f"OSRM table response has invalid {label} waypoint")
         distance = waypoint.get("distance")
-        if not isinstance(distance, (float, int)) or not isfinite(distance) or distance < 0:
+        if type(distance) not in (float, int) or not isfinite(distance) or distance < 0:
             raise RoutingError(f"OSRM table response has invalid {label} snap distance")
         result.append(float(distance))
     return result
