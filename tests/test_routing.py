@@ -165,3 +165,23 @@ def test_osrm_impossible_short_route_is_not_displayed() -> None:
         [RoutingPoint(longitude=13.7, latitude=51.0)],
     )
     assert result[0].reachable is False
+
+
+@pytest.mark.parametrize("payload", [
+    [],
+    {"code": "Ok", "sources": [{"distance": True}],
+     "destinations": [{"distance": 0}], "distances": [[4000]],
+     "durations": [[300]]},
+    {"code": "Ok", "sources": [{"distance": 1}],
+     "destinations": [{"distance": 0}], "distances": [[False]],
+     "durations": [[300]]},
+])
+def test_osrm_invalid_json_and_boolean_metrics_fail_closed(payload: object) -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload)
+    ))
+    with pytest.raises(RoutingError):
+        OSRMClient("http://router.test", client=client).table(
+            RoutingPoint(longitude=11.46, latitude=48.18),
+            [RoutingPoint(longitude=11.50, latitude=48.20)],
+        )
