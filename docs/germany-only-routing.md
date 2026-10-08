@@ -82,9 +82,15 @@ Two independent public-card adapters have been added:
 
 Both are **manual diagnostics only** until source terms, actual HTML,
 card extraction, and worthwhile in-budget yield have been checked live.
-They do not require creating an account, do not access contact forms or
-private pages, and are never authoritative for disappearance. A new crawler
-cannot be counted as production coverage just because its code exists.
+The Ohne-Makler entry uses its **purchase-only** `/immobilien/haus-kaufen/`
+frontier (not the mixed sale/rental listing). Immobilien.de has one national
+and four public city landing pages: Neubrandenburg, Gangelt, Homburg, Hagenow.
+These pages and example under-€200k listings were verified as publicly
+visible on 2026-10-09; **no real HTML crawl/ingest test was run**. Each shard
+requests only the first listing page, and duplicates are keyed by stable
+source listing IDs. The frontiers do not require accounts or contact forms
+and are never authoritative for disappearance. A new crawler cannot be
+counted as production coverage just because its code exists.
 
 Diagnostic operators can use:
 `python scripts/run_ohne_makler_de.py` and
