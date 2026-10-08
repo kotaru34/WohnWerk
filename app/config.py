@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     routing_base_url: str = "http://127.0.0.1:5000"
     routing_timeout_seconds: float = 3.0
     routing_max_table_coordinates: int = 100
+    # Must match the actual extract loaded in deploy/wohnwerk-osrm.service.
+    routing_graph_countries: str = "AT"
+    routing_max_snap_distance_metres: float = 3000.0
     routing_prefilter_properties_per_job: int = 75
 
     property_image_dir: str = "/var/lib/wohnwerk/property-images"
