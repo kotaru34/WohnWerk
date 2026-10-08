@@ -55,7 +55,7 @@
 
       <section class="settings-section">
         <h3>Arbeitsplatz</h3>
-        <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Bei einer Adresse mit PLZ nutzt WohnWerk den belegbaren PLZ-Mittelpunkt; ohne belastbare Auflösung bleibt die Entfernung unbekannt.</div>
+        <div class="subtle">Nur Entscheidungshilfe, kein Ausschlusskriterium. Hausgenaue Koordinaten gibt es nur nach einer geprüften Adressauflösung. Sonst wird der PLZ-Mittelpunkt ausdrücklich als Näherung verwendet. Straßenauflösung ist nur bei freigeschaltetem Geocoder aktiv.</div>
         <div class="settings-grid workplace">
           <label>Land
             <select name="workplace_country">
@@ -68,7 +68,13 @@
         </div>
         {% if workplace %}
           {% if workplace.location is not none %}
-            <div class="resolved">Aufgelöst als {{ workplace.postal_code or workplace.city or workplace.input_text }} · {{ workplace.resolution_method }}</div>
+            {% if workplace.resolution_method == 'verified_street_address' %}
+              <div class="resolved">Hausnummer und Straße überprüft · Geodaten © OpenStreetMap-Mitwirkende (ODbL), über Nominatim.</div>
+            {% elif workplace.resolution_method == 'street_address_unverified' %}
+              <div class="resolved">Keine belastbare Hausnummer-Koordinate gefunden · Entfernung nur näherungsweise ab PLZ-Mittelpunkt.</div>
+            {% else %}
+              <div class="resolved">Nur Näherungswert ab {{ workplace.postal_code or workplace.city or workplace.input_text }} · {{ workplace.resolution_method }}.</div>
+            {% endif %}
           {% else %}
             <div class="resolved error">Nicht aufgelöst: {{ workplace.resolution_error or 'Entfernung unbekannt.' }}</div>
           {% endif %}
