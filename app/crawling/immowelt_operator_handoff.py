@@ -359,16 +359,28 @@ async def _has_verified_search_results(page: Any, requested_url: str) -> bool:
     return _TOTAL_RE.search(heading) is not None
 
 
-def _finish_operator_state(run_dir: Path, *, state: str, message: str) -> None:
-    _atomic_json(
-        operator_status_path(run_dir),
-        {
-            "version": 1,
-            "state": state,
-            "message": message,
-            "updated_at": datetime.now(UTC).isoformat(),
-        },
-    )
+def _finish_operator_state(
+    run_dir: Path,
+    *,
+    state: str,
+    message: str,
+    diagnostics: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "version": 1,
+        "state": state,
+        "message": message,
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    if diagnostics is not None:
+        payload.update(
+            {
+                "browser_session": diagnostics["browser_session"],
+                "pointer_events_seen": diagnostics["pointer_events_seen"],
+                "pointer_processing_delay_max_ms": diagnostics["pointer_processing_delay_max_ms"],
+            }
+        )
+    _atomic_json(operator_status_path(run_dir), payload)
     try:
         operator_approval_path(run_dir).unlink()
     except FileNotFoundError:
@@ -623,6 +635,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                     return ChallengeResult(
                         action="defer",
                         message="Immowelt provider access restricted after human verification",
+                        diagnostics={
+                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                            "pointer_events_seen": pointer_events_seen,
+                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        },
                     )
 
                 frame_urls = [frame.url for frame in page.frames]
@@ -649,7 +666,7 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         "run_id": request.run_id,
                         "browser_session": "original_live" if live_session is not None else "restored_from_storage",
                         "pointer_events_seen": pointer_events_seen,
-                        "pointer_delivery_delay_max_ms": pointer_delay_max_ms,
+                        "pointer_processing_delay_max_ms": pointer_delay_max_ms,
                         "updated_at": datetime.now(UTC).isoformat(),
                         "page_url": page.url,
                         "challenge_present": challenge_present,
@@ -670,6 +687,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                         run_dir,
                         state="resolved",
                         message="operator completed interactive DataDome verification",
+                        diagnostics={
+                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                            "pointer_events_seen": pointer_events_seen,
+                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        },
                     )
                     return ChallengeResult(
                         action="resolved",
@@ -682,6 +704,11 @@ class ImmoweltOperatorChallengeHandler(ChallengeHandler):
                 run_dir,
                 state="timeout",
                 message="operator handoff timed out without completed verification",
+                diagnostics={
+                            "browser_session": "original_live" if live_session is not None else "restored_from_storage",
+                            "pointer_events_seen": pointer_events_seen,
+                            "pointer_processing_delay_max_ms": pointer_delay_max_ms,
+                        },
             )
             return ChallengeResult(
                 action="defer",
