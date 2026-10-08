@@ -12,7 +12,6 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from app.config import get_settings
 from app.country_scope import selected_country
 from app.database import Base
-from app.jobs.location_resolution import AUSTRIAN_POSTAL_SOURCE
 from app.models import PostalCode, Property
 from app.postal_codes_de import GEONAMES_SOURCE
 from app.property_location_filter import PropertyFilterCenter, resolve_property_filter_center
@@ -22,13 +21,12 @@ from app.workplace_geocoding import (
     parse_german_street_address,
 )
 
-_SUPPORTED_COUNTRIES = {"AT", "DE"}
+_SUPPORTED_COUNTRIES = {"DE"}
 _POSTAL_PATTERNS = {
     "AT": re.compile(r"(?<!\d)(\d{4})(?!\d)"),
     "DE": re.compile(r"(?<!\d)(\d{5})(?!\d)"),
 }
 _POSTAL_SOURCES = {
-    "AT": AUSTRIAN_POSTAL_SOURCE,
     "DE": GEONAMES_SOURCE,
 }
 
@@ -91,7 +89,7 @@ class WorkplaceDistance:
 def normalize_workplace_country(country_code: str) -> str:
     normalized = country_code.strip().upper()
     if normalized not in _SUPPORTED_COUNTRIES:
-        raise ValueError("Arbeitsplatz-Land muss AT oder DE sein.")
+        raise ValueError("Arbeitsplatz-Land muss DE sein.")
     return normalized
 
 
