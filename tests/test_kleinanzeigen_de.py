@@ -1,4 +1,7 @@
 from decimal import Decimal
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -233,3 +236,109 @@ async def test_region_pilot_fails_closed_when_scope_redirects_to_nationwide(
     assert err.value.halt_source is True
     assert err.value.pages_fetched == 0
     assert err.value.items_seen == 0
+
+
+def test_hybrid_keeps_national_plus_four_regions_and_rejects_mutually_exclusive_modes() -> None:
+    hybrid = KleinanzeigenGermanyPropertySource(
+        frontier_pages=12, regional_expansion=True,
+    )
+    shards = hybrid.default_shards()
+    assert len(shards) == 5
+    assert shards[0].key == "de-newest-frontier"
+    assert shards[0].params == {"country_code": "DE"}
+    assert {spec.key for spec in shards[1:]} == {
+        f"de-region-{key}" for key, _code, _label in REGIONAL_PILOT
+    }
+    assert hybrid._page_url(1) == KleinanzeigenGermanyPropertySource._page_url(1)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        KleinanzeigenGermanyPropertySource(regional_pilot=True, regional_expansion=True)
+
+
+@pytest.mark.asyncio
+async def test_hybrid_budget_is_12_national_plus_3_per_region(monkeypatch) -> None:
+    requested: list[str] = []
+
+    class Probe(KleinanzeigenGermanyPropertySource):
+        async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+            del client
+            requested.append(url)
+            region = next(
+                (key for key, _code, _label in REGIONAL_PILOT if f"/{key}/" in url),
+                None,
+            )
+            heading = (
+                "Häuser zum Kauf 1 - 25 von 200.707 Ergebnissen in Deutschland"
+            )
+            if region is None:
+                html = _page_html()
+            else:
+                label = next(label for key, _code, label in REGIONAL_PILOT if key == region)
+                html = _page_html().replace(
+                    heading, f"Häuser zum Kauf in {label} 1 - 25 von 100 Ergebnissen"
+                    f" in {label}",
+                )
+            return httpx.Response(200, text=html, request=httpx.Request("GET", url))
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    monkeypatch.setattr(
+        "app.sources.property.kleinanzeigen_de.httpx.AsyncClient",
+        lambda **_kwargs: FakeClient(),
+    )
+
+    hybrid = Probe(frontier_pages=12, regional_expansion=True)
+    batches = [
+        await hybrid.fetch_shard(spec) for spec in hybrid.default_shards()
+    ]
+    assert len(batches) == 5
+    assert [batch.pages_fetched for batch in batches] == [12, 3, 3, 3, 3]
+    assert all(batch.coverage_complete is False for batch in batches)
+    assert all(batch.result_cap_hit is True for batch in batches)
+    assert len(requested) == 24
+    assert all("/s-haus-kaufen/seite:" in url for url in requested[1:12])
+    assert any("/s-haus-kaufen/sachsen/" in url for url in requested[12:])
+
+
+def test_runner_persists_hybrid_enablement_across_scheduled_invocations(monkeypatch) -> None:
+    path = Path(__file__).resolve().parents[1] / "scripts" / "run_kleinanzeigen_de.py"
+    spec = spec_from_file_location("kleinanzeigen_runner_test", path)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    source = SimpleNamespace(
+        id=444,
+        enabled=True,
+        config={
+            "country_code": "DE",
+            "regional_expansion_enabled": False,
+            "operator_custom": "preserve-me",
+        },
+    )
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def scalar(self, _query):
+            return source
+
+        def commit(self) -> None:
+            pass
+
+    monkeypatch.setattr(module, "SessionLocal", lambda: FakeSession())
+    assert module.get_or_create_source() == 444
+    assert source.config["regional_expansion_enabled"] is False
+    assert module.get_or_create_source(enable_regional_expansion=True) == 444
+    assert source.config["regional_expansion_enabled"] is True
+    assert module.get_or_create_source() == 444
+    assert source.config["regional_expansion_enabled"] is True
+    assert source.config["operator_custom"] == "preserve-me"
