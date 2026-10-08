@@ -24,10 +24,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--frontier-pages", type=int, default=12)
     parser.add_argument("--delay", type=float, default=3.0)
     parser.add_argument("--hard-max-pages", type=int, default=40)
+    parser.add_argument(
+        "--enable-regional-expansion",
+        action="store_true",
+        help=(
+            "Persistently enable four regional frontiers alongside the existing "
+            "nationwide shard (24 pages total per scan); explicit operator action"
+        ),
+    )
     return parser.parse_args()
 
 
-def get_or_create_source() -> int:
+def get_or_create_source(*, enable_regional_expansion: bool = False) -> int:
     config = {
         "country_code": "DE",
         "scope": (
@@ -48,6 +56,8 @@ def get_or_create_source() -> int:
         ),
         "rate_policy": "low-rate HTTP with >=2 second jittered spacing and 429/5xx backoff",
     }
+    if enable_regional_expansion:
+        config["regional_expansion_enabled"] = True
     with SessionLocal() as session:
         source = session.scalar(select(Source).where(Source.name == SOURCE_NAME))
         if source is None:
@@ -77,16 +87,22 @@ async def async_main() -> int:
     if args.frontier_pages <= 0 or args.hard_max_pages <= 0:
         raise SystemExit("--frontier-pages and --hard-max-pages must be positive")
 
-    source_id = get_or_create_source()
-    adapter = KleinanzeigenGermanyPropertySource(
-        request_delay_seconds=max(2.0, args.delay),
-        frontier_pages=args.frontier_pages,
-        hard_max_pages=args.hard_max_pages,
+    source_id = get_or_create_source(
+        enable_regional_expansion=args.enable_regional_expansion
     )
     with SessionLocal() as session:
         source = session.get(Source, source_id)
         if source is None:
             raise RuntimeError("Kleinanzeigen source disappeared before the run started")
+        regional_expansion = bool(
+            (source.config or {}).get("regional_expansion_enabled", False)
+        )
+        adapter = KleinanzeigenGermanyPropertySource(
+            request_delay_seconds=max(2.0, args.delay),
+            frontier_pages=args.frontier_pages,
+            hard_max_pages=args.hard_max_pages,
+            regional_expansion=regional_expansion,
+        )
         run, summary = await run_property_source(
             session,
             source=source,
