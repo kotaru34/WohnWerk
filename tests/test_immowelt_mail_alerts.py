@@ -6,9 +6,9 @@ import pytest
 
 from app.crawling.immowelt_mail_alerts import (
     canonical_alert_url,
+    extract_alert_files,
     extract_alert_listings,
 )
-from scripts.import_immowelt_alert_eml import extract_files
 
 EXPOSE_ID = "12345678-1234-1234-1234-123456789abc"
 OTHER_ID = "abcdef123456"
@@ -92,8 +92,8 @@ def test_local_batch_dedup_and_reject_other_files(tmp_path) -> None:
             + '">Ein schönes Haus</a>'
         )
     )
-    result = extract_files([first, second])
+    result = extract_alert_files([first, second])
     assert len(result) == 1
     assert result[0].title == "Ein schönes Haus"
     with pytest.raises(ValueError, match="Expected .eml"):
-        extract_files([tmp_path / "not-email.txt"])
+        extract_alert_files([tmp_path / "not-email.txt"])
