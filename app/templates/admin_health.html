@@ -125,6 +125,28 @@
     <div class="stat"><strong>{{ snapshot.enabled_sources }}</strong>aktive Quellen</div>
   </div>
 
+  <section class="panel" style="padding:16px; margin-bottom:18px" aria-labelledby="immowelt-operator-title">
+    <h2 id="immowelt-operator-title" style="margin-top:0">Immowelt – menschliche Live-Prüfung</h2>
+    <p class="subtle">Vor einem manuellen Immowelt-Lauf aktivieren. Bei einer interaktiven
+      Prüfung bleibt die ursprüngliche Browser-Sitzung für bis zu 15 Minuten erhalten.
+      Geplante Hintergrundläufe warten nicht auf Menschen. Das Vorbereiten startet keinen Crawl.</p>
+    <div class="actions" style="justify-content:flex-start">
+      <form method="post" action="/admin/health/immowelt-ready/arm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Für CAPTCHA bereithalten (15 Min.)</button>
+      </form>
+      <form method="post" action="/admin/health/immowelt-ready/clear">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Bereitschaft aufheben</button>
+      </form>
+    </div>
+    <p id="immowelt-ready-status" role="status" aria-live="polite">
+      Bereitschaft: {{ operator_readiness.state }}.
+    </p>
+    <a id="immowelt-live-link" class="notice" style="display:none"
+      href="/admin/health">Originale Live-Prüfung öffnen</a>
+  </section>
+
   <h2>Quellen</h2>
   <div class="source-list">
     {% for row in snapshot.sources %}
@@ -334,5 +356,50 @@
     </div>
   </div>
 </main>
+<script>
+(() => {
+  const status = document.getElementById("immowelt-ready-status");
+  const link = document.getElementById("immowelt-live-link");
+  async function refreshReadiness() {
+    try {
+      const response = await fetch("/admin/health/immowelt-ready/status", {
+        credentials: "same-origin", cache: "no-store"
+      });
+      if (!response.ok) throw new Error("Status nicht erreichbar");
+      const value = await response.json();
+      const deadline = Date.parse(value.expires_at || "");
+      const seconds = Number.isFinite(deadline)
+        ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+        : 0;
+      const active = Number.isInteger(value.live_run_id) &&
+        ["armed", "active", "awaiting_approval"].includes(value.handoff_state);
+      if (active) {
+        status.textContent = "Live-Prüfung für CrawlRun #" + value.live_run_id +
+          " verfügbar. Browser-Zustand: " + (value.browser_session || "Original wird verbunden") +
+          ". Verbleibende Bereitschaft: " + seconds + " s.";
+        link.href = "/admin/challenges/" + value.live_run_id;
+        link.style.display = "inline-block";
+      } else {
+        const states = {
+          idle: "Nicht vorbereitet",
+          ready: "Bereit – jetzt manuell Immowelt starten",
+          bound: "Manueller Lauf gestartet; warte auf eine Challenge",
+          consumed: "Bereitschaft verwendet; prüfe aktuellen CrawlRun",
+          expired: "Bereitschaft abgelaufen",
+          invalid: "Bereitschaft ungültig"
+        };
+        status.textContent = (states[value.state] || "Unbekannter Status") +
+          (seconds ? " (" + seconds + " s verbleibend)" : "");
+        link.style.display = "none";
+      }
+    } catch (_) {
+      status.textContent = "Bereitschaftsstatus nicht verfügbar.";
+      link.style.display = "none";
+    }
+    window.setTimeout(refreshReadiness, 1000);
+  }
+  refreshReadiness();
+})();
+</script>
 </body>
 </html>
