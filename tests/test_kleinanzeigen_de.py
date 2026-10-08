@@ -4,7 +4,6 @@ import httpx
 import pytest
 
 from app.sources.base import SourceFetchError
-
 from app.sources.property.kleinanzeigen_de import (
     REGIONAL_PILOT,
     KleinanzeigenGermanyPropertySource,
