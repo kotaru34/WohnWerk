@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.models import Job, JobListing, ListingStatus, Property, PropertyListing, Source
 
-SUPPORTED_COUNTRIES = ("DE", "AT")
-DEFAULT_COUNTRY = "AT"
+SUPPORTED_COUNTRIES = ("DE",)
+DEFAULT_COUNTRY = "DE"
 COOKIE_NAME = "wohnwerk_country"
 _SCOPED_PREFIXES = ("/houses", "/jobs", "/matches", "/admin/matches")
 _selected_country: ContextVar[str | None] = ContextVar("wohnwerk_country", default=None)
@@ -29,9 +29,8 @@ def selected_country() -> str | None:
 
 
 def _source_country_expression():
-    # Existing Austria-only sources predate country metadata.  Treat an absent
-    # value as AT so the frozen v1 corpus keeps its exact current semantics.
-    return func.upper(func.coalesce(Source.config["country_code"].astext, DEFAULT_COUNTRY))
+    # Unclassified historical sources must NOT be reclassified as German sources.
+    return func.upper(func.coalesce(Source.config["country_code"].astext, "AT"))
 
 
 def _property_country_condition(country_code: str):
@@ -106,7 +105,7 @@ def _country_href(scope, country_code: str) -> str:
 
 def _switch_markup(scope, country_code: str) -> bytes:
     links = []
-    for code, flag in (("DE", "🇩🇪"), ("AT", "🇦🇹")):
+    for code, flag in (("DE", "🇩🇪"),):
         active = " ww-country-active" if code == country_code else ""
         href = escape(_country_href(scope, code), quote=True)
         aria_current = "page" if code == country_code else "false"
@@ -127,7 +126,7 @@ def _switch_markup(scope, country_code: str) -> bytes:
 
 
 class CountryScopeMiddleware:
-    """Persist DE/AT selection, scope ORM reads, and add the compact UI switch.
+    """Scope the German catalog and keep historical records isolated.
 
     The country is deliberately derived from Source.config["country_code"].  This
     avoids duplicating geography state on canonical Job/Property rows and lets one
