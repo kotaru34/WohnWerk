@@ -15,10 +15,10 @@ from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
 from app.crawling.challenge import ChallengeHandler, ChallengeRequest, ChallengeResult
-from app.crawling.immowelt_operator_ready import consume_operator_readiness
 from app.crawling.immowelt_access import immowelt_access_restricted
-from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
+from app.crawling.immowelt_operator_ready import consume_operator_readiness
 from app.refresh import MANUAL_RUN_REQUEST_ENV
+from app.sources.property.immowelt_de import _TOTAL_RE, _validate_search_state
 
 DEFAULT_OPERATOR_ROOT = Path("/var/lib/wohnwerk/challenge-state/immowelt-de")
 INTERACTIVE_DATADOME_TYPES = {"fe", "bv"}
