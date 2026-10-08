@@ -44,7 +44,10 @@ def read_operator_readiness(
     state = data.get("state")
     if state not in {"ready", "bound", "consumed"}:
         return {"state": "invalid"}
-    return {"state": state, "expires_at": expires_at}
+    result: dict[str, Any] = {"state": state, "expires_at": expires_at}
+    if state == "consumed" and isinstance(data.get("run_id"), int):
+        result["run_id"] = data["run_id"]
+    return result
 
 
 def _write(root: Path, data: dict[str, Any]) -> None:
