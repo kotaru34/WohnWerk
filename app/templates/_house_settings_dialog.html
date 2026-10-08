@@ -60,7 +60,6 @@
           <label>Land
             <select name="workplace_country">
               <option value="DE" {% if not workplace or workplace.country_code == 'DE' %}selected{% endif %}>Deutschland</option>
-              <option value="AT" {% if workplace and workplace.country_code == 'AT' %}selected{% endif %}>Österreich</option>
             </select>
           </label>
           <label>Adresse, PLZ oder Ort
