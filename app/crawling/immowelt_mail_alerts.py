@@ -13,8 +13,8 @@ from html.parser import HTMLParser
 from urllib.parse import unquote, urlsplit
 
 _IMMOWELT_HOSTS = frozenset({"immowelt.de", "www.immowelt.de"})
-_EXPOSE_PATH = re.compile(r"^/expose/(?P<id>(?:[0-9a-f-]{20,}|[a-z0-9]{12}))/?$", re.I)
-_HTTP_LINK = re.compile(r"https?://[^\s<>\"'()]+", re.I)
+_EXPOSE_PATH = re.compile(r"^/expose/(?P<id>(?:[0-9a-f-]{20,}|[a-z0-9]{12}))/?$", re.IGNORECASE)
+_HTTP_LINK = re.compile(r"https?://[^\s<>\"'()]+", re.IGNORECASE)
 _TITLE_WS = re.compile(r"\s+")
 
 
