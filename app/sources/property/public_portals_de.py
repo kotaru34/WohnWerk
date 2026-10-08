@@ -128,7 +128,10 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
             title = _clean_text(text[price_match.end():postcode_match.start()])
         if not 7 <= len(title) <= 500:
             continue
-        city = _clean_text(postcode_match.group(2)).strip(" ,-")
+        city = re.split(
+            r"\\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\\b",
+            _clean_text(postcode_match.group(2)), maxsplit=1, flags=re.I,
+        )[0].strip(" ,-")
         if len(city) > 100:
             continue
         areas = [_decimal(value) for value in _AREA.findall(text)]
@@ -206,7 +209,7 @@ class PublicGermanHouseSource(PropertySource):
                     raise RuntimeError("No identifiable listing cards; refusing empty success")
                 return SourceBatch(
                     items=items,
-                    source_reported_count=seen,
+                    source_reported_count=None,
                     coverage_complete=False,
                     pages_fetched=1,
                     next_cursor={"country_code": "DE", "frontier_cards_seen": seen},
