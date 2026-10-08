@@ -957,6 +957,9 @@ def immowelt_operator_ready_status(_: AdminDependency, db: DbDependency):
                 status_payload["handoff_state"] = handoff["state"]
                 status_payload["live_run_id"] = run_id
                 status_payload["browser_session"] = handoff.get("browser_session")
+                # Countdown follows the live browser's actual deadline.
+                if handoff.get("expires_at"):
+                    status_payload["expires_at"] = handoff["expires_at"]
     return JSONResponse(status_payload, headers={"Cache-Control": "no-store"})
 
 
