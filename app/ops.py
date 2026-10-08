@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Form, HTTPException, Request, status
+from fastapi import APIRouter, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -908,6 +908,79 @@ def approve_source_challenge(
         ) from exc
 
     return RedirectResponse(f"/admin/challenges/{run.id}", status_code=303)
+
+
+@router.get("/health/immowelt-runs")
+def immowelt_run_diagnostics(
+    _: AdminDependency,
+    db: DbDependency,
+    ids: str = Query(..., description="Comma-separated list of up to four CrawlRun IDs"),
+):
+    """Admin-only read-only historic run comparison, without challenge secrets."""
+    parts = [part.strip() for part in ids.split(",")]
+    if (
+        not 1 <= len(parts) <= 4
+        or any(not part.isdecimal() for part in parts)
+        or len(set(parts)) != len(parts)
+    ):
+        raise HTTPException(status_code=400, detail="Erwartet werden 1–4 eindeutige Lauf-IDs.")
+
+    rows = []
+    for part in parts:
+        run_id = int(part)
+        run = db.get(CrawlRun, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"CrawlRun #{run_id} nicht gefunden.")
+        source = db.get(Source, run.source_id)
+        if source is None or source.name != "immowelt-de":
+            raise HTTPException(status_code=404, detail="Nur Immowelt-Läufe verfügbar.")
+
+        states = dict(
+            db.execute(
+                select(CrawlShardRun.status, func.count())
+                .where(CrawlShardRun.crawl_run_id == run.id)
+                .group_by(CrawlShardRun.status)
+            ).all()
+        )
+        metadata = dict(run.run_metadata or {})
+        history = metadata.get("challenge_history")
+        recent_actions = (
+            [
+                {"action": value.get("action"), "at": value.get("at")}
+                for value in history[-5:]
+                if isinstance(value, dict)
+            ]
+            if isinstance(history, list)
+            else []
+        )
+        active = metadata.get("active_challenge")
+        active_type = None
+        if isinstance(active, dict):
+            challenge = active.get("challenge")
+            if isinstance(challenge, dict):
+                active_type = challenge.get("datadome_challenge_type")
+
+        rows.append(
+            {
+                "id": run.id,
+                "status": str(run.status),
+                "coverage": str(run.coverage_status),
+                "mode": str(run.mode),
+                "started_at": run.started_at.isoformat() if run.started_at else None,
+                "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+                "pages_fetched": run.pages_fetched,
+                "items_seen": run.items_seen,
+                "items_new": run.items_new,
+                "items_updated": run.items_updated,
+                "items_disappeared": run.items_disappeared,
+                "shard_status_counts": states,
+                "last_activity_at": metadata.get("last_activity_at"),
+                "active_challenge_type": active_type,
+                "challenge_handoff_count": metadata.get("challenge_handoff_count"),
+                "recent_challenge_actions": recent_actions,
+            }
+        )
+    return JSONResponse({"runs": rows}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/challenges/{run_id}")
