@@ -42,7 +42,7 @@ async def run_portal(source_name: str) -> int:
                 poll_interval_minutes=240,
                 config={
                     "country_code": "DE",
-                    "coverage": "single public page, frontier-only, never disappearance authority",
+                    "coverage": "whitelisted public first-page shards, never disappearance authority",
                     "retention": "public ID, link, title, asking price and source-backed PLZ/city/areas",
                     "operator_note": "Manual diagnostic only; activation requires a separately validated live sample",
                 },
