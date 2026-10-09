@@ -26,14 +26,14 @@ def test_country_switch_normalizes_and_preserves_existing_query() -> None:
     }
 
     assert normalize_country("de") == "DE"
-    assert normalize_country(" at ") == "AT"
+    assert normalize_country(" at ") is None
     assert normalize_country("CH") is None
     assert _country_href(scope, "DE") == "/houses?sort=price&page=2&country=DE"
 
     markup = _switch_markup(scope, "DE").decode("utf-8")
     assert "🇩🇪 DE" in markup
-    assert "🇦🇹 AT" in markup
-    assert 'href="/houses?sort=price&amp;page=2&amp;country=AT"' in markup
+    assert "🇦🇹 AT" not in markup
+    assert 'href="/houses?sort=price&amp;page=2&amp;country=DE"' in markup
 
 
 def test_country_scope_includes_actual_matches_route() -> None:

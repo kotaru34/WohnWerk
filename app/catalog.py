@@ -722,6 +722,7 @@ def houses_page(
             "system_price_max": PROPERTY_MAX_PRICE_EUR,
             "eur_label": _eur_label,
             "area_label": _area_label,
+            "workplace_geocoding_enabled": get_settings().workplace_geocoding_enabled,
             "csrf_token": _csrf_token(),
         },
     )
@@ -740,6 +741,7 @@ def update_house_settings(
     internet_minimum_mbps: Annotated[str, Form()] = "",
     workplace_country: Annotated[str, Form()] = "DE",
     workplace_text: Annotated[str, Form()] = "",
+    refresh_workplace_geocoding: Annotated[str, Form()] = "",
     return_to: Annotated[str, Form()] = "/houses",
 ):
     profile = _profile_or_503(db)
@@ -771,6 +773,7 @@ def update_house_settings(
             country_code=workplace_country,
             input_text=workplace_text,
             commit=False,
+            force_geocoding_retry=refresh_workplace_geocoding == "1",
         )
         db.commit()
     except ValueError as exc:
@@ -840,6 +843,7 @@ def update_candidate_workplace(
     db: DbDependency,
     workplace_country: Annotated[str, Form()] = "DE",
     workplace_text: Annotated[str, Form()] = "",
+    refresh_workplace_geocoding: Annotated[str, Form()] = "",
     return_to: Annotated[str, Form()] = "/houses",
 ):
     profile = _profile_or_503(db)
@@ -849,6 +853,7 @@ def update_candidate_workplace(
             profile.id,
             country_code=workplace_country,
             input_text=workplace_text,
+            force_geocoding_retry=refresh_workplace_geocoding == "1",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

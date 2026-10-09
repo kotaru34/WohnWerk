@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from math import asin, cos, isfinite, radians, sin, sqrt
 from typing import Self
 
 import httpx
@@ -45,13 +46,17 @@ class OSRMClient:
         *,
         timeout_seconds: float = 2.0,
         max_table_coordinates: int = 100,
+        max_snap_distance_metres: float = 3000.0,
         client: httpx.Client | None = None,
     ) -> None:
         if max_table_coordinates < 2:
             raise ValueError("max_table_coordinates must be at least 2")
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        if not isfinite(max_snap_distance_metres) or max_snap_distance_metres <= 0:
+            raise ValueError("max_snap_distance_metres must be positive and finite")
         self.max_table_coordinates = max_table_coordinates
+        self.max_snap_distance_metres = max_snap_distance_metres
         self._client = client
         self._owns_client = client is None
 
@@ -115,6 +120,8 @@ class OSRMClient:
         except (httpx.HTTPError, ValueError) as exc:
             raise RoutingError(f"OSRM table request failed: {exc}") from exc
 
+        if not isinstance(payload, dict):
+            raise RoutingError("OSRM table response must be a JSON object")
         if payload.get("code") != "Ok":
             message = payload.get("message") or payload.get("code") or "unknown OSRM error"
             raise RoutingError(f"OSRM table request failed: {message}")
@@ -124,16 +131,66 @@ class OSRMClient:
         if len(distances) != len(destinations) or len(durations) != len(destinations):
             raise RoutingError("OSRM table response size does not match destinations")
 
-        return [
-            RouteEstimate(
-                distance_km=None if distance is None else float(distance) / 1000.0,
-                duration_minutes=None if duration is None else float(duration) / 60.0,
-            )
-            for distance, duration in zip(distances, durations, strict=True)
-        ]
+        # OSRM may snap coordinates to distant roads outside the loaded network.
+        # Such routes can look valid while missing hundreds of kilometres.
+        source_snaps = _snap_distances(payload.get("sources"), 1, "sources")
+        destination_snaps = _snap_distances(
+            payload.get("destinations"), len(destinations), "destinations"
+        )
+        if source_snaps[0] > self.max_snap_distance_metres:
+            raise RoutingError("OSRM source is outside its loaded road network")
+
+        result: list[RouteEstimate] = []
+        for destination, distance, duration, snap in zip(
+            destinations, distances, durations, destination_snaps, strict=True
+        ):
+            if distance is None or duration is None or snap > self.max_snap_distance_metres:
+                result.append(RouteEstimate(distance_km=None, duration_minutes=None))
+                continue
+            if not all(
+                type(value) in (float, int) and isfinite(value) and value >= 0
+                for value in (distance, duration)
+            ):
+                raise RoutingError("OSRM returned invalid route metrics")
+            # A genuine drivable route cannot be shorter than the great-circle
+            # lower bound, except for the limited waypoint snap displacement.
+            direct = _great_circle_metres(source, destination)
+            if float(distance) + source_snaps[0] + snap + 250.0 < direct:
+                result.append(RouteEstimate(distance_km=None, duration_minutes=None))
+                continue
+            result.append(RouteEstimate(
+                distance_km=float(distance) / 1000.0,
+                duration_minutes=float(duration) / 60.0,
+            ))
+        return result
 
 
 def _first_matrix_row(value: object, field: str) -> list[float | None]:
     if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], list):
         raise RoutingError(f"OSRM table response has invalid {field}")
     return value[0]
+
+
+
+def _snap_distances(waypoints: object, count: int, label: str) -> list[float]:
+    """Require OSRM waypoint proximity evidence; absent fields are not trusted."""
+    if not isinstance(waypoints, list) or len(waypoints) != count:
+        raise RoutingError(f"OSRM table response has invalid {label}")
+    result: list[float] = []
+    for waypoint in waypoints:
+        if not isinstance(waypoint, dict):
+            raise RoutingError(f"OSRM table response has invalid {label} waypoint")
+        distance = waypoint.get("distance")
+        if type(distance) not in (float, int) or not isfinite(distance) or distance < 0:
+            raise RoutingError(f"OSRM table response has invalid {label} snap distance")
+        result.append(float(distance))
+    return result
+
+
+def _great_circle_metres(left: RoutingPoint, right: RoutingPoint) -> float:
+    lat1 = radians(left.latitude)
+    lat2 = radians(right.latitude)
+    dlat = lat2 - lat1
+    dlon = radians(right.longitude - left.longitude)
+    value = sin(dlat / 2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0) ** 2
+    return 12_742_000.0 * asin(sqrt(min(1.0, value)))

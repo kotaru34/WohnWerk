@@ -121,7 +121,9 @@ def test_german_property_scheduler_keeps_source_authority_explicit() -> None:
     assert plans["falc-de"].supports_reconciliation is False
     assert plans["falc-de"].failure_isolated is True
     assert "von-poll-de" not in plans
-    assert plans["immmo.at"].failure_isolated is False
+    assert "immmo.at" not in plans
+    assert "sreal.at" not in plans
+    assert "workday-public-cxs" not in plans
 
 
 def test_de_job_sources_are_not_scheduled() -> None:

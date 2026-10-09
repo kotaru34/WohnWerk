@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     port: int = 8000
     database_url: str = "postgresql+psycopg://wohnwerk:wohnwerk@localhost:5432/wohnwerk"
 
-    country_code: str = "AT"
+    country_code: str = "DE"
 
     ai_enabled: bool = False
     ai_base_url: str = "http://ai-vm:8001"
@@ -25,7 +25,21 @@ class Settings(BaseSettings):
     routing_base_url: str = "http://127.0.0.1:5000"
     routing_timeout_seconds: float = 3.0
     routing_max_table_coordinates: int = 100
+    # Never infer coverage from the UI country or a deployed systemd template.
+    # Operator enables this only after verifying the loaded Germany road graph.
+    routing_graph_countries: str = ""
+    routing_max_snap_distance_metres: float = 3000.0
     routing_prefilter_properties_per_job: int = 75
+
+    # Explicit operator opt-in: saving a workplace address may disclose it to
+    # a third-party geocoder. Never geocode scraped houses or on page views.
+    workplace_geocoding_enabled: bool = False
+    workplace_geocoding_base_url: str = "https://nominatim.openstreetmap.org"
+    workplace_geocoding_user_agent: str = (
+        "WohnWerk/0.4 (+https://wohnwerk.kotaru.lainlounge.org)"
+    )
+    workplace_geocoding_timeout_seconds: float = 5.0
+    workplace_geocoding_max_postal_centroid_km: float = 15.0
 
     property_image_dir: str = "/var/lib/wohnwerk/property-images"
     property_image_timeout_seconds: float = 10.0

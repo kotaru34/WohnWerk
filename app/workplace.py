@@ -10,20 +10,23 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, cast,
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.config import get_settings
+from app.country_scope import selected_country
 from app.database import Base
-from app.jobs.location_resolution import AUSTRIAN_POSTAL_SOURCE
 from app.models import PostalCode, Property
 from app.postal_codes_de import GEONAMES_SOURCE
 from app.property_location_filter import PropertyFilterCenter, resolve_property_filter_center
 from app.routing import OSRMClient, RoutingError, RoutingPoint
+from app.workplace_geocoding import (
+    geocode_german_workplace,
+    parse_german_street_address,
+)
 
-_SUPPORTED_COUNTRIES = {"AT", "DE"}
+_SUPPORTED_COUNTRIES = {"DE"}
 _POSTAL_PATTERNS = {
     "AT": re.compile(r"(?<!\d)(\d{4})(?!\d)"),
     "DE": re.compile(r"(?<!\d)(\d{5})(?!\d)"),
 }
 _POSTAL_SOURCES = {
-    "AT": AUSTRIAN_POSTAL_SOURCE,
     "DE": GEONAMES_SOURCE,
 }
 
@@ -86,7 +89,7 @@ class WorkplaceDistance:
 def normalize_workplace_country(country_code: str) -> str:
     normalized = country_code.strip().upper()
     if normalized not in _SUPPORTED_COUNTRIES:
-        raise ValueError("Arbeitsplatz-Land muss AT oder DE sein.")
+        raise ValueError("Arbeitsplatz-Land muss DE sein.")
     return normalized
 
 
@@ -156,6 +159,29 @@ def resolve_candidate_workplace(
         city = text
         method = "locality_centroid"
 
+    # A PLZ centroid is not an address coordinate. Exact address lookup is
+    # manually opt-in, single-request and never applied to scraped listings.
+    settings = get_settings()
+    if country == "DE" and settings.workplace_geocoding_enabled and postal_code:
+        street = parse_german_street_address(text)
+        if street is not None and street.postal_code == postal_code:
+            precise_center = geocode_german_workplace(
+                street,
+                postal_centroid=center,
+                base_url=settings.workplace_geocoding_base_url,
+                user_agent=settings.workplace_geocoding_user_agent,
+                timeout_seconds=settings.workplace_geocoding_timeout_seconds,
+                max_centroid_distance_km=settings.workplace_geocoding_max_postal_centroid_km,
+            )
+            if precise_center is not None:
+                center = precise_center
+                source = "OpenStreetMap/Nominatim"
+                method = "verified_street_address"
+            else:
+                # Cache a failed attempt: do not repeatedly query a public
+                # geocoder for an unchanged address on unrelated settings saves.
+                method = "street_address_unverified"
+
     return WorkplaceResolution(
         country_code=country,
         input_text=text,
@@ -184,6 +210,7 @@ def save_candidate_workplace(
     country_code: str,
     input_text: str,
     commit: bool = True,
+    force_geocoding_retry: bool = False,
 ) -> CandidateWorkplace | None:
     text = input_text.strip()
     row = load_candidate_workplace(session, profile_id)
@@ -194,10 +221,31 @@ def save_candidate_workplace(
                 session.commit()
         return None
 
+    # Settings forms can be saved many times without changing the workplace.
+    # Reuse cached address evidence; allow one legacy PLZ-centroid upgrade when
+    # an operator subsequently enables the address-geocoding integration.
+    normalized_country = normalize_workplace_country(country_code)
+    normalized_text = " ".join(text.split())
+    if (
+        row is not None
+        and row.country_code == normalized_country
+        and row.input_text == normalized_text
+        and not (
+            normalized_country == "DE"
+            and get_settings().workplace_geocoding_enabled
+            and (
+                row.resolution_method == "explicit_postal_centroid"
+                or force_geocoding_retry
+            )
+            and parse_german_street_address(normalized_text) is not None
+        )
+    ):
+        return row
+
     resolution = resolve_candidate_workplace(
         session,
-        country_code=country_code,
-        input_text=text,
+        country_code=normalized_country,
+        input_text=normalized_text,
     )
     if row is None:
         row = CandidateWorkplace(
@@ -342,19 +390,36 @@ def load_workplace_distances(
     return output
 
 
+def routing_graph_supports(country: str | None, configured_countries: str) -> bool:
+    """Allow routing only for countries explicitly verified in the loaded graph."""
+    return bool(country) and country.strip().upper() in {
+        part.strip().upper() for part in configured_countries.split(",") if part.strip()
+    }
+
+
 def load_workplace_distances_for_ui(
     session: Session,
     profile_id: int,
     property_ids: set[int],
 ) -> dict[int, WorkplaceDistance]:
     settings = get_settings()
-    if not settings.routing_enabled:
+    workplace = load_candidate_workplace(session, profile_id)
+    property_country = selected_country() or settings.country_code
+    # This installation searches German houses and commutes to a German workplace.
+    # Unknown/mismatched router coverage must never yield a fabricated road distance.
+    if (
+        not settings.routing_enabled
+        or workplace is None
+        or not routing_graph_supports(workplace.country_code, settings.routing_graph_countries)
+        or not routing_graph_supports(property_country, settings.routing_graph_countries)
+    ):
         return load_workplace_distances(session, profile_id, property_ids)
 
     with OSRMClient(
         settings.routing_base_url,
         timeout_seconds=settings.routing_timeout_seconds,
         max_table_coordinates=settings.routing_max_table_coordinates,
+        max_snap_distance_metres=settings.routing_max_snap_distance_metres,
     ) as client:
         return load_workplace_distances(
             session,

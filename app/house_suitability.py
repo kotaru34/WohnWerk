@@ -40,6 +40,7 @@ _SOURCE_REASON_LABELS = {
     "source_url_missing": "Originalanzeige fehlt",
     "source_dead": "Quelle nicht mehr erreichbar",
     "source_liveness_unverified": "Quellenstatus ungeprüft",
+    "house_detail_unverified": "Haus samt Grundstück nicht bestätigt",
     "source_policy": "Quellenregel abgelehnt",
 }
 
