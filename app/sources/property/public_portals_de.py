@@ -20,12 +20,12 @@ from app.sources.base import (
     SourceFetchError,
     SourceShardSpec,
 )
-from app.sources.property.public_portal_detail_de import verify_public_house_detail
 from app.sources.property.germany import (
     GERMANY_PROPERTY_MAX_PRICE_EUR,
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
+from app.sources.property.public_portal_detail_de import verify_public_house_detail
 
 
 @dataclass(frozen=True, slots=True)
