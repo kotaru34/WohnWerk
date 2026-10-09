@@ -79,7 +79,7 @@ def _area(value: str) -> Decimal | None:
         parsed = Decimal(number)
     except InvalidOperation:
         return None
-    return parsed if Decimal("10") <= parsed <= Decimal("100000") else None
+    return parsed if Decimal(10) <= parsed <= Decimal(100000) else None
 
 
 def _plot_candidates(parts: list[str]) -> list[tuple[Decimal, str]]:
