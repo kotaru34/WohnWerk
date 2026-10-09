@@ -84,6 +84,19 @@ def _mem_available_mib() -> int | None:
     return None
 
 
+def _binary_available(binary: str) -> bool:
+    # The signed relay deliberately sanitizes PATH to /usr/bin:/bin.
+    # OSRM commonly lives in /usr/local/bin, so do not issue a false missing
+    # runtime alarm just because a safe audit environment has a narrower PATH.
+    return bool(shutil.which(binary)) or any(
+        path.is_file() and path.stat().st_mode & 0o111 != 0
+        for path in (
+            Path("/usr/local/bin") / binary,
+            Path("/usr/bin") / binary,
+        )
+    )
+
+
 def collect_host_snapshot() -> RoutingHostSnapshot:
     health = _host_health()
     files = {
@@ -107,7 +120,7 @@ def collect_host_snapshot() -> RoutingHostSnapshot:
         osrm_graph_path=_service_graph_path(),
         germany_graph_files=files,
         osrm_commands_installed={
-            binary: shutil.which(binary) is not None for binary in _ALLOWED_BINARY_NAMES
+            binary: _binary_available(binary) for binary in _ALLOWED_BINARY_NAMES
         },
         available_memory_mib=_mem_available_mib(),
         free_disk_gib=free_disk_gib,
