@@ -13,6 +13,10 @@ The Germany-only unit now expects `/var/lib/osrm/germany-latest.osrm`. The Pytho
 application does **not** infer that the live OSRM service actually loaded that graph.
 By default `WOHNWERK_ROUTING_GRAPH_COUNTRIES` is empty, which withholds road km/min
 until an operator verifies the new graph and explicitly sets it to `DE`.
+The read-only `/health` response reports `road_routing_mode=air_distance_only`
+while routing is disabled or DE graph coverage has not been declared, and
+`de_graph_declared` if the operator explicitly enables it. The latter is
+a configuration declaration, **not proof that the server loaded the right graph**.
 
 In addition, the router rejects a source snapped more than 3000 m away, marks
 individual far-snapped destinations unreachable, and rejects physically impossible
@@ -115,7 +119,14 @@ owner details are retained. One shard reads the first public search page;
 the optional detail check reads at most eight eligible details per shard by
 default, with >=2-second spacing. Neither source can prove disappearance.
 
-Use the **read-only, database-free** diagnostic in two stages:
+For a reproducible **offline/no-network** reproduction of a search parser issue,
+save one public HTML page locally (without login) and run
+`python -m scripts.inspect_public_portal_snapshot_de --provider immobilien-de
+--frontier de-neubrandenburg --html-file /tmp/public-search.html`.
+It lists candidate IDs and always reports `production_activation_ready=False`;
+HTML files and provider contact details are never committed to the repo.
+
+Use the **read-only, database-free** live diagnostic in two stages:
 
 1. `python -m scripts.inspect_public_portals_de --provider all` to inspect
    the two national first-page frontiers without accessing details. It labels
