@@ -54,7 +54,9 @@ async def run_portal(source_name: str) -> int:
         run, summary = await run_property_source(
             session,
             source=source,
-            adapter=adapter_type(),
+            # Manual ingestion must only present candidates whose *individual*
+            # public detail proves a priced, already built house with land.
+            adapter=adapter_type(verify_details=True),
             reconciliation=False,
         )
         print(f"source={source.name} run={run.id} status={summary.run_status}")
