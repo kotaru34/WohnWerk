@@ -33,7 +33,7 @@ async def test_public_cards_never_appear_as_verified_houses_without_detail(
 
     def handler(request):
         paths.append(request.url.path)
-        return httpx.Response(200, text=FRONTIER)
+        return httpx.Response(200, text=FRONTIER, headers={"Content-Type": "text/html"})
 
     original = httpx.AsyncClient
     monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
@@ -68,7 +68,8 @@ async def test_verified_existing_house_can_be_shown_after_bounded_detail_check(
     def handler(request):
         paths.append(request.url.path)
         return httpx.Response(
-            200, text=DETAIL if "/immobilie/" in request.url.path else FRONTIER
+            200, text=DETAIL if "/immobilie/" in request.url.path else FRONTIER,
+            headers={"Content-Type": "text/html"},
         )
 
     original = httpx.AsyncClient
@@ -102,7 +103,8 @@ async def test_builder_brochure_is_kept_as_hidden_unverified_observation(
 
     def handler(request):
         return httpx.Response(
-            200, text=detail if "/immobilie/" in request.url.path else FRONTIER
+            200, text=detail if "/immobilie/" in request.url.path else FRONTIER,
+            headers={"Content-Type": "text/html"},
         )
 
     original = httpx.AsyncClient
@@ -128,7 +130,7 @@ async def test_public_detail_access_gate_aborts_source_without_solving_challenge
     def handler(request):
         if "/immobilie/" in request.url.path:
             return httpx.Response(429, text="Too Many Requests")
-        return httpx.Response(200, text=FRONTIER)
+        return httpx.Response(200, text=FRONTIER, headers={"Content-Type": "text/html"})
 
     original = httpx.AsyncClient
     monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
