@@ -4,7 +4,7 @@ Build and acceptance-test a full Germany **MLD** road graph away from the small
 production VPS. The preferred Windows path is MSYS2 + Docker Desktop/Podman; the
 same Python commands work on Debian with Docker/Podman.
 
-Pinned routing engine: `ghcr.io/project-osrm/osrm-backend:26.10.0-debian`.
+Pinned routing engine: `ghcr.io/project-osrm/osrm-backend:26.10.0-debian@sha256:55dbfd47d984c2cacd64e32901b4321c86b5ec761438e69aa053dc78698a786f`.
 The builder records the actually resolved image digest in the output manifest.
 
 ## Host requirements
