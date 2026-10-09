@@ -266,10 +266,10 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         timeout_seconds: float = 30.0,
         regional_pilot: bool = False,
         regional_expansion: bool = False,
-        detail_checks_per_shard: int = 0,
+        detail_checks_per_shard: int | None = None,
     ) -> None:
-        if not 0 <= detail_checks_per_shard <= 8:
-            raise ValueError("Public detail checks must be explicitly capped at 8 per shard")
+        if detail_checks_per_shard is not None and detail_checks_per_shard < 0:
+            raise ValueError("detail_checks_per_shard must be non-negative or None")
         if regional_pilot and regional_expansion:
             raise ValueError("Regional pilot and expansion modes are mutually exclusive")
         self.request_delay_seconds = max(2.0, request_delay_seconds)
@@ -354,11 +354,10 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
     async def _enrich_public_detail(
         self, client: httpx.AsyncClient, item: RawProperty,
     ) -> bool:
-        """Opt-in public GET for an already discovered budget-eligible house.
+        """Fetch one already discovered house detail and retain typed facts only.
 
-        No retry or bypass on restricted pages; no text, seller data or contact
-        details are persisted. A review of provider terms is required BEFORE
-        an operator enables detail checks in a manual run.
+        No retry/bypass on restricted pages and no seller/contact/full-description
+        persistence. Search-card discovery remains the authority for what gets queried.
         """
         await self._sleep()
         self._requests_made += 1
@@ -486,9 +485,12 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                     out_of_budget_cards += page.out_of_budget_cards
                     if page_number >= page.max_page:
                         break
-                # This feature is deliberately off in scheduled runs.
-                # Only explicit manual operator opt-in can add detail requests.
-                for item in list(items_by_id.values())[:self.detail_checks_per_shard]:
+                # Detail facts are part of the normal source acquisition contract.
+                # Existing access-gate behavior remains fail-closed and never bypasses 403/429.
+                detail_items = list(items_by_id.values())
+                if self.detail_checks_per_shard is not None:
+                    detail_items = detail_items[: self.detail_checks_per_shard]
+                for item in detail_items:
                     try:
                         verified = await self._enrich_public_detail(client, item)
                     except SourceFetchError:
