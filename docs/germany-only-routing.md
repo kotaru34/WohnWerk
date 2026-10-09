@@ -97,7 +97,14 @@ source listing IDs. The frontiers do not require accounts or contact forms
 and are never authoritative for disappearance. A new crawler cannot be
 counted as production coverage just because its code exists.
 
-Diagnostic operators can use:
+First use the **read-only, database-free** diagnostic:
+`python -m scripts.inspect_public_portals_de --provider all` for the two
+national search pages or `python -m scripts.inspect_public_portals_de
+--provider immobilien-de --regional` to inspect all five whitelisted
+immobilien.de frontiers. It reports observed listing IDs and budget hits but
+does not save any data. Only after verifying provider terms and the output
+should authorized operators consider the database-writing
 `python scripts/run_ohne_makler_de.py` and
-`python scripts/run_immobilien_de.py`, through the usual authorization and
-runtime gates. Do not schedule these automatically on first deployment.
+`python scripts/run_immobilien_de.py`; all such runs require the usual
+authorization and runtime gates. Do not schedule these automatically on
+first deployment.
