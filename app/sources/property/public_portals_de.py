@@ -65,6 +65,22 @@ _BLOCKED = re.compile(
     re.IGNORECASE,
 )
 
+# The shared legacy DOM parser treats HTML5 void tags such as <img> and
+# <input> as container elements. This can swallow later siblings in real
+# public search-page markup and accidentally mix property cards.
+_VOID_HTML_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+
+
+class _PublicPortalDOMParser(_DOMParser):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() in _VOID_HTML_TAGS:
+            self.handle_startendtag(tag, attrs)
+        else:
+            super().handle_starttag(tag, attrs)
+
 
 def _canonical_listing(href: str, *, page_url: str, portal: Portal) -> tuple[str, str] | None:
     try:
@@ -158,7 +174,7 @@ def _title_from_card(
 
 
 def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tuple[list[RawProperty], int]:
-    parser = _DOMParser()
+    parser = _PublicPortalDOMParser()
     parser.feed(html)
     output: dict[str, RawProperty] = {}
     seen: set[str] = set()
