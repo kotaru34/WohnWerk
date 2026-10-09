@@ -176,3 +176,64 @@ def test_canonical_immobilien_de_original_expose_link_omits_trailing_slash() -> 
         "/expose/9658417/", page_url=IMMOBILIEN_DE.base_url + IMMOBILIEN_DE.search_path,
         portal=IMMOBILIEN_DE,
     ) == ("https://www.immobilien.de/expose/9658417", "9658417")
+
+
+def test_immobilien_de_ignores_small_per_square_metre_price_when_markup_is_reordered() -> None:
+    html = """
+        <article>
+            <a href="/expose/9658417">Wohnhaus und Werkstatt in Ebersdorf b. Coburg</a>
+            <p>1.039 € / m²</p><p>185.000 €Kaufpreis</p>
+            <p>96237 Ebersdorf bei Coburg</p><p>Fläche 178 m²</p>
+        </article>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=IMMOBILIEN_DE.base_url + IMMOBILIEN_DE.search_path,
+        portal=IMMOBILIEN_DE,
+    )
+    assert seen == 1
+    assert len(items) == 1
+    assert items[0].price_eur == Decimal(185000)
+
+
+def test_immobilien_de_does_not_infer_asking_price_from_unlabeled_metrics() -> None:
+    html = """
+        <article>
+            <a href="/expose/9658417">Das kleine Wohnhaus in Coburg</a>
+            <p>1.039 € / m²</p><p>Preis auf Anfrage</p>
+            <p>96237 Ebersdorf bei Coburg</p><p>Fläche 178 m²</p>
+        </article>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=IMMOBILIEN_DE.base_url + IMMOBILIEN_DE.search_path,
+        portal=IMMOBILIEN_DE,
+    )
+    assert seen == 1
+    assert items == []
+
+
+@pytest.mark.parametrize("title", [
+    "VERKAUFT!! Renoviertes Einfamilienhaus",
+    "RESERVIERT! Günstiges Haus mit Garten",
+    "Hauspreis ohne Grundstück: Bungalow am See",
+    "Kleines Haus auf Pachtgrundstück verfügbar",
+])
+def test_sale_frontier_skips_sold_or_build_only_offers(title: str) -> None:
+    html = (
+        f'<article><a href="/immobilie/97531/">'
+        f'159.000 € {title} 17034 Neubrandenburg 110m² 500m²'
+        '</a></article>'
+    )
+    items, seen = parse_public_portal_page(
+        html, page_url=OHNE_MAKLER.base_url + OHNE_MAKLER.search_path,
+        portal=OHNE_MAKLER,
+    )
+    assert seen == 1
+    assert items == []
+
+
+def test_german_market_paths_include_non_eastern_low_budget_opportunities() -> None:
+    adapter = OhneMaklerGermanyPropertySource()
+    assert adapter.frontier_paths()["de-bayern"] == "/immobilien/haus-kaufen/bayern/"
+    assert adapter.frontier_paths()["de-baden-wurttemberg"].endswith("/baden-wurttemberg/")
+    assert adapter.frontier_paths()["de-rheinland-pfalz"].endswith("/rheinland-pfalz/")
+    assert adapter.frontier_paths()["de-nordrhein-westfalen"].endswith("/nordrhein-westfalen/")
