@@ -25,15 +25,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--delay", type=float, default=3.0)
     parser.add_argument("--hard-max-pages", type=int, default=40)
     parser.add_argument(
-        "--detail-checks-per-shard", type=int, default=0,
+        "--detail-checks-per-shard", type=int, default=None,
         help=(
-            "Optional public detail checks per shard (0..8), OFF by default. "
-            "Requires explicit provider-terms review; no redirects or challenge bypass."
+            "Optional diagnostic cap for detail GETs per shard. "
+            "Default: enrich every discovered in-budget house."
         ),
-    )
-    parser.add_argument(
-        "--confirm-provider-terms-reviewed", action="store_true",
-        help="Operator confirmation required for any live detail GETs",
     )
     parser.add_argument(
         "--enable-regional-expansion",
@@ -59,8 +55,8 @@ def get_or_create_source(*, enable_regional_expansion: bool = False) -> int:
             "EUR 30,000..200,000"
         ),
         "acquisition": (
-            "bounded public search frontier only; newest-first; no login, messages, "
-            "seller contact extraction or detail-page bulk crawl"
+            "bounded public search frontier plus per-result typed detail enrichment; "
+            "no login, messages or seller contact extraction"
         ),
         "retention": (
             "source ID/URL, title, price, visible living area, PLZ/city and bounded "
@@ -102,11 +98,9 @@ async def async_main() -> int:
     args = parse_args()
     if args.frontier_pages <= 0 or args.hard_max_pages <= 0:
         raise SystemExit("--frontier-pages and --hard-max-pages must be positive")
-    detail_checks = getattr(args, "detail_checks_per_shard", 0)
-    if not 0 <= detail_checks <= 8:
-        raise SystemExit("--detail-checks-per-shard must be 0..8")
-    if detail_checks and not getattr(args, "confirm_provider_terms_reviewed", False):
-        raise SystemExit("Public detail GETs require --confirm-provider-terms-reviewed")
+    detail_checks = getattr(args, "detail_checks_per_shard", None)
+    if detail_checks is not None and detail_checks < 0:
+        raise SystemExit("--detail-checks-per-shard must be non-negative")
 
     source_id = get_or_create_source(
         enable_regional_expansion=(
