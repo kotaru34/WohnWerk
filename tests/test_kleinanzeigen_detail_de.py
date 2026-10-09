@@ -149,3 +149,93 @@ def test_script_payload_and_other_ad_before_contact_cannot_fake_id() -> None:
     )
     with pytest.raises(ValueError, match="identify"):
         parse_kleinanzeigen_house_detail(html, url=USLAR_URL, expected_listing_id=USLAR_ID)
+
+
+@pytest.mark.asyncio
+async def test_opt_in_detail_enrichment_changes_typed_facts_not_seller_data(monkeypatch) -> None:
+    import httpx
+
+    from app.sources.base import RawProperty
+    from app.sources.property.kleinanzeigen_de import KleinanzeigenGermanyPropertySource
+
+    html = detail_html(
+        plot="217 m²", description="Gasheizung aus 2010.", identity=USLAR_ID,
+    )
+    requested = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(
+            200, request=request, text=html,
+            headers={"content-type": "text/html; charset=UTF-8"},
+        )
+
+    source = KleinanzeigenGermanyPropertySource(detail_checks_per_shard=1)
+    async def no_wait() -> None:
+        return None
+    monkeypatch.setattr(source, "_sleep", no_wait)
+    item = RawProperty(source_listing_id=USLAR_ID, url=USLAR_URL, title="Uslar",
+                       price_eur=Decimal(85000), raw_payload={"country_code": "DE"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        success = await source._enrich_public_detail(client, item)
+
+    assert success is True
+    assert requested == [USLAR_URL]
+    assert item.plot_area_m2 == Decimal(217)
+    assert item.raw_payload["heating_types"] == ["gas"]
+    assert item.raw_payload["detail_enriched"] is True
+    assert item.raw_payload["plot_area_source"] == "kleinanzeigen_detail"
+    assert "description" not in item.raw_payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 403, 429, 503])
+async def test_opt_in_detail_access_gate_halts_without_retry(monkeypatch, status: int) -> None:
+    import httpx
+
+    from app.sources.base import RawProperty, SourceFetchError
+    from app.sources.property.kleinanzeigen_de import KleinanzeigenGermanyPropertySource
+
+    calls = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(status, request=request)
+
+    source = KleinanzeigenGermanyPropertySource(detail_checks_per_shard=1)
+    async def no_wait() -> None:
+        return None
+    monkeypatch.setattr(source, "_sleep", no_wait)
+    item = RawProperty(source_listing_id=USLAR_ID, url=USLAR_URL, title="Uslar")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(SourceFetchError) as exc:
+            await source._enrich_public_detail(client, item)
+    assert exc.value.halt_source is True
+    assert len(calls) == 1
+
+
+def test_detail_checks_are_off_by_default_and_hard_capped() -> None:
+    from app.sources.property.kleinanzeigen_de import KleinanzeigenGermanyPropertySource
+
+    assert KleinanzeigenGermanyPropertySource().detail_checks_per_shard == 0
+    with pytest.raises(ValueError, match="capped"):
+        KleinanzeigenGermanyPropertySource(detail_checks_per_shard=9)
+
+
+def test_manual_cli_requires_provider_terms_review(monkeypatch) -> None:
+    from importlib.util import module_from_spec, spec_from_file_location
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    file = Path(__file__).resolve().parents[1] / "scripts" / "run_kleinanzeigen_de.py"
+    spec = spec_from_file_location("kleinanzeigen_detail_runner_test", file)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "parse_args", lambda: SimpleNamespace(
+        frontier_pages=12, hard_max_pages=40, delay=3.0,
+        enable_regional_expansion=False, activate_regional_expansion_only=False,
+        detail_checks_per_shard=1, confirm_provider_terms_reviewed=False,
+    ))
+    with pytest.raises(SystemExit, match="confirm-provider-terms-reviewed"):
+        import asyncio
+        asyncio.run(module.async_main())
