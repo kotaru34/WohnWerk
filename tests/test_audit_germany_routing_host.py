@@ -57,3 +57,28 @@ def test_health_unavailable_is_not_ready() -> None:
     ))
     assert "wohnwerk_health_unavailable" in blockers
     assert "active_application_country_not_DE" in blockers
+
+
+def test_relay_sanitized_path_still_detects_local_bin_osrm(monkeypatch) -> None:
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from scripts import audit_germany_routing_host as audit
+
+    monkeypatch.setattr(audit.shutil, "which", lambda binary: None)
+    original_is_file = Path.is_file
+    original_stat = Path.stat
+
+    def is_file(path):
+        if str(path) == "/usr/local/bin/osrm-routed":
+            return True
+        return original_is_file(path)
+
+    def stat(path, *args, **kwargs):
+        if str(path) == "/usr/local/bin/osrm-routed":
+            return SimpleNamespace(st_mode=0o100755)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+    monkeypatch.setattr(Path, "stat", stat)
+    assert audit._binary_available("osrm-routed") is True
