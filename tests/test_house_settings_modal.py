@@ -64,8 +64,8 @@ def test_unified_house_settings_save_commits_once(monkeypatch) -> None:
     monkeypatch.setattr(
         catalog,
         "save_candidate_workplace",
-        lambda _db, profile_id, *, country_code, input_text, commit: calls.append(
-            ("workplace", profile_id, country_code, input_text, commit)
+        lambda _db, profile_id, *, country_code, input_text, commit, force_geocoding_retry: calls.append(
+            ("workplace", profile_id, country_code, input_text, commit, force_geocoding_retry)
         ),
     )
 
@@ -90,7 +90,7 @@ def test_unified_house_settings_save_commits_once(monkeypatch) -> None:
         ("plz", 7, "01067\n0xxxx", False),
         ("hospital", 7, "25", True, False),
         ("internet", 7, "100", False),
-        ("workplace", 7, "DE", "01067 Dresden", False),
+        ("workplace", 7, "DE", "01067 Dresden", False, False),
     ]
 
 
@@ -118,8 +118,8 @@ def test_unified_house_settings_does_not_mutate_de_policy_in_at(monkeypatch) -> 
     monkeypatch.setattr(
         catalog,
         "save_candidate_workplace",
-        lambda _db, profile_id, *, country_code, input_text, commit: workplace_calls.append(
-            (profile_id, country_code, input_text, commit)
+        lambda _db, profile_id, *, country_code, input_text, commit, force_geocoding_retry: workplace_calls.append(
+            (profile_id, country_code, input_text, commit, force_geocoding_retry)
         ),
     )
 
@@ -139,4 +139,4 @@ def test_unified_house_settings_does_not_mutate_de_policy_in_at(monkeypatch) -> 
     assert response.status_code == 303
     assert db.commits == 1
     assert db.rollbacks == 0
-    assert workplace_calls == [(9, "AT", "5020 Salzburg", False)]
+    assert workplace_calls == [(9, "AT", "5020 Salzburg", False, False)]
