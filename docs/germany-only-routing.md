@@ -86,25 +86,50 @@ Two independent public-card adapters have been added:
 - `immobilien-de`: public German houses at `immobilien.de`.
 
 Both are **manual diagnostics only** until source terms, actual HTML,
-card extraction, and worthwhile in-budget yield have been checked live.
-The Ohne-Makler entry uses its **purchase-only** `/immobilien/haus-kaufen/`
-frontier (not the mixed sale/rental listing). Immobilien.de has one national
-and four public city landing pages: Neubrandenburg, Gangelt, Homburg, Hagenow.
-These pages and example under-€200k listings were verified as publicly
-visible on 2026-10-09; **no real HTML crawl/ingest test was run**. Each shard
-requests only the first listing page, and duplicates are keyed by stable
-source listing IDs. The frontiers do not require accounts or contact forms
-and are never authoritative for disappearance. A new crawler cannot be
-counted as production coverage just because its code exists.
+card extraction, and worthwhile *verified existing-house* yield have been
+checked live. Public navigation on 2026-10-09 established the URLs below,
+but **no real HTML adapter crawl or ingestion test has been run**:
 
-First use the **read-only, database-free** diagnostic:
-`python -m scripts.inspect_public_portals_de --provider all` for the two
-national search pages or `python -m scripts.inspect_public_portals_de
---provider immobilien-de --regional` to inspect all five whitelisted
-immobilien.de frontiers. It reports observed listing IDs and budget hits but
-does not save any data. Only after verifying provider terms and the output
-should authorized operators consider the database-writing
-`python scripts/run_ohne_makler_de.py` and
-`python scripts/run_immobilien_de.py`; all such runs require the usual
-authorization and runtime gates. Do not schedule these automatically on
-first deployment.
+- `ohne-makler.net`: one national **purchase-only** `/immobilien/haus-kaufen/`
+  frontier and nine purchase-only federal-state frontiers: Bayern,
+  Baden-Württemberg, Rheinland-Pfalz, Nordrhein-Westfalen, Sachsen,
+  Sachsen-Anhalt, Brandenburg, Mecklenburg-Vorpommern and Thüringen.
+- `immobilien.de`: one national and four city frontiers: Neubrandenburg,
+  Gangelt, Homburg and Hagenow.
+
+A **critical quality risk** was confirmed by manually opening an under-€200k
+immobilien.de listing: its detail was a hypothetical house-building offer,
+with **land and additional costs excluded**. An inexpensive search card alone
+is *not* proof of an existing, purchasable house. All leads from these two
+new providers now carry a fail-closed `public_house_detail_required` flag
+and are **excluded from accepted results until verified individually**.
+
+The optional low-rate detail check requires the original listing ID, matching
+German PLZ, matching asking price (not €/m²), evidence of an existing built
+house and its land, and no explicit construction-only/house-without-land terms.
+If the detail is blocked, ambiguous, missing, or exceeds the bounded request
+cap, the lead is retained as **unverified/hidden** instead of accepted. This
+policy is deliberately conservative: it may withhold some real houses that
+do not expose sufficient public details. No contact data, pages, images or
+owner details are retained. One shard reads the first public search page;
+the optional detail check reads at most eight eligible details per shard by
+default, with >=2-second spacing. Neither source can prove disappearance.
+
+Use the **read-only, database-free** diagnostic in two stages:
+
+1. `python -m scripts.inspect_public_portals_de --provider all` to inspect
+   the two national first-page frontiers without accessing details. It labels
+   those leads **unverified**, even if within the price budget.
+2. `python -m scripts.inspect_public_portals_de --provider all --regional
+   --verify-details --max-detail-checks 4` to check the whitelisted regions
+   and a few individual public details per shard. It reports distinct budget
+   IDs, verified built houses and rejection reasons. An access restriction
+   stops further attempts at that provider, without bypass.
+
+Only after operator review of site terms, diagnostic output and incremental
+yield should an authorized operator run the **database-writing**
+`python scripts/run_ohne_makler_de.py` or
+`python scripts/run_immobilien_de.py`. Those manual runners request the
+bounded detail checks and save nonverified items only as hidden observations.
+No new provider is automatically scheduled. A provider with zero verified
+built houses should not be promoted to production coverage.
