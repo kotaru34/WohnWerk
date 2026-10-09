@@ -69,10 +69,10 @@ Sentinel operation must:
 - verify package checksum + manifest;
 - stage under a new inactive directory;
 - measure actual `osrm-routed` resident memory on the target;
-- refuse local activation if the ~4 GiB host has inadequate headroom;
-- install the Germany service or point `WOHNWERK_ROUTING_BASE_URL` at a
-  stronger remote router;
-- run `scripts/check_osrm_germany.py` against the running service;
+- verify the already-built Germany graph can be served with safe headroom on the existing WohnWerk VM;
+- install/enable the Germany service **on that VM only**;
+- if runtime headroom or acceptance fails, stop and report the measured blocker rather than changing topology;
+- run `scripts/check_osrm_germany.py` against the running local service;
 - only then set `WOHNWERK_ROUTING_ENABLED=true` and
   `WOHNWERK_ROUTING_GRAPH_COUNTRIES=DE`.
 
