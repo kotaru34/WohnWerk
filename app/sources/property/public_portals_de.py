@@ -44,6 +44,19 @@ IMMOBILIEN_DE = Portal(
 )
 
 _PRICE = re.compile(r"(?<!\w)([\d.]+(?:,\d{1,2})?)\s*€")
+_ASKING_PRICE = re.compile(
+    r"(?<!\w)([\d.]+(?:,\d{1,2})?)\s*€\s*Kaufpreis\b", re.IGNORECASE
+)
+_NOT_FOR_SALE = re.compile(
+    r"\b(?:verkauft|reserviert|nicht mehr verfuegbar|nicht mehr verfügbar)\b",
+    re.IGNORECASE,
+)
+_NOT_ACTUAL_PROPERTY = re.compile(
+    r"\b(?:hauspreis ohne grundst[üu]ck|ohne baugrundst[üu]ck|"
+    r"ohne grundst[üu]ck|auf (?:ihrem|einem) grundst[üu]ck|"
+    r"auf pachtgrundst[üu]ck)\b",
+    re.IGNORECASE,
+)
 _POSTAL = re.compile(r"(?<!\d)(\d{5})\s+([A-ZÄÖÜa-zäöüß][^\d€]{1,75})")
 _AREA = re.compile(r"(?<!\d)(\d{1,4}(?:[.,]\d{1,2})?)\s*m(?:²|2)\b", re.IGNORECASE)
 _BLOCKED = re.compile(
@@ -152,7 +165,11 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
         if card is None:
             continue
         text = card.text()
-        price_match = _PRICE.search(text)
+        # €/m² values can appear before the asking price in page markup.
+        # Immobilien.de labels the real asking price as "Kaufpreis".
+        price_match = (
+            _ASKING_PRICE.search(text) if portal == IMMOBILIEN_DE else _PRICE.search(text)
+        )
         postcode_match = _POSTAL.search(text)
         if price_match is None or postcode_match is None:
             continue
@@ -166,6 +183,10 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
             card, listing_id=listing_id, page_url=page_url, portal=portal
         )
         if title is None:
+            continue
+        # A live purchase frontier can retain sold/reserved ads and
+        # build-only offers that do not include the land in the stated price.
+        if _NOT_FOR_SALE.search(title) or _NOT_ACTUAL_PROPERTY.search(title):
             continue
         city = re.split(
             r"\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\b",
