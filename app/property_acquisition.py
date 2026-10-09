@@ -61,9 +61,9 @@ def _product_visibility(
     if not decision.accepted:
         reasons.append(decision.reason)
 
-    if payload.get("public_house_detail_required") is True:
-        if payload.get("public_house_detail_verified") is not True:
-            reasons.append("house_detail_unverified")
+    if (payload.get("public_house_detail_required") is True
+            and payload.get("public_house_detail_verified") is not True):
+        reasons.append("house_detail_unverified")
 
     if payload.get("original_url_missing") is True:
         reasons.append("source_url_missing")
