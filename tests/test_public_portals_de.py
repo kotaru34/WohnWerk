@@ -91,6 +91,10 @@ def test_both_sources_use_bounded_non_authoritative_shards() -> None:
     assert OHNE_MAKLER.search_path == "/immobilien/haus-kaufen/"
     assert [shard.key for shard in ohne_makler.default_shards()] == [
         "de-public-frontier",
+        "de-bayern",
+        "de-baden-wurttemberg",
+        "de-rheinland-pfalz",
+        "de-nordrhein-westfalen",
         "de-sachsen",
         "de-sachsen-anhalt",
         "de-brandenburg",
