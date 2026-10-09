@@ -18,7 +18,7 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
-IMAGE = "ghcr.io/project-osrm/osrm-backend:26.10.0-debian"
+IMAGE = (\n    "ghcr.io/project-osrm/osrm-backend:26.10.0-debian@"\n    "sha256:55dbfd47d984c2cacd64e32901b4321c86b5ec761438e69aa053dc78698a786f"\n)
 PBF_URL = "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
 MD5_URL = PBF_URL + ".md5"
 PBF_NAME = "germany-latest.osm.pbf"
