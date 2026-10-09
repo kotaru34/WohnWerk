@@ -47,7 +47,9 @@ _VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "electric",
         re.compile(
-            r"\b(?:elektroheizung|elektrisch\w*|strom|nachtspeicher(?:heizung|ofen)?)\b",
+            r"\b(?:elektroenergie|elektroheizung|elektrisch\w*|strom|"
+            r"stromheizung|elektronachtspeicher(?:heizung|\s*[-–]?\s*(?:öfen|ofen|heizung))?|"
+            r"nachtspeicher(?:heizung|ofen|öfen|\s*[-–]?\s*öfen)?)\b",
             re.IGNORECASE,
         ),
     ),
@@ -78,7 +80,12 @@ _COMPOUND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("oil", re.compile(r"\b(?:(?:ö|oe)lheizung|(?:ö|oe)lofen|oil\s+heating)\b", re.IGNORECASE)),
     (
         "electric",
-        re.compile(r"\b(?:elektroheizung|nachtspeicher(?:heizung|ofen))\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:elektroheizung|stromheizung|elektronachtspeicher(?:heizung|"
+            r"\s*[-–]?\s*(?:öfen|ofen|heizung))?|"
+            r"nachtspeicher(?:heizung|ofen|öfen|\s*[-–]?\s*öfen))\b",
+            re.IGNORECASE,
+        ),
     ),
     ("gas", re.compile(r"\b(?:gasheizung|gastherme|gas\s+heating)\b", re.IGNORECASE)),
     (
