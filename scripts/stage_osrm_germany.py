@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -94,37 +93,32 @@ def execute_staging(
     plan.directory.mkdir(parents=False, exist_ok=False)
     source_link = plan.directory / "germany-latest.osm.pbf"
     source_link.symlink_to(plan.pbf)
-    try:
-        for command in plan.commands():
-            runner(list(command), check=True)
-        if not plan.prefix.is_file() or plan.prefix.stat().st_size == 0:
-            raise RuntimeError("Expected nonempty germany-latest.osrm was not generated")
-        for suffix in (".partition", ".cells"):
-            output = Path(str(plan.prefix) + suffix)
-            if not output.is_file() or output.stat().st_size == 0:
-                raise RuntimeError(f"Missing MLD graph artifact: {output.name}")
-        manifest = {
-            "state": "staged_not_activated",
-            "country": "DE",
-            "algorithm": "MLD",
-            "created_at_utc": datetime.now(UTC).isoformat(),
-            "pbf_sha256": _sha256(plan.pbf),
-            "car_profile_sha256": _sha256(plan.car_profile),
-            "graph_prefix": str(plan.prefix),
-        }
-        manifest_path = plan.directory / "wohnwerk-stage-manifest.json"
-        # A manifest records provenance but proves neither complete national
-        # coverage nor correct road distances. The independent live OSRM probe
-        # and explicit operator activation are still mandatory.
-        manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        return manifest
-    except Exception:
-        # Deliberately keep failed staging artifacts isolated for diagnosis.
-        # Never remove or mutate an existing/active road graph on failure.
-        raise
+    for command in plan.commands():
+        runner(list(command), check=True)
+    if not plan.prefix.is_file() or plan.prefix.stat().st_size == 0:
+        raise RuntimeError("Expected nonempty germany-latest.osrm was not generated")
+    for suffix in (".partition", ".cells"):
+        output = Path(str(plan.prefix) + suffix)
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError(f"Missing MLD graph artifact: {output.name}")
+    manifest = {
+        "state": "staged_not_activated",
+        "country": "DE",
+        "algorithm": "MLD",
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "pbf_sha256": _sha256(plan.pbf),
+        "car_profile_sha256": _sha256(plan.car_profile),
+        "graph_prefix": str(plan.prefix),
+    }
+    manifest_path = plan.directory / "wohnwerk-stage-manifest.json"
+    # A manifest records provenance but proves neither complete national
+    # coverage nor correct road distances. The independent live OSRM probe
+    # and explicit operator activation are still mandatory.
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return manifest
 
 
 def main() -> int:
