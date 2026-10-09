@@ -145,8 +145,34 @@ class HeatingEvidence:
         )
 
 
+_NONCURRENT_BEFORE_RE = re.compile(
+    r"(?:\bkeine?\b|\bohne\b|\bfr(?:ü|ue)her\b|\behemals?\b|"
+    r"\bnicht\s+mehr\b|\bau(?:ß|ss)er\s+betrieb\b)[^|.;:]{0,36}$",
+    re.IGNORECASE,
+)
+_NONCURRENT_AFTER_RE = re.compile(
+    r"^[^|.;:]{0,40}\b(?:entfernt|ausgebaut|stillgelegt|stillzulegen|"
+    r"nicht\s+mehr\s+in\s+betrieb|au(?:ß|ss)er\s+betrieb|"
+    r"geplant|vorgesehen|vorbereitet|vorbereitung)\b",
+    re.IGNORECASE,
+)
+
+
+def _match_is_current(value: str, match: re.Match[str]) -> bool:
+    before = value[max(0, match.start() - 60):match.start()]
+    after = value[match.end():min(len(value), match.end() + 70)]
+    return not (
+        _NONCURRENT_BEFORE_RE.search(before)
+        or _NONCURRENT_AFTER_RE.search(after)
+    )
+
+
 def _types_in_text(value: str) -> set[str]:
-    return {key for key, pattern in _VALUE_PATTERNS if pattern.search(value)}
+    found: set[str] = set()
+    for key, pattern in _VALUE_PATTERNS:
+        if any(_match_is_current(value, match) for match in pattern.finditer(value)):
+            found.add(key)
+    return found
 
 
 def normalize_heating_types(values: Iterable[str]) -> tuple[str, ...]:
@@ -175,7 +201,14 @@ def extract_heating_evidence_from_text(text: str) -> HeatingEvidence:
     # Compound technology names are sufficiently specific without a nearby label.
     # Bare words such as Gas, Holz or Strom are deliberately label-scoped.
     for key, pattern in _COMPOUND_PATTERNS:
-        direct = pattern.search(normalized)
+        direct = next(
+            (
+                match
+                for match in pattern.finditer(normalized)
+                if _match_is_current(normalized, match)
+            ),
+            None,
+        )
         if direct is None:
             continue
         if key not in found:
