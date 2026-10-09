@@ -123,3 +123,27 @@ def test_no_auction_false_positive_from_related_recommendations() -> None:
         )
     )
     assert _verify(html).verified is True
+
+
+def test_real_ohne_makler_markup_area_numbers_precede_labels() -> None:
+    # This shape was confirmed by live PR 61 smoke for the public €120k
+    # house 503088: first detail pass previously misclassified its land
+    # as unknown despite the visible 2,912 m² plot.
+    html = (
+        "<main><h1>Große Doppelhaushälfte am Plauer See</h1>"
+        "<p>17213 Fünfseen</p><p>120.000 €</p>"
+        "<div>195 m² Wohnfläche</div>"
+        "<div>2.912 m² Grundstücksfläche</div>"
+        "<p>Objekt-Nr OM-503088</p><p>Kaufpreis | 120.000 €</p>"
+        "<div>Baujahr | 1907</div>"
+        "</main>"
+    )
+    evidence = verify_public_house_detail(
+        html,
+        provider_name="ohne-makler-de",
+        listing_id="503088",
+        price_eur=Decimal(120000),
+        postal_code="17213",
+    )
+    assert evidence.verified is True
+    assert evidence.reason == "verified_existing_house"
