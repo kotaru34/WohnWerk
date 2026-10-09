@@ -30,3 +30,11 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+      # ONE-TIME diagnostic for PR 61 only; remove after inspecting result.
+      # Read-only; one public search page per portal, no DB and no details.
+      # Never treat a 403/CAPTCHA, empty budget or card-only results as success.
+      - name: PR 61 German public portal live smoke (non-blocking)
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 61 }}
+        continue-on-error: true
+        run: python -m scripts.inspect_public_portals_de --provider all
