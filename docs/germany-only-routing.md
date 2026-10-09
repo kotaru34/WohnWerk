@@ -89,10 +89,16 @@ Two independent public-card adapters have been added:
 - `ohne-makler-de`: public house frontier at `ohne-makler.net`.
 - `immobilien-de`: public German houses at `immobilien.de`.
 
-Both are **manual diagnostics only** until source terms, actual HTML,
-card extraction, and worthwhile *verified existing-house* yield have been
-checked live. Public navigation on 2026-10-09 established the URLs below,
-but **no real HTML adapter crawl or ingestion test has been run**:
+Both are **manual diagnostics only**, and neither is automatically scheduled.
+Live bounded adapter GETs and selected detail-page checks on 2026-10-09
+confirmed **six source-advertised existing houses**, an auction correctly
+rejected, and a holiday property without primary-residence eligibility
+correctly withheld. The complete reproducible counts, original ad IDs,
+GitHub Actions log links and confidence limits are in
+[public portal live acceptance](public-portal-live-acceptance-2026-10-09.md).
+**No production database ingestion or complete-source scan has occurred.**
+Manual enablement still requires operator review of website terms, real
+incremental yield and rate/access behavior. Available public entry points:
 
 - `ohne-makler.net`: one national **purchase-only** `/immobilien/haus-kaufen/`
   frontier and nine purchase-only federal-state frontiers: Bayern,
