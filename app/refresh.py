@@ -91,12 +91,20 @@ MANUAL_SOURCE_RUN_PLANS: tuple[SourceRefreshPlan, ...] = (
     SourceRefreshPlan(
         "ohne-makler-de", "scripts/run_ohne_makler_de.py", False,
         failure_isolated=True,
-        operational_note="Neue Quelle: vor Automatik erst öffentlichen Kartenparser validieren.",
+        operational_note=(
+            "Neue Quelle: Karten allein sind kein Hausnachweis. Vor Automatik "
+            "öffentliche Detailseiten (Bestandsgebäude, Grundstück und Gesamtpreis) "
+            "und Nutzungsbedingungen prüfen; nur manuelle Diagnose."
+        ),
     ),
     SourceRefreshPlan(
         "immobilien-de", "scripts/run_immobilien_de.py", False,
         failure_isolated=True,
-        operational_note="Neue Quelle: vor Automatik erst öffentlichen Kartenparser validieren.",
+        operational_note=(
+            "Neue Quelle: Karten allein sind kein Hausnachweis. Vor Automatik "
+            "öffentliche Detailseiten (Bestandsgebäude, Grundstück und Gesamtpreis) "
+            "und Nutzungsbedingungen prüfen; nur manuelle Diagnose."
+        ),
     ),
     SourceRefreshPlan(
         "remax-de",
