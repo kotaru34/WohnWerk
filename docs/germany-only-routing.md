@@ -27,10 +27,26 @@ separately labeled straight-line km; it never substitutes them for road km.
 
 1. Download a legitimate and current **Germany** `.osm.pbf` extract from a
    trusted provider (for example Geofabrik). Check its integrity and permissions.
-2. Build the Germany **car-profile, MLD** OSRM graph in a staging location using
-   `osrm-extract -p <car.lua> germany-latest.osm.pbf`,
-   `osrm-partition germany-latest.osrm`, and
-   `osrm-customize germany-latest.osrm`.
+2. **Prepare the inactive graph first.** The checked-in staging helper
+   refuses non-German-named input, rejects existing/active directories, prints
+   an exact build plan by default and **never installs files or starts a service**:
+
+   ```sh
+   python -m scripts.stage_osrm_germany \
+     --pbf /srv/import/germany-latest.osm.pbf \
+     --profile /usr/local/share/osrm/profiles/car.lua \
+     --stage-dir /srv/osrm-stage/germany-20261009
+   ```
+
+   After independently verifying free disk space, available memory, PBF
+   origin/integrity and OSRM tooling, an authorized operator can repeat the
+   same command **with `--execute`**. It runs `osrm-extract`,
+   `osrm-partition`, `osrm-customize` for the car profile, checks
+   presence of required MLD files and writes a SHA-256 input/profile
+   provenance manifest in the **inactive** staging directory. An incomplete
+   build never receives a manifest. No output is copied over an active graph.
+   Naming the PBF `germany-latest.osm.pbf` is a safety requirement,
+   **not independent evidence of its geography**.
 3. Ensure the new files are readable by the `osrm` user. Before replacing the
    active service, verify disk/RAM budgets and retain a rollback copy of the
    old service/unit/data. Stop and replace via the approved deployment process.
