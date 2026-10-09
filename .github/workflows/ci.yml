@@ -38,5 +38,7 @@ jobs:
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 61 }}
         continue-on-error: true
         run: |
-          python -m scripts.inspect_public_portals_de --provider ohne-makler-de --frontier de-mecklenburg-vorpommern --verify-details --max-detail-checks 2
-          python -m scripts.inspect_public_portals_de --provider immobilien-de --frontier de-public-frontier --verify-details --max-detail-checks 2
+          STATUS=0
+          python -m scripts.inspect_public_portals_de --provider ohne-makler-de --frontier de-mecklenburg-vorpommern --verify-details --max-detail-checks 2 || STATUS=1
+          python -m scripts.inspect_public_portals_de --provider immobilien-de --frontier de-public-frontier --verify-details --max-detail-checks 2 || STATUS=1
+          exit "$STATUS"
