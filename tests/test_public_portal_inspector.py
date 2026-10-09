@@ -20,3 +20,13 @@ def test_inspector_can_explicitly_include_whitelisted_regional_pages() -> None:
     assert {s.key for s in selected_shards(adapter, regional=True)} == set(
         adapter.frontier_paths()
     )
+
+
+def test_staged_public_portals_are_not_automatically_scheduled() -> None:
+    from app.refresh import source_is_scheduled, source_operational_note
+
+    for name in ("ohne-makler-de", "immobilien-de"):
+        assert source_is_scheduled(name) is False
+        note = source_operational_note(name)
+        assert note is not None
+        assert "Gesamtpreis" in note
