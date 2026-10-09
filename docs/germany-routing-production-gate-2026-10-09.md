@@ -22,6 +22,13 @@ database URL, host credentials or temporary sudo policy in public logs.
 - `sentinel-ai` permanent sudo only permits the named
   `tethys-sentinel-consume` command. It **cannot** install builders,
   replace root-owned OSRM data, change systemd or update `/opt/wohnwerk`.
+- A separate **read-only live OSRM Table** probe on the actual
+  `127.0.0.1:5000` service for **München → Berlin** returned `code=Ok`,
+  `distance=481.8 km`, `duration=399.5 min`, **source snapped 59,601 m**
+  and **destination snapped 406,033 m**. These road metrics must be
+  considered **invalid**, despite HTTP 200. New application routing rejects
+  this exact case, with a permanent regression test. The existing refresh,
+  image and liveness timers were all active during the probe.
 - A **pinned, isolated clone** of PR #61 ran
   `scripts/audit_germany_routing_host.py` on the actual target with no DB,
   sudo or running-service writes. It correctly returned nonzero and
