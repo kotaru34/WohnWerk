@@ -280,6 +280,10 @@ class OhneMaklerGermanyPropertySource(PublicGermanHouseSource):
         # First pages can expose cheap houses missed by the national first page.
         return {
             "de-public-frontier": self.portal.search_path,
+            "de-bayern": "/immobilien/haus-kaufen/bayern/",
+            "de-baden-wurttemberg": "/immobilien/haus-kaufen/baden-wurttemberg/",
+            "de-rheinland-pfalz": "/immobilien/haus-kaufen/rheinland-pfalz/",
+            "de-nordrhein-westfalen": "/immobilien/haus-kaufen/nordrhein-westfalen/",
             "de-sachsen": "/immobilien/haus-kaufen/sachsen/",
             "de-sachsen-anhalt": "/immobilien/haus-kaufen/sachsen-anhalt/",
             "de-brandenburg": "/immobilien/haus-kaufen/brandenburg/",
