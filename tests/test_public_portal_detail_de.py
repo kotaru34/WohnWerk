@@ -86,3 +86,40 @@ def test_no_real_plot_or_year_is_not_an_existing_house_verification() -> None:
         "<p>Wohnfläche 96 m² Grundstücksfläche 650 m²</p></main>"
     )
     assert _verify(missing_year).reason == "existing_building_unverified"
+
+
+def test_related_property_metadata_must_not_verify_primary_detail() -> None:
+    html = (
+        "<main><h1>Neubauprojekt - noch ohne konkrete Angaben</h1>"
+        "<p>17034 Neubrandenburg</p><p>139.000 €Kaufpreis</p>"
+        "<p>immobilien.de Nr.9794876</p>"
+        "<h2>Weitere Angebote von Musterbau GmbH</h2>"
+        "<p>Wohnfläche 120 m² Grundstücksfläche 650 m² Baujahr 1975</p>"
+        "</main>"
+    )
+    assert _verify(html).reason == "living_area_unverified"
+
+
+def test_auction_with_living_area_land_and_year_is_rejected() -> None:
+    html = _immobilien_detail(
+        extra="Das Objekt steht unter Zwangsversteigerung. "
+        "Der Zuschlag ist ggf. schon ab 50 Prozent möglich."
+    )
+    assert _verify(html).reason == "auction"
+
+
+def test_zero_or_implausible_area_is_not_proof_of_house_and_own_plot() -> None:
+    html = _immobilien_detail()
+    assert _verify(html.replace("650 m²", "0 m²")).reason == "land_area_unverified"
+    assert _verify(html.replace("96 m²", "0 m²")).reason == "living_area_unverified"
+
+
+def test_no_auction_false_positive_from_related_recommendations() -> None:
+    html = (
+        _immobilien_detail().replace(
+            "</main>",
+            "<h2>Weitere Angebote von anderen Anbietern</h2>"
+            "<p>Zwangsversteigerung ab 50% möglich</p></main>",
+        )
+    )
+    assert _verify(html).verified is True
