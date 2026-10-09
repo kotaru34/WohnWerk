@@ -72,6 +72,9 @@
               <div class="resolved">Hausnummer und Straße überprüft · Geodaten © OpenStreetMap-Mitwirkende (ODbL), über Nominatim.</div>
             {% elif workplace.resolution_method == 'street_address_unverified' %}
               <div class="resolved">Keine belastbare Hausnummer-Koordinate gefunden · Entfernung nur näherungsweise ab PLZ-Mittelpunkt.</div>
+              {% if workplace_geocoding_enabled %}
+                <button type="submit" name="refresh_workplace_geocoding" value="1">Hausnummer erneut prüfen</button>
+              {% endif %}
             {% else %}
               <div class="resolved">Nur Näherungswert ab {{ workplace.postal_code or workplace.city or workplace.input_text }} · {{ workplace.resolution_method }}.</div>
             {% endif %}
