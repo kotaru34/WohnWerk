@@ -198,3 +198,38 @@ def test_existing_postal_centroid_is_upgraded_once_after_geocoder_opt_in(monkeyp
     )
     assert len(calls) == 1
     assert row.resolution_method == "street_address_unverified"
+
+
+def test_explicit_retry_can_recheck_cached_unverified_address(monkeypatch) -> None:
+    row = SimpleNamespace(
+        country_code="DE", input_text="Musterstraße 1, 01067 Dresden",
+        resolution_method="street_address_unverified",
+    )
+    calls = []
+    monkeypatch.setattr(workplace, "load_candidate_workplace", lambda *_a: row)
+    monkeypatch.setattr(workplace, "get_settings", lambda: SimpleNamespace(
+        workplace_geocoding_enabled=True,
+    ))
+
+    def resolve(*_args, **_kwargs):
+        calls.append(1)
+        return workplace.WorkplaceResolution(
+            country_code="DE", input_text="Musterstraße 1, 01067 Dresden",
+            postal_code="01067", city="Dresden", center=POSTAL,
+            source="OpenStreetMap/Nominatim", method="verified_street_address",
+            error=None,
+        )
+
+    monkeypatch.setattr(workplace, "resolve_candidate_workplace", resolve)
+    assert workplace.save_candidate_workplace(
+        object(), 1, country_code="DE",
+        input_text="Musterstraße 1, 01067 Dresden", commit=False
+    ) is row
+    assert calls == []
+    workplace.save_candidate_workplace(
+        object(), 1, country_code="DE",
+        input_text="Musterstraße 1, 01067 Dresden",
+        commit=False, force_geocoding_retry=True,
+    )
+    assert calls == [1]
+    assert row.resolution_method == "verified_street_address"
