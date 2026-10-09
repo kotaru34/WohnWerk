@@ -23,8 +23,18 @@ PROVIDERS = {
 }
 
 
-def selected_shards(adapter: PublicGermanHouseSource, *, regional: bool):
+def selected_shards(
+    adapter: PublicGermanHouseSource,
+    *,
+    regional: bool,
+    frontier_key: str | None = None,
+):
     shards = adapter.default_shards()
+    if frontier_key is not None:
+        matched = [shard for shard in shards if shard.key == frontier_key]
+        if not matched:
+            raise ValueError(f"Unknown whitelisted frontier: {frontier_key}")
+        return matched
     return shards if regional else shards[:1]
 
 
@@ -34,6 +44,7 @@ async def inspect_provider(
     regional: bool,
     verify_details: bool = False,
     max_detail_checks: int = 8,
+    frontier_key: str | None = None,
 ) -> bool:
     adapter = PROVIDERS[name](
         verify_details=verify_details,
@@ -42,7 +53,7 @@ async def inspect_provider(
     healthy = True
     all_candidate_ids: set[str] = set()
     all_verified_ids: set[str] = set()
-    for shard in selected_shards(adapter, regional=regional):
+    for shard in selected_shards(adapter, regional=regional, frontier_key=frontier_key):
         try:
             batch = await adapter.fetch_shard(shard)
         except SourceFetchError as exc:
@@ -95,6 +106,7 @@ async def run(
     regional: bool,
     verify_details: bool = False,
     max_detail_checks: int = 8,
+    frontier_key: str | None = None,
 ) -> int:
     names = list(PROVIDERS) if provider == "all" else [provider]
     results = [
@@ -103,6 +115,7 @@ async def run(
             regional=regional,
             verify_details=verify_details,
             max_detail_checks=max_detail_checks,
+            frontier_key=frontier_key,
         )
         for name in names
     ]
@@ -119,6 +132,10 @@ async def run(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", choices=["all", *PROVIDERS], default="all")
+    parser.add_argument(
+        "--frontier",
+        help="Restrict diagnostic to one exact, whitelisted public regional frontier",
+    )
     parser.add_argument(
         "--regional", action="store_true",
         help="Inspect all whitelisted regional plus national first-page frontiers",
@@ -137,4 +154,5 @@ if __name__ == "__main__":
         regional=args.regional,
         verify_details=args.verify_details,
         max_detail_checks=args.max_detail_checks,
+        frontier_key=args.frontier,
     )))
