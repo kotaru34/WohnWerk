@@ -37,6 +37,16 @@ _AREA_LAND = re.compile(
     r"\bGrundst[üu]cksfl[äa]che\b\s*[:|]?\s*([\d.,]+)\s*m(?:²|2)\b",
     re.IGNORECASE,
 )
+# Ohne-Makler detail headers commonly render "2.912 m² Grundstücksfläche",
+# while Immobilien.de uses "Grundstücksfläche 765 m²".
+_AREA_LIVING_VALUE_FIRST = re.compile(
+    r"(?<!\d)([\d.,]+)\s*m(?:²|2)\s+Wohnfl[äa]che\b", re.IGNORECASE
+)
+_AREA_LAND_VALUE_FIRST = re.compile(
+    r"(?<!\d)([\d.,]+)\s*m(?:²|2)\s+Grundst[üu]cksfl[äa]che\b",
+    re.IGNORECASE,
+)
+
 _AUCTION = re.compile(
     r"\b(?:zwangsversteigerung|versteigerungstermin|versteigerungsobjekt|"
     r"zuschlag (?:ist|gegebenenfalls|ggf)|"
@@ -106,10 +116,10 @@ def verify_public_house_detail(
         return PublicHouseEvidence(False, "asking_price_unverified")
 
     # A full detail must prove a *built house* and its real plot.
-    living = _AREA_LIVING.search(text)
+    living = _AREA_LIVING.search(text) or _AREA_LIVING_VALUE_FIRST.search(text)
     if living is None or (area := _decimal(living.group(1))) is None or area < 15:
         return PublicHouseEvidence(False, "living_area_unverified")
-    plot = _AREA_LAND.search(text)
+    plot = _AREA_LAND.search(text) or _AREA_LAND_VALUE_FIRST.search(text)
     if plot is None or (area := _decimal(plot.group(1))) is None or area < 20:
         return PublicHouseEvidence(False, "land_area_unverified")
     years = [
