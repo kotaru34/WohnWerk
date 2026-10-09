@@ -15,6 +15,7 @@ from app.product_ui_middleware import ProductUiMiddleware
 from app.property_page_liveness import PropertyPageLivenessMiddleware
 from app.site import router as site_router
 from app.version import __version__
+from app.workplace import routing_graph_supports
 
 settings = get_settings()
 
@@ -50,4 +51,14 @@ def health() -> dict[str, str | bool]:
         "job_concept_extractor": EXTRACTOR_VERSION,
         "country": settings.country_code,
         "ai_enabled": settings.ai_enabled,
+        # Declared operator configuration is *not* live proof of OSRM coverage.
+        "road_routing_mode": (
+            "de_graph_declared"
+            if (
+                settings.routing_enabled
+                and routing_graph_supports("DE", settings.routing_graph_countries)
+            )
+            else "air_distance_only"
+        ),
+        "workplace_geocoding_enabled": settings.workplace_geocoding_enabled,
     }
