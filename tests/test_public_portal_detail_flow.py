@@ -144,3 +144,96 @@ async def test_public_detail_access_gate_aborts_source_without_solving_challenge
     assert exc_info.value.pages_fetched == 2
     assert len(exc_info.value.partial_items) == 1
     assert exc_info.value.partial_items[0].raw_payload["public_house_detail_verified"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [403, 429, 503])
+async def test_public_search_access_denial_halts_all_remaining_regional_shards(
+    monkeypatch, status: int,
+) -> None:
+    paths = []
+
+    def handler(request):
+        paths.append(request.url.path)
+        return httpx.Response(status, text="Access restriction")
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
+        transport=httpx.MockTransport(handler), **kw
+    ))
+    monkeypatch.setattr(portals.asyncio, "sleep", _no_sleep)
+
+    adapter = portals.OhneMaklerGermanyPropertySource()
+    assert len(adapter.default_shards()) >= 2
+    with pytest.raises(SourceFetchError) as exc_info:
+        await adapter.fetch_shard(adapter.default_shards()[0])
+    assert exc_info.value.halt_source is True
+    assert paths == [portals.OHNE_MAKLER.search_path]
+
+
+@pytest.mark.asyncio
+async def test_search_challenge_page_fails_closed_and_prevents_regional_retries(
+    monkeypatch,
+) -> None:
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(
+            200, text="<html><body>Security Verification CAPTCHA</body></html>",
+            headers={"Content-Type": "text/html"},
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
+        transport=httpx.MockTransport(handler), **kw
+    ))
+    monkeypatch.setattr(portals.asyncio, "sleep", _no_sleep)
+    adapter = portals.OhneMaklerGermanyPropertySource()
+    with pytest.raises(SourceFetchError) as exc_info:
+        await adapter.fetch_shard(adapter.default_shards()[0])
+    assert exc_info.value.halt_source is True
+    assert len(requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_json_payload_is_not_trusted_as_public_html(monkeypatch) -> None:
+    original = httpx.AsyncClient
+    monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={"cards": [], "status": "OK"}
+            )
+        ), **kw
+    ))
+    monkeypatch.setattr(portals.asyncio, "sleep", _no_sleep)
+    adapter = portals.OhneMaklerGermanyPropertySource()
+    with pytest.raises(SourceFetchError):
+        await adapter.fetch_shard(adapter.default_shards()[0])
+
+
+@pytest.mark.asyncio
+async def test_detail_returning_non_html_cannot_verify_house(monkeypatch) -> None:
+    def handler(request):
+        if "/immobilie/" in request.url.path:
+            return httpx.Response(
+                200,
+                text=DETAIL,
+                headers={"Content-Type": "application/json"},
+            )
+        return httpx.Response(
+            200, text=FRONTIER, headers={"Content-Type": "text/html"}
+        )
+
+    original = httpx.AsyncClient
+    monkeypatch.setattr(portals.httpx, "AsyncClient", lambda **kw: original(
+        transport=httpx.MockTransport(handler), **kw
+    ))
+    monkeypatch.setattr(portals.asyncio, "sleep", _no_sleep)
+    adapter = portals.OhneMaklerGermanyPropertySource(verify_details=True)
+    batch = await adapter.fetch_shard(adapter.default_shards()[0])
+    assert batch.next_cursor["detail_verified"] == 0
+    assert batch.items[0].raw_payload["public_house_detail_verified"] is False
+    assert batch.items[0].raw_payload["public_house_detail_reason"] == (
+        "detail_unavailable"
+    )
