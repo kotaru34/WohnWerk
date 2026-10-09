@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -69,17 +70,21 @@ def test_builds_only_inactive_mld_graph_and_writes_provenance(tmp_path, monkeypa
     calls = []
     monkeypatch.setattr(stage_osrm_germany.shutil, "which", lambda bin: f"/usr/bin/{bin}")
 
-    def fake_run(argv, *, check):
+    def fake_run(argv, *, check, capture_output=False, text=False):
         assert check is True
         assert "systemctl" not in argv
         calls.append(argv)
         if argv[0] == "osrm-customize":
-            for ext in ("", ".partition", ".cells"):
+            for ext in (".partition", ".cells", ".ebg"):
                 (stage_dir / ("germany-latest.osrm" + ext)).write_bytes(b"safe-mock")
+        if argv[0] == "osrm-routed":
+            assert capture_output is True and text is True
+            return SimpleNamespace(stdout=".partition\n.cells\n.ebg\n")
+        return SimpleNamespace(stdout="")
 
     manifest = stage_osrm_germany.execute_staging(plan, runner=fake_run)
     assert [args[0] for args in calls] == [
-        "osrm-extract", "osrm-partition", "osrm-customize"
+        "osrm-extract", "osrm-partition", "osrm-customize", "osrm-routed"
     ]
     assert (stage_dir / "germany-latest.osm.pbf").is_symlink()
     assert manifest["country"] == "DE"
@@ -104,12 +109,15 @@ def test_missing_mld_artifact_never_generates_success_manifest(tmp_path, monkeyp
     )
     monkeypatch.setattr(stage_osrm_germany.shutil, "which", lambda bin: bin)
 
-    def fake_run(argv, *, check):
+    def fake_run(argv, *, check, capture_output=False, text=False):
         if argv[0] == "osrm-customize":
-            plan.prefix.write_bytes(b"present")
-            # partition and cells are missing: graph must not be accepted.
+            (stage_dir / "germany-latest.osrm.partition").write_bytes(b"present")
+            # cells is missing: graph must not be accepted.
+        if argv[0] == "osrm-routed":
+            return SimpleNamespace(stdout=".partition\n.cells\n")
+        return SimpleNamespace(stdout="")
 
-    with pytest.raises(RuntimeError, match="Missing MLD graph artifact"):
+    with pytest.raises(RuntimeError, match="Missing OSRM runtime graph artifacts"):
         stage_osrm_germany.execute_staging(plan, runner=fake_run)
     assert stage_dir.exists()
     assert not (stage_dir / "wohnwerk-stage-manifest.json").exists()

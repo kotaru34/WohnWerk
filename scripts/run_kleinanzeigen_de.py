@@ -25,6 +25,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--delay", type=float, default=3.0)
     parser.add_argument("--hard-max-pages", type=int, default=40)
     parser.add_argument(
+        "--detail-checks-per-shard", type=int, default=None,
+        help=(
+            "Optional diagnostic cap for detail GETs per shard. "
+            "Default: enrich every discovered in-budget house."
+        ),
+    )
+    parser.add_argument(
         "--enable-regional-expansion",
         action="store_true",
         help=(
@@ -48,8 +55,8 @@ def get_or_create_source(*, enable_regional_expansion: bool = False) -> int:
             "EUR 30,000..200,000"
         ),
         "acquisition": (
-            "bounded public search frontier only; newest-first; no login, messages, "
-            "seller contact extraction or detail-page bulk crawl"
+            "bounded public search frontier plus per-result typed detail enrichment; "
+            "no login, messages or seller contact extraction"
         ),
         "retention": (
             "source ID/URL, title, price, visible living area, PLZ/city and bounded "
@@ -91,6 +98,9 @@ async def async_main() -> int:
     args = parse_args()
     if args.frontier_pages <= 0 or args.hard_max_pages <= 0:
         raise SystemExit("--frontier-pages and --hard-max-pages must be positive")
+    detail_checks = getattr(args, "detail_checks_per_shard", None)
+    if detail_checks is not None and detail_checks < 0:
+        raise SystemExit("--detail-checks-per-shard must be non-negative")
 
     source_id = get_or_create_source(
         enable_regional_expansion=(
@@ -114,6 +124,7 @@ async def async_main() -> int:
             frontier_pages=args.frontier_pages,
             hard_max_pages=args.hard_max_pages,
             regional_expansion=regional_expansion,
+            detail_checks_per_shard=detail_checks,
         )
         run, summary = await run_property_source(
             session,

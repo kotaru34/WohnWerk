@@ -95,8 +95,27 @@ def execute_staging(
     source_link.symlink_to(plan.pbf)
     for command in plan.commands():
         runner(list(command), check=True)
-    if not plan.prefix.is_file() or plan.prefix.stat().st_size == 0:
-        raise RuntimeError("Expected nonempty germany-latest.osrm was not generated")
+
+    # Modern OSRM datasets are a family of .osrm.* files. There may be no
+    # physical base file named exactly "germany-latest.osrm". Ask osrm-routed
+    # which suffixes the installed runtime requires instead of inventing a list.
+    required = runner(
+        ["osrm-routed", "--list-inputs"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    suffixes = [line.strip() for line in required.stdout.splitlines() if line.strip()]
+    if not suffixes:
+        raise RuntimeError("osrm-routed returned no required input suffixes")
+    required_paths = [Path(str(plan.prefix) + suffix) for suffix in suffixes]
+    missing = [
+        output.name
+        for output in required_paths
+        if not output.is_file() or output.stat().st_size == 0
+    ]
+    if missing:
+        raise RuntimeError(f"Missing OSRM runtime graph artifacts: {missing}")
     for suffix in (".partition", ".cells"):
         output = Path(str(plan.prefix) + suffix)
         if not output.is_file() or output.stat().st_size == 0:
@@ -109,6 +128,7 @@ def execute_staging(
         "pbf_sha256": _sha256(plan.pbf),
         "car_profile_sha256": _sha256(plan.car_profile),
         "graph_prefix": str(plan.prefix),
+        "runtime_required_suffixes": suffixes,
     }
     manifest_path = plan.directory / "wohnwerk-stage-manifest.json"
     # A manifest records provenance but proves neither complete national

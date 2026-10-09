@@ -82,3 +82,37 @@ def test_english_broker_energy_source_fields_are_normalized() -> None:
     assert oil.types == ("oil",)
     assert gas.types == ("gas",)
     assert pump.types == ("heat_pump",)
+
+
+def test_negated_planned_and_removed_heating_mentions_do_not_become_current() -> None:
+    negated = extract_heating_evidence_from_text(
+        "Keine Gasheizung vorhanden. Beheizung durch Wärmepumpe."
+    )
+    planned = extract_heating_evidence_from_text(
+        "Gasheizung geplant, aktuell Nachtspeicheröfen."
+    )
+    removed = extract_heating_evidence_from_text(
+        "Die alte Ölheizung wurde entfernt. Heute Elektroheizung."
+    )
+    historical = extract_heating_evidence_from_text(
+        "Früher mit Öl beheizt; inzwischen Fernwärme."
+    )
+
+    assert negated.types == ("heat_pump",)
+    assert planned.types == ("electric",)
+    assert removed.types == ("electric",)
+    assert historical.types == ("district",)
+
+
+def test_unrelated_gas_and_electric_words_are_not_heating_evidence() -> None:
+    evidence = extract_heating_evidence_from_text(
+        "Gasherd in der Küche, Wallbox für Elektroauto und neuer Stromanschluss."
+    )
+    assert evidence.types == ()
+
+
+def test_current_old_but_operating_gas_heating_is_not_mistaken_for_historical() -> None:
+    evidence = extract_heating_evidence_from_text(
+        "Die vorhandene Gasheizung stammt aus dem Jahr 2010 und ist in Betrieb."
+    )
+    assert evidence.types == ("gas",)
