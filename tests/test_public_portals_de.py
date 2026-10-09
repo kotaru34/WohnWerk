@@ -237,3 +237,32 @@ def test_german_market_paths_include_non_eastern_low_budget_opportunities() -> N
     assert adapter.frontier_paths()["de-baden-wurttemberg"].endswith("/baden-wurttemberg/")
     assert adapter.frontier_paths()["de-rheinland-pfalz"].endswith("/rheinland-pfalz/")
     assert adapter.frontier_paths()["de-nordrhein-westfalen"].endswith("/nordrhein-westfalen/")
+
+
+@pytest.mark.parametrize("href", [
+    "https://www.ohne-makler.net:invalid/immobilie/503161/",
+    "https://user:pw@www.ohne-makler.net/immobilie/503161/",
+    "https://[::1/immobilie/503161/",
+])
+def test_malformed_or_credentials_in_public_listing_href_are_ignored(href: str) -> None:
+    assert _canonical_listing(
+        href, page_url=OHNE_MAKLER.base_url + OHNE_MAKLER.search_path,
+        portal=OHNE_MAKLER,
+    ) is None
+
+
+def test_labeled_asking_price_overrides_cheap_euro_per_square_metre_on_ohne_makler() -> None:
+    html = """
+        <article>
+            <a href="/immobilie/503161/">Einfamilienhaus mit großzügigem Garten</a>
+            <p>1.290 € / m²</p><p>120.000 € Kaufpreis</p>
+            <p>17213 Fünfseen</p><p>Wohnfläche 93 m²</p>
+        </article>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=OHNE_MAKLER.base_url + OHNE_MAKLER.search_path,
+        portal=OHNE_MAKLER,
+    )
+    assert seen == 1
+    assert len(items) == 1
+    assert items[0].price_eur == Decimal(120000)
