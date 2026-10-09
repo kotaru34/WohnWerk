@@ -22,7 +22,7 @@ def _immobilien_detail(
 def _verify(html: str, provider: str = "immobilien-de"):
     return verify_public_house_detail(
         html, provider_name=provider, listing_id="9794876",
-        price_eur=Decimal("139000"), postal_code="17034",
+        price_eur=Decimal(139000), postal_code="17034",
     )
 
 
