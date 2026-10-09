@@ -1,5 +1,6 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import sys
 
 
 def _verify_module():
@@ -12,6 +13,7 @@ def _verify_module():
     spec = spec_from_file_location("wohnwerk_osrm_verify_test", path)
     assert spec is not None and spec.loader is not None
     module = module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
