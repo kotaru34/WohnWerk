@@ -47,6 +47,7 @@ class OSRMClient:
         timeout_seconds: float = 2.0,
         max_table_coordinates: int = 100,
         max_snap_distance_metres: float = 3000.0,
+        max_effective_speed_kmh: float = 180.0,
         client: httpx.Client | None = None,
     ) -> None:
         if max_table_coordinates < 2:
@@ -55,8 +56,11 @@ class OSRMClient:
         self.timeout_seconds = timeout_seconds
         if not isfinite(max_snap_distance_metres) or max_snap_distance_metres <= 0:
             raise ValueError("max_snap_distance_metres must be positive and finite")
+        if not isfinite(max_effective_speed_kmh) or max_effective_speed_kmh <= 0:
+            raise ValueError("max_effective_speed_kmh must be positive and finite")
         self.max_table_coordinates = max_table_coordinates
         self.max_snap_distance_metres = max_snap_distance_metres
+        self.max_effective_speed_kmh = max_effective_speed_kmh
         self._client = client
         self._owns_client = client is None
 
@@ -158,6 +162,20 @@ class OSRMClient:
             if float(distance) + source_snaps[0] + snap + 250.0 < direct:
                 result.append(RouteEstimate(distance_km=None, duration_minutes=None))
                 continue
+
+            # A road distance may legitimately be much longer than the air line
+            # (rivers, mountains, road topology). Do not reject a large road/air
+            # ratio. Instead reject physically impossible duration metrics.
+            if float(distance) > 0 and float(duration) <= 0:
+                result.append(RouteEstimate(distance_km=None, duration_minutes=None))
+                continue
+            if float(duration) > 0:
+                effective_speed_kmh = (
+                    (float(distance) / 1000.0) / (float(duration) / 3600.0)
+                )
+                if effective_speed_kmh > self.max_effective_speed_kmh:
+                    result.append(RouteEstimate(distance_km=None, duration_minutes=None))
+                    continue
             result.append(RouteEstimate(
                 distance_km=float(distance) / 1000.0,
                 duration_minutes=float(duration) / 60.0,

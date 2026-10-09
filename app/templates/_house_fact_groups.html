@@ -51,7 +51,7 @@
               <span class="fact-chip-key">Arbeit</span>{{ fact_workplace_distance.road_duration_minutes|round|int }} min · {{ '%.1f'|format(fact_workplace_distance.road_distance_km) }} km Straße
             </span>
           {% else %}
-            <span class="fact-chip"><span class="fact-chip-key">Arbeit</span>{{ '%.1f'|format(fact_workplace_distance.air_distance_km) }} km Luft</span>
+            <span class="fact-chip muted"><span class="fact-chip-key">Arbeit</span>Straßenroute nicht verfügbar</span>
           {% endif %}
         {% elif fact_workplace %}
           <span class="fact-chip muted"><span class="fact-chip-key">Arbeit</span>unbekannt</span>
