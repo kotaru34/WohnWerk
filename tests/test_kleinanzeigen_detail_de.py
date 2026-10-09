@@ -213,15 +213,17 @@ async def test_opt_in_detail_access_gate_halts_without_retry(monkeypatch, status
     assert len(calls) == 1
 
 
-def test_detail_checks_are_off_by_default_and_hard_capped() -> None:
+def test_detail_checks_cover_all_results_by_default_with_optional_diagnostic_cap() -> None:
     from app.sources.property.kleinanzeigen_de import KleinanzeigenGermanyPropertySource
 
-    assert KleinanzeigenGermanyPropertySource().detail_checks_per_shard == 0
-    with pytest.raises(ValueError, match="capped"):
-        KleinanzeigenGermanyPropertySource(detail_checks_per_shard=9)
+    assert KleinanzeigenGermanyPropertySource().detail_checks_per_shard is None
+    assert KleinanzeigenGermanyPropertySource(detail_checks_per_shard=0).detail_checks_per_shard == 0
+    assert KleinanzeigenGermanyPropertySource(detail_checks_per_shard=9).detail_checks_per_shard == 9
+    with pytest.raises(ValueError, match="non-negative"):
+        KleinanzeigenGermanyPropertySource(detail_checks_per_shard=-1)
 
 
-def test_manual_cli_requires_provider_terms_review(monkeypatch) -> None:
+def test_manual_cli_has_no_terms_confirmation_gate(monkeypatch) -> None:
     from importlib.util import module_from_spec, spec_from_file_location
     from pathlib import Path
     from types import SimpleNamespace
@@ -231,11 +233,12 @@ def test_manual_cli_requires_provider_terms_review(monkeypatch) -> None:
     assert spec is not None and spec.loader is not None
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
-    monkeypatch.setattr(module, "parse_args", lambda: SimpleNamespace(
+    args = SimpleNamespace(
         frontier_pages=12, hard_max_pages=40, delay=3.0,
-        enable_regional_expansion=False, activate_regional_expansion_only=False,
-        detail_checks_per_shard=1, confirm_provider_terms_reviewed=False,
-    ))
-    with pytest.raises(SystemExit, match="confirm-provider-terms-reviewed"):
-        import asyncio
-        asyncio.run(module.async_main())
+        enable_regional_expansion=False, activate_regional_expansion_only=True,
+        detail_checks_per_shard=None,
+    )
+    monkeypatch.setattr(module, "parse_args", lambda: args)
+    monkeypatch.setattr(module, "get_or_create_source", lambda **_kwargs: 444)
+    import asyncio
+    assert asyncio.run(module.async_main()) == 0
