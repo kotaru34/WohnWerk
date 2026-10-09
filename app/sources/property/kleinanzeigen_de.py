@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
+from app.property_heating import merge_heating_into_payload
 from app.sources.base import (
     PropertySource,
     RawProperty,
@@ -23,6 +24,7 @@ from app.sources.property.germany import (
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
+from app.sources.property.kleinanzeigen_detail_de import parse_kleinanzeigen_house_detail
 from app.sources.property.preview import card_thumbnail_url
 
 BASE_URL = "https://www.kleinanzeigen.de"
@@ -264,7 +266,10 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         timeout_seconds: float = 30.0,
         regional_pilot: bool = False,
         regional_expansion: bool = False,
+        detail_checks_per_shard: int | None = None,
     ) -> None:
+        if detail_checks_per_shard is not None and detail_checks_per_shard < 0:
+            raise ValueError("detail_checks_per_shard must be non-negative or None")
         if regional_pilot and regional_expansion:
             raise ValueError("Regional pilot and expansion modes are mutually exclusive")
         self.request_delay_seconds = max(2.0, request_delay_seconds)
@@ -273,6 +278,7 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         self.timeout_seconds = timeout_seconds
         self.regional_pilot = regional_pilot
         self.regional_expansion = regional_expansion
+        self.detail_checks_per_shard = detail_checks_per_shard
         self._requests_made = 0
 
     def default_shards(self) -> list[SourceShardSpec]:
@@ -345,6 +351,63 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                 await asyncio.sleep(2**attempt)
         raise RuntimeError("unreachable") from last_error
 
+    async def _enrich_public_detail(
+        self, client: httpx.AsyncClient, item: RawProperty,
+    ) -> bool:
+        """Fetch one already discovered house detail and retain typed facts only.
+
+        No retry/bypass on restricted pages and no seller/contact/full-description
+        persistence. Search-card discovery remains the authority for what gets queried.
+        """
+        await self._sleep()
+        self._requests_made += 1
+        try:
+            response = await client.get(item.url, follow_redirects=False)
+        except httpx.HTTPError as exc:
+            raise SourceFetchError(
+                f"Kleinanzeigen detail access failed: {type(exc).__name__}",
+                halt_source=True,
+            ) from exc
+        if response.status_code in {401, 403, 429, 503}:
+            raise SourceFetchError(
+                f"Kleinanzeigen detail access restricted ({response.status_code})",
+                halt_source=True,
+            )
+        if (
+            response.status_code != 200
+            or str(response.url) != item.url
+            or "text/html" not in response.headers.get("content-type", "").casefold()
+            or len(response.content) > 4_000_000
+        ):
+            item.raw_payload["detail_enrichment_reason"] = "unavailable_or_redirected"
+            return False
+        if re.search(
+            r"captcha|security verification|zugriff (?:vorübergehend )?eingeschränkt",
+            response.text[:2000], re.IGNORECASE,
+        ):
+            raise SourceFetchError(
+                "Kleinanzeigen detail human-verification boundary", halt_source=True,
+            )
+        try:
+            facts = parse_kleinanzeigen_house_detail(
+                response.text, url=item.url,
+                expected_listing_id=item.source_listing_id,
+            )
+        except ValueError:
+            item.raw_payload["detail_enrichment_reason"] = "identity_or_evidence_invalid"
+            return False
+        if facts.plot_area_m2 is not None:
+            item.plot_area_m2 = facts.plot_area_m2
+            item.raw_payload["plot_area_evidence"] = facts.plot_evidence
+            item.raw_payload["plot_area_source"] = "kleinanzeigen_detail"
+        item.raw_payload = merge_heating_into_payload(item.raw_payload, facts.heating)
+        if not facts.heating.types and facts.plot_area_m2 is None:
+            item.raw_payload["detail_enrichment_reason"] = "no_verified_fields"
+            return False
+        item.raw_payload["detail_enriched"] = True
+        item.raw_payload["detail_source"] = "kleinanzeigen_public_house_detail"
+        return True
+
     async def fetch_shard(
         self,
         shard: SourceShardSpec,
@@ -368,6 +431,8 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
         out_of_budget_cards = 0
         source_reported_count: int | None = None
         source_max_page = 1
+        detail_checked = 0
+        detail_verified = 0
 
         headers = {
             "User-Agent": "WohnWerk/0.4 (+private self-hosted German property search)",
@@ -420,6 +485,20 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                     out_of_budget_cards += page.out_of_budget_cards
                     if page_number >= page.max_page:
                         break
+                # Detail facts are part of the normal source acquisition contract.
+                # Existing access-gate behavior remains fail-closed and never bypasses 403/429.
+                detail_items = list(items_by_id.values())
+                if self.detail_checks_per_shard is not None:
+                    detail_items = detail_items[: self.detail_checks_per_shard]
+                for item in detail_items:
+                    try:
+                        verified = await self._enrich_public_detail(client, item)
+                    except SourceFetchError:
+                        detail_checked += 1
+                        raise
+                    detail_checked += 1
+                    if verified:
+                        detail_verified += 1
         except Exception as exc:
             if isinstance(exc, SourceFetchError):
                 exc.pages_fetched = pages_fetched
@@ -462,11 +541,13 @@ class KleinanzeigenGermanyPropertySource(PropertySource):
                 "frontier_cards_parsed": cards_parsed,
                 "frontier_out_of_budget_cards": out_of_budget_cards,
                 "frontier_source_max_page": source_max_page,
+                "detail_checked": detail_checked,
+                "detail_verified": detail_verified,
                 "country_code": "DE",
                 **({"region_key": region_key} if region_key else {}),
             },
             source_reported_count=source_reported_count,
             coverage_complete=False,
             result_cap_hit=capped,
-            pages_fetched=pages_fetched,
+            pages_fetched=pages_fetched + detail_checked,
         )

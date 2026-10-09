@@ -227,3 +227,47 @@ def test_live_bad_austria_graph_must_not_return_valid_berlin_destination() -> No
     assert result[0].reachable is False
     assert result[0].distance_km is None
     assert result[0].duration_minutes is None
+
+
+def test_legitimate_large_road_detour_is_kept_instead_of_replaced_by_air_line() -> None:
+    """Road topology may make ~500 km air distance become ~600 km driving."""
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 15.0}],
+            "destinations": [{"distance": 20.0}],
+            "distances": [[600_000.0]],
+            "durations": [[21_600.0]],  # 6 h, 100 km/h effective
+        })
+    ))
+    estimate = OSRMClient("http://router.test", client=client).table(
+        RoutingPoint(longitude=11.5755, latitude=48.1374),
+        [RoutingPoint(longitude=13.4050, latitude=52.5200)],
+    )[0]
+    assert estimate.reachable is True
+    assert estimate.distance_km == pytest.approx(600.0)
+    assert estimate.duration_minutes == pytest.approx(360.0)
+
+
+def test_physically_impossible_osrm_drive_time_is_not_displayed() -> None:
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 10.0}],
+            "destinations": [{"distance": 10.0}],
+            "distances": [[600_000.0]],
+            "durations": [[3_600.0]],  # 600 km/h
+        })
+    ))
+    estimate = OSRMClient("http://router.test", client=client).table(
+        RoutingPoint(longitude=11.5755, latitude=48.1374),
+        [RoutingPoint(longitude=13.4050, latitude=52.5200)],
+    )[0]
+    assert estimate.reachable is False
+    assert estimate.distance_km is None
+    assert estimate.duration_minutes is None
+
+
+def test_osrm_effective_speed_guard_is_configurable_but_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="max_effective_speed_kmh"):
+        OSRMClient("http://router.test", max_effective_speed_kmh=0)

@@ -113,7 +113,7 @@ async def test_frontier_never_claims_reconciliation_authority(monkeypatch) -> No
         lambda **_kwargs: FakeClient(),
     )
 
-    source = Probe(frontier_pages=1, hard_max_pages=40)
+    source = Probe(frontier_pages=1, hard_max_pages=40, detail_checks_per_shard=0)
     batch = await source.fetch_shard(source.default_shards()[0], reconciliation=True)
 
     assert batch.coverage_complete is False
@@ -192,7 +192,7 @@ async def test_regional_pilot_uses_independent_shard_pages_and_keeps_degraded(
         lambda **_kwargs: FakeClient(),
     )
 
-    pilot = Probe(frontier_pages=3, regional_pilot=True)
+    pilot = Probe(frontier_pages=3, regional_pilot=True, detail_checks_per_shard=0)
     batches = [
         await pilot.fetch_shard(shard, reconciliation=True)
         for shard in pilot.default_shards()
@@ -291,7 +291,7 @@ async def test_hybrid_budget_is_12_national_plus_3_per_region(monkeypatch) -> No
         lambda **_kwargs: FakeClient(),
     )
 
-    hybrid = Probe(frontier_pages=12, regional_expansion=True)
+    hybrid = Probe(frontier_pages=12, regional_expansion=True, detail_checks_per_shard=0)
     batches = [
         await hybrid.fetch_shard(spec) for spec in hybrid.default_shards()
     ]
