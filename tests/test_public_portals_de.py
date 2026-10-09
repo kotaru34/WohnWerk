@@ -266,3 +266,26 @@ def test_labeled_asking_price_overrides_cheap_euro_per_square_metre_on_ohne_makl
     assert seen == 1
     assert len(items) == 1
     assert items[0].price_eur == Decimal(120000)
+
+
+def test_live_html5_void_tags_do_not_swallow_sibling_property_cards() -> None:
+    html = """
+    <!doctype html><html><head><meta charset="utf-8"><link rel="canonical"></head>
+    <body><form><input placeholder="PLZ"><br></form>
+      <main>
+        <article><a href="/immobilie/503088/"><img src="/images/1">
+        120.000 € große Doppelhaushälfte am Plauer See 17213 Fünfseen
+        5 195m² 2.912m²</a><hr></article>
+        <article><a href="/immobilie/472341/"><img src="/images/2">
+        115.000 € Mehrfamilienhaus und Garten 17252 Mirow 11 280m² 500m²
+        </a></article>
+      </main>
+    </body></html>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=OHNE_MAKLER.base_url + OHNE_MAKLER.search_path,
+        portal=OHNE_MAKLER,
+    )
+    assert seen == 2
+    assert {item.source_listing_id for item in items} == {"503088", "472341"}
+    assert {item.postal_code for item in items} == {"17213", "17252"}
