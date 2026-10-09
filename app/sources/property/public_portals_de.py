@@ -70,7 +70,8 @@ def _canonical_listing(href: str, *, page_url: str, portal: Portal) -> tuple[str
     if match is None:
         return None
     listing_id = match.group(1)
-    return f"{portal.base_url}{portal.detail_prefix}{listing_id}/", listing_id
+    canonical_suffix = "/" if portal == OHNE_MAKLER else ""
+    return f"{portal.base_url}{portal.detail_prefix}{listing_id}{canonical_suffix}", listing_id
 
 
 def _card_for_anchor(anchor: _Node, *, page_url: str, portal: Portal) -> _Node | None:
@@ -92,6 +93,42 @@ def _card_for_anchor(anchor: _Node, *, page_url: str, portal: Portal) -> _Node |
         if _PRICE.search(text) and _POSTAL.search(text):
             return node
         node = node.parent
+    return None
+
+
+def _title_from_card(
+    card: _Node,
+    *,
+    listing_id: str,
+    page_url: str,
+    portal: Portal,
+) -> str | None:
+    """Choose a title-only link, not an image link or price/area boilerplate.
+
+    Some providers render separate image and title anchors for the same listing;
+    the first matching anchor is often an image without text. Reusing the entire
+    card text as the title can produce 'Kaufpreis 1.039 €/m²' as a fake title.
+    """
+    for candidate in card.walk():
+        if candidate.tag != "a":
+            continue
+        match = _canonical_listing(
+            candidate.attrs.get("href", ""), page_url=page_url, portal=portal
+        )
+        if match is None or match[1] != listing_id:
+            continue
+        title = _clean_text(candidate.text())
+        if _PRICE.search(title) and _POSTAL.search(title):
+            start = _PRICE.search(title)
+            end = _POSTAL.search(title)
+            if start is None or end is None or end.start() <= start.end():
+                continue
+            title = _clean_text(title[start.end():end.start()])
+        # Do not promote unlabeled numerical price metrics into property titles.
+        if (not 7 <= len(title) <= 500 or "€" in title
+                or title.casefold().startswith(("kaufpreis", "preis pro", "fläche", "zimmer"))):
+            continue
+        return title
     return None
 
 
@@ -125,14 +162,10 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
         ):
             continue
 
-        title = _clean_text(anchor.text())
-        # In some portals, the entire search card is one hyperlink.
-        # Separate its title from the explicitly parsed price and location.
-        if _PRICE.search(title) and _POSTAL.search(title):
-            title = _clean_text(title[_PRICE.search(title).end():_POSTAL.search(title).start()])
-        if len(title) < 7:
-            title = _clean_text(text[price_match.end():postcode_match.start()])
-        if not 7 <= len(title) <= 500:
+        title = _title_from_card(
+            card, listing_id=listing_id, page_url=page_url, portal=portal
+        )
+        if title is None:
             continue
         city = re.split(
             r"\b(?:Fläche|Zimmer|Baujahr|Wohnfläche|Grundstück|Kaufpreis)\b",
@@ -241,6 +274,18 @@ class PublicGermanHouseSource(PropertySource):
 
 class OhneMaklerGermanyPropertySource(PublicGermanHouseSource):
     portal = OHNE_MAKLER
+
+    def frontier_paths(self) -> dict[str, str]:
+        # Regional purchase-only URLs were checked as publicly accessible.
+        # First pages can expose cheap houses missed by the national first page.
+        return {
+            "de-public-frontier": self.portal.search_path,
+            "de-sachsen": "/immobilien/haus-kaufen/sachsen/",
+            "de-sachsen-anhalt": "/immobilien/haus-kaufen/sachsen-anhalt/",
+            "de-brandenburg": "/immobilien/haus-kaufen/brandenburg/",
+            "de-mecklenburg-vorpommern": "/immobilien/haus-kaufen/mecklenburg-vorpommern/",
+            "de-thuringen": "/immobilien/haus-kaufen/thuringen/",
+        }
 
 
 class ImmobilienDeGermanyPropertySource(PublicGermanHouseSource):
