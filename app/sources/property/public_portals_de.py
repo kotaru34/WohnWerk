@@ -20,6 +20,7 @@ from app.sources.base import (
     SourceFetchError,
     SourceShardSpec,
 )
+from app.sources.property.public_portal_detail_de import verify_public_house_detail
 from app.sources.property.germany import (
     GERMANY_PROPERTY_MAX_PRICE_EUR,
     GERMANY_PROPERTY_MIN_PRICE_EUR,
@@ -210,6 +211,11 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
                 "identity_stable": True,
                 "frontier_only": True,
                 "discovery_url": page_url,
+                # Public cards are discovery leads, not proof of a purchasable
+                # existing house including the plot. Do not show unchecked
+                # house-builder brochures in the candidate catalogue.
+                "public_house_detail_required": True,
+                "public_house_detail_verified": False,
             },
         )
     return list(output.values()), len(seen)
@@ -220,9 +226,20 @@ class PublicGermanHouseSource(PropertySource):
 
     portal: Portal
 
-    def __init__(self, *, delay_seconds: float = 3.0, timeout_seconds: float = 20.0) -> None:
+    def __init__(
+        self,
+        *,
+        delay_seconds: float = 3.0,
+        timeout_seconds: float = 20.0,
+        verify_details: bool = False,
+        max_detail_checks_per_shard: int = 8,
+    ) -> None:
+        if max_detail_checks_per_shard < 0 or max_detail_checks_per_shard > 10:
+            raise ValueError("detail checks must be bounded to 0..10 per shard")
         self.delay_seconds = max(2.0, delay_seconds)
         self.timeout_seconds = timeout_seconds
+        self.verify_details = verify_details
+        self.max_detail_checks_per_shard = max_detail_checks_per_shard
 
     @property
     def name(self) -> str:
@@ -275,17 +292,74 @@ class PublicGermanHouseSource(PropertySource):
                 )
                 if not seen:
                     raise RuntimeError("No identifiable listing cards; refusing empty success")
+                detail_checked = 0
+                detail_verified = 0
+                # Never fetch details in raw-card inspection mode. The
+                # visibility gate above keeps all such observations hidden.
+                if self.verify_details:
+                    for item in items[: self.max_detail_checks_per_shard]:
+                        await asyncio.sleep(self.delay_seconds)
+                        try:
+                            detail = await client.get(item.url)
+                        except httpx.HTTPError as exc:
+                            raise SourceFetchError(
+                                f"{self.name}: detail request failed ({type(exc).__name__})",
+                                pages_fetched=1 + detail_checked,
+                                items_seen=len(items),
+                                partial_items=items,
+                                halt_source=True,
+                            ) from exc
+                        detail_checked += 1
+                        if detail.status_code in {403, 429, 503}:
+                            raise SourceFetchError(
+                                f"{self.name}: detail access restriction ({detail.status_code})",
+                                pages_fetched=1 + detail_checked,
+                                items_seen=len(items),
+                                partial_items=items,
+                                halt_source=True,
+                            )
+                        if (
+                            detail.status_code != 200
+                            or str(detail.url) != item.url
+                            or len(detail.content) > 4_000_000
+                        ):
+                            item.raw_payload["public_house_detail_reason"] = "detail_unavailable"
+                            continue
+                        if _BLOCKED.search(detail.text[:2000]):
+                            raise SourceFetchError(
+                                f"{self.name}: provider challenge on detail page",
+                                pages_fetched=1 + detail_checked,
+                                items_seen=len(items),
+                                partial_items=items,
+                                halt_source=True,
+                            )
+                        evidence = verify_public_house_detail(
+                            detail.text,
+                            provider_name=self.name,
+                            listing_id=item.source_listing_id,
+                            price_eur=item.price_eur,
+                            postal_code=item.postal_code,
+                        )
+                        item.raw_payload["public_house_detail_verified"] = evidence.verified
+                        item.raw_payload["public_house_detail_reason"] = evidence.reason
+                        if evidence.verified:
+                            detail_verified += 1
                 return SourceBatch(
                     items=items,
                     source_reported_count=None,
                     coverage_complete=False,
-                    pages_fetched=1,
+                    pages_fetched=1 + detail_checked,
                     next_cursor={
                         "country_code": "DE",
                         "frontier_cards_seen": seen,
                         "frontier_key": shard.key,
+                        "detail_checked": detail_checked,
+                        "detail_verified": detail_verified,
+                        "detail_unchecked": max(0, len(items) - detail_checked),
                     },
                 )
+        except SourceFetchError:
+            raise
         except (httpx.HTTPError, RuntimeError) as exc:
             raise SourceFetchError(
                 f"{self.name}: public frontier unavailable ({type(exc).__name__})",
