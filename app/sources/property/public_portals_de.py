@@ -281,12 +281,26 @@ class PublicGermanHouseSource(PropertySource):
                          "Accept": "text/html", "Accept-Language": "de-DE,de;q=0.9"},
             ) as client:
                 response = await client.get(url)
+                # 403/429/503 are access boundaries, NOT intermittent missing
+                # listings. Stop this provider before any regional retry.
+                if response.status_code in {403, 429, 503}:
+                    raise SourceFetchError(
+                        f"{self.name}: search access restricted ({response.status_code})",
+                        halt_source=True,
+                    )
                 response.raise_for_status()
                 if str(response.url) != url:
                     raise RuntimeError("Unexpected portal redirect")
+                if "text/html" not in response.headers.get("content-type", "").casefold():
+                    raise RuntimeError("Unexpected content type for public search page")
+                if len(response.content) > 5_000_000:
+                    raise RuntimeError("Public search response exceeds size limit")
                 html = response.text
                 if _BLOCKED.search(html[:2000]):
-                    raise RuntimeError("Provider challenge or access restriction")
+                    raise SourceFetchError(
+                        f"{self.name}: public search challenge / access restriction",
+                        halt_source=True,
+                    )
                 items, seen = parse_public_portal_page(
                     html, page_url=url, portal=self.portal
                 )
@@ -322,6 +336,9 @@ class PublicGermanHouseSource(PropertySource):
                             detail.status_code != 200
                             or str(detail.url) != item.url
                             or len(detail.content) > 4_000_000
+                            or "text/html" not in detail.headers.get(
+                                "content-type", ""
+                            ).casefold()
                         ):
                             item.raw_payload["public_house_detail_reason"] = "detail_unavailable"
                             continue
