@@ -210,6 +210,7 @@ def save_candidate_workplace(
     country_code: str,
     input_text: str,
     commit: bool = True,
+    force_geocoding_retry: bool = False,
 ) -> CandidateWorkplace | None:
     text = input_text.strip()
     row = load_candidate_workplace(session, profile_id)
@@ -232,7 +233,10 @@ def save_candidate_workplace(
         and not (
             normalized_country == "DE"
             and get_settings().workplace_geocoding_enabled
-            and row.resolution_method == "explicit_postal_centroid"
+            and (
+                row.resolution_method == "explicit_postal_centroid"
+                or force_geocoding_retry
+            )
             and parse_german_street_address(normalized_text) is not None
         )
     ):
