@@ -90,7 +90,12 @@ def test_both_sources_use_bounded_non_authoritative_shards() -> None:
     immobilien_de = ImmobilienDeGermanyPropertySource()
     assert OHNE_MAKLER.search_path == "/immobilien/haus-kaufen/"
     assert [shard.key for shard in ohne_makler.default_shards()] == [
-        "de-public-frontier"
+        "de-public-frontier",
+        "de-sachsen",
+        "de-sachsen-anhalt",
+        "de-brandenburg",
+        "de-mecklenburg-vorpommern",
+        "de-thuringen",
     ]
     assert [shard.key for shard in immobilien_de.default_shards()] == [
         "de-public-frontier",
@@ -109,3 +114,61 @@ def test_both_sources_use_bounded_non_authoritative_shards() -> None:
             path.startswith("/") and "?" not in path
             for path in adapter.frontier_paths().values()
         )
+
+
+def test_immobilien_de_prefers_title_link_to_separate_image_link() -> None:
+    html = """
+        <div><a href="/expose/9794876"><img alt="Foto der Doppelhaushälfte"></a>
+            <a href="/expose/9794876">Neubrandenburg: Doppelhaushälfte mit Keller</a>
+            <p>139.000 € Kaufpreis</p><p>1.448 € / m²</p>
+            <p>17034 Neubrandenburg</p><p>Fläche 96 m²</p>
+        </div>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=IMMOBILIEN_DE.base_url + "/kaufen/haus/neubrandenburg/",
+        portal=IMMOBILIEN_DE,
+    )
+    assert seen == 1
+    assert len(items) == 1
+    assert items[0].title == "Neubrandenburg: Doppelhaushälfte mit Keller"
+    assert items[0].price_eur == Decimal(139000)
+    assert items[0].url == "https://www.immobilien.de/expose/9794876"
+
+
+def test_image_only_card_does_not_invent_title_from_kaufpreis_metrics() -> None:
+    html = """
+        <div><a href="/expose/9794876"><img alt="house"></a>
+            <p>139.000 € Kaufpreis 1.448 € / m²</p>
+            <p>17034 Neubrandenburg</p><p>Fläche 96 m²</p>
+        </div>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=IMMOBILIEN_DE.base_url + IMMOBILIEN_DE.search_path,
+        portal=IMMOBILIEN_DE,
+    )
+    assert seen == 1
+    assert items == []
+
+
+def test_same_id_different_card_anchors_are_not_counted_as_multiple_listings() -> None:
+    html = """
+        <article>
+            <a href="/immobilie/503042/"><img alt="Ferienhaus"></a>
+            <a href="/immobilie/503042/">135.000 € Ferienhaus mit Bootsanleger
+                17111 Sommersdorf 3 85m² 540m²</a>
+        </article>
+    """
+    items, seen = parse_public_portal_page(
+        html, page_url=OHNE_MAKLER.base_url + OHNE_MAKLER.search_path,
+        portal=OHNE_MAKLER,
+    )
+    assert seen == 1
+    assert len(items) == 1
+    assert items[0].title == "Ferienhaus mit Bootsanleger"
+
+
+def test_canonical_immobilien_de_original_expose_link_omits_trailing_slash() -> None:
+    assert _canonical_listing(
+        "/expose/9658417/", page_url=IMMOBILIEN_DE.base_url + IMMOBILIEN_DE.search_path,
+        portal=IMMOBILIEN_DE,
+    ) == ("https://www.immobilien.de/expose/9658417", "9658417")
