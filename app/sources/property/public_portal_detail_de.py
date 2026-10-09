@@ -30,6 +30,20 @@ _BUILDER_OFFER = re.compile(
     re.IGNORECASE,
 )
 _YEAR = re.compile(r"\bBaujahr\b[^0-9]{0,45}\b((?:18|19|20)\d{2})\b", re.IGNORECASE)
+_AREA_LIVING = re.compile(
+    r"\bWohnfl[äa]che\b\s*[:|]?\s*([\d.,]+)\s*m(?:²|2)\b", re.IGNORECASE
+)
+_AREA_LAND = re.compile(
+    r"\bGrundst[üu]cksfl[äa]che\b\s*[:|]?\s*([\d.,]+)\s*m(?:²|2)\b",
+    re.IGNORECASE,
+)
+_AUCTION = re.compile(
+    r"\b(?:zwangsversteigerung|versteigerungstermin|versteigerungsobjekt|"
+    r"zuschlag (?:ist|gegebenenfalls|ggf)|"
+    r"versteigert|gerichtlich versteigern|ersteigern)\b",
+    re.IGNORECASE,
+)
+
 _PRICE_BEFORE_LABEL = re.compile(
     r"(?<!\w)([\d.]+(?:,\d{1,2})?)\s*€\s*Kaufpreis\b", re.IGNORECASE
 )
@@ -44,7 +58,13 @@ def _public_text(html: str) -> str:
     body = next(
         (node for node in parser.root.walk() if node.tag == "main"), None
     )
-    return (body or parser.root).text()
+    text = (body or parser.root).text()
+    # Recommendation carousels often contain *other* properties' Baujahr,
+    # prices and plot areas; accepting that evidence for the active listing
+    # would turn house-builder brochures into falsely verified houses.
+    for marker in ("Weitere Angebote von", "Ähnliche Immobilien", "Ähnliche Objekte"):
+        text = text.split(marker, 1)[0]
+    return text
 
 
 def verify_public_house_detail(
@@ -74,6 +94,8 @@ def verify_public_house_detail(
         return PublicHouseEvidence(False, "postcode_unverified")
     if _BUILDER_OFFER.search(text):
         return PublicHouseEvidence(False, "construction_only")
+    if _AUCTION.search(text):
+        return PublicHouseEvidence(False, "auction")
 
     # Check a source-backed asking price, not financing examples or €/m² figures.
     if provider_name == "immobilien-de":
@@ -84,9 +106,11 @@ def verify_public_house_detail(
         return PublicHouseEvidence(False, "asking_price_unverified")
 
     # A full detail must prove a *built house* and its real plot.
-    if not re.search(r"\bWohnfl[äa]che\b", text, re.IGNORECASE):
+    living = _AREA_LIVING.search(text)
+    if living is None or (area := _decimal(living.group(1))) is None or area < 15:
         return PublicHouseEvidence(False, "living_area_unverified")
-    if not re.search(r"\bGrundst[üu]cksfl[äa]che\b", text, re.IGNORECASE):
+    plot = _AREA_LAND.search(text)
+    if plot is None or (area := _decimal(plot.group(1))) is None or area < 20:
         return PublicHouseEvidence(False, "land_area_unverified")
     years = [
         int(year) for year in _YEAR.findall(text)
