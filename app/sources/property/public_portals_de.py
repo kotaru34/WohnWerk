@@ -67,15 +67,26 @@ _BLOCKED = re.compile(
 
 
 def _canonical_listing(href: str, *, page_url: str, portal: Portal) -> tuple[str, str] | None:
-    parsed = urlsplit(urljoin(page_url, href))
-    base = urlsplit(portal.base_url)
+    try:
+        parsed = urlsplit(urljoin(page_url, href))
+        base = urlsplit(portal.base_url)
+        same_host = (
+            (parsed.hostname or "").casefold().removeprefix("www.")
+            == (base.hostname or "").casefold().removeprefix("www.")
+        )
+        unsafe_authority = (
+            parsed.username is not None
+            or parsed.password is not None
+            or parsed.port is not None
+        )
+    except ValueError:
+        # Malformed public hrefs must never escape into an exception that
+        # prevents collecting other legitimate cards on the same page.
+        return None
     if (
         parsed.scheme != "https"
-        or (parsed.hostname or "").casefold().removeprefix("www.")
-        != (base.hostname or "").casefold().removeprefix("www.")
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.port is not None
+        or not same_host
+        or unsafe_authority
     ):
         return None
     path = parsed.path.rstrip("/") + "/"
@@ -169,7 +180,9 @@ def parse_public_portal_page(html: str, *, page_url: str, portal: Portal) -> tup
         # €/m² values can appear before the asking price in page markup.
         # Immobilien.de labels the real asking price as "Kaufpreis".
         price_match = (
-            _ASKING_PRICE.search(text) if portal == IMMOBILIEN_DE else _PRICE.search(text)
+            _ASKING_PRICE.search(text)
+            if portal == IMMOBILIEN_DE
+            else _ASKING_PRICE.search(text) or _PRICE.search(text)
         )
         postcode_match = _POSTAL.search(text)
         if price_match is None or postcode_match is None:
