@@ -185,3 +185,45 @@ def test_osrm_invalid_json_and_boolean_metrics_fail_closed(payload: object) -> N
             RoutingPoint(longitude=11.46, latitude=48.18),
             [RoutingPoint(longitude=11.50, latitude=48.20)],
         )
+
+
+def test_live_2026_10_09_austrian_osrm_munich_berlin_success_is_rejected() -> None:
+    """Target-host OSRM returned Ok but snapped Berlin 406 km away."""
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 59601.0}],
+            "destinations": [{"distance": 406033.0}],
+            "distances": [[481800.0]],
+            "durations": [[23970.0]],
+        })
+
+    router = OSRMClient(
+        "http://localhost:5000",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    with pytest.raises(RoutingError, match="outside its loaded road network"):
+        router.table(
+            RoutingPoint(longitude=11.5755, latitude=48.1374),
+            [RoutingPoint(longitude=13.4050, latitude=52.52)],
+        )
+
+
+def test_live_bad_austria_graph_must_not_return_valid_berlin_destination() -> None:
+    """Even a nearby source cannot make a Berlin point snapped 406 km useful."""
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json={
+            "code": "Ok",
+            "sources": [{"distance": 30.0}],
+            "destinations": [{"distance": 406033.0}],
+            "distances": [[481800.0]],
+            "durations": [[23970.0]],
+        })
+    ))
+    result = OSRMClient("http://localhost:5000", client=client).table(
+        RoutingPoint(longitude=11.5755, latitude=48.1374),
+        [RoutingPoint(longitude=13.4050, latitude=52.52)],
+    )
+    assert result[0].reachable is False
+    assert result[0].distance_km is None
+    assert result[0].duration_minutes is None
