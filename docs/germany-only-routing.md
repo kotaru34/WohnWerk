@@ -68,7 +68,8 @@ within 15 km of the known PLZ centroid is accepted as street-level evidence.
 Multiple far-apart candidates are rejected. A failed or incomplete match
 keeps PLZ-level coordinates labeled **approximate**. Existing identical
 street addresses saved before opt-in are checked once after opt-in and then
-cached. Correcting or changing the saved address initiates a new attempt.
+cached. A visible **Hausnummer erneut prüfen** button deliberately retries
+an unverified workplace address; editing the address also initiates a new attempt.
 Road **distance** still independently requires the Germany OSRM cutover
 and its explicit graph-coverage setting; enabling the geocoder alone does
 not silently enable routing.
