@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, datetime
 from decimal import Decimal
 
-from app.sources.property.immmo import _DOMParser, _decimal
+from app.sources.property.immmo import _decimal, _DOMParser
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +90,7 @@ def verify_public_house_detail(
         return PublicHouseEvidence(False, "land_area_unverified")
     years = [
         int(year) for year in _YEAR.findall(text)
-        if int(year) <= date.today().year
+        if int(year) <= datetime.now(UTC).year
     ]
     if not years:
         return PublicHouseEvidence(False, "existing_building_unverified")
