@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
+from app.property_heating import merge_heating_into_payload
 from app.sources.base import (
     PropertySource,
     RawProperty,
@@ -23,7 +24,6 @@ from app.sources.property.germany import (
     GERMANY_PROPERTY_MIN_PRICE_EUR,
 )
 from app.sources.property.immmo import _clean_text, _decimal, _DOMParser, _Node
-from app.property_heating import merge_heating_into_payload
 from app.sources.property.kleinanzeigen_detail_de import parse_kleinanzeigen_house_detail
 from app.sources.property.preview import card_thumbnail_url
 
