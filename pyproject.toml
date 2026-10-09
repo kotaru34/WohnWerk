@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wohnwerk"
 dynamic = ["version"]
-description = "Self-hosted Austrian and German home and job matching system"
+description = "Self-hosted Germany-only house discovery and suitability system"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
@@ -49,5 +49,6 @@ target-version = "py312"
 known-first-party = ["app"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 asyncio_mode = "auto"
 testpaths = ["tests"]
