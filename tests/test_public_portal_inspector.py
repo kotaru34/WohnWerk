@@ -30,3 +30,23 @@ def test_staged_public_portals_are_not_automatically_scheduled() -> None:
         note = source_operational_note(name)
         assert note is not None
         assert "Gesamtpreis" in note
+
+
+def test_inspector_can_probe_exactly_one_known_region() -> None:
+    adapter = OhneMaklerGermanyPropertySource()
+    shards = selected_shards(
+        adapter, regional=False, frontier_key="de-mecklenburg-vorpommern"
+    )
+    assert len(shards) == 1
+    assert shards[0].key == "de-mecklenburg-vorpommern"
+
+
+def test_inspector_refuses_unlisted_region_paths() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown whitelisted frontier"):
+        selected_shards(
+            ImmobilienDeGermanyPropertySource(),
+            regional=True,
+            frontier_key="../../admin",
+        )
